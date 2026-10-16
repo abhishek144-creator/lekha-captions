@@ -138,6 +138,19 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     dragY.set(0);
   }, [word, position?.x, position?.y, dragX, dragY]);
 
+  // Escape closes the word editor (it can sit over part of the preview). An
+  // open font list or other Radix layer handles that Escape first and marks it
+  // defaultPrevented, so it closes alone.
+  React.useEffect(() => {
+    if (!position) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      onClose?.();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [position, onClose]);
+
   if (!position) return null;
   const isMobileViewport = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
 

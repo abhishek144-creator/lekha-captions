@@ -580,6 +580,9 @@ function applySourceTemplateWordStyle(
     clearTargets.forEach((target) => {
       SOURCE_TEMPLATE_MANAGED_STYLE_PROPS.forEach((property) => {
         if (property === 'animation' && !animChanged) return;
+        // Saved offsets live on the visual targets; a `translate` on the anchor
+        // is the live drag preview, which a mid-drag restyle must not reset.
+        if (property === 'translate' && target === node) return;
         target.style.removeProperty(property);
       });
       clearSourceTemplateTextGradient(target);

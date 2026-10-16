@@ -245,7 +245,9 @@ export function useWordGestures({
     if (!setCaptions) return
     e.preventDefault()
     e.stopPropagation()
-    e.currentTarget.setPointerCapture?.(e.pointerId)
+    // Capture is a nicety; the gesture itself is tracked on the document. A
+    // pointer that has already ended (or a synthetic start) must not abort it.
+    try { e.currentTarget.setPointerCapture?.(e.pointerId) } catch { /* see above */ }
 
     // A word drag enters editing mode. Stop playback so the canvas stays stable
     // while the word is positioned and the committed CPT can be inspected.
