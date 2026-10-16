@@ -3,6 +3,7 @@ import {
   isSourceBasicTemplateId,
 } from './basicTemplateInline.js';
 import { getCaptionWordRevealIndex } from './cptMotion.js';
+import { getWordBackgroundFill } from '../../lib/wordPaint.js';
 
 export function getCaptionTemplateId(caption, fallbackStyle = {}) {
   return String(
@@ -278,15 +279,6 @@ function wrapSourceTemplatePlainTextNodes(root, startIndex = 0) {
   return cursor;
 }
 
-function rgbaFromHex(hex = '#000000', alpha = 0.6) {
-  const normalized = String(hex || '#000000').replace('#', '');
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) return hex;
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 function getSourceWordAnimationStyle(animationType, speed = 1) {
   const safeSpeed = Math.max(0.25, Number(speed) || 1);
   const duration = (seconds) => `${+(seconds / safeSpeed).toFixed(2)}s`;
@@ -464,16 +456,24 @@ function getSourceTemplateTextPaintTargets(target) {
   ];
 }
 
-function applySourceTemplateTextGradient(target, gradient) {
+// `fill` is the word's background box (colour or highlight gradient). On the
+// visual target it stays as its own layer clipped to the box, so a text
+// gradient and a background can coexist (see src/lib/wordPaint.js).
+function applySourceTemplateTextGradient(target, gradient, fill = '') {
   getSourceTemplateTextPaintTargets(target).forEach((paintTarget) => {
+    const fillLayer = paintTarget === target && fill
+      ? (/gradient\(/i.test(fill) ? fill : `linear-gradient(${fill}, ${fill})`)
+      : '';
+    const image = fillLayer ? `${gradient}, ${fillLayer}` : gradient;
+    const clip = fillLayer ? 'text, padding-box' : 'text';
     setSourceTemplateStyle(paintTarget, 'background-color', 'transparent');
-    setSourceTemplateStyle(paintTarget, 'background', gradient);
-    setSourceTemplateStyle(paintTarget, 'background-image', gradient);
+    setSourceTemplateStyle(paintTarget, 'background', image);
+    setSourceTemplateStyle(paintTarget, 'background-image', image);
     setSourceTemplateStyle(paintTarget, 'background-size', '100% 100%');
     setSourceTemplateStyle(paintTarget, 'background-repeat', 'no-repeat');
     setSourceTemplateStyle(paintTarget, 'background-position', 'center');
-    setSourceTemplateStyle(paintTarget, '-webkit-background-clip', 'text');
-    setSourceTemplateStyle(paintTarget, 'background-clip', 'text');
+    setSourceTemplateStyle(paintTarget, '-webkit-background-clip', clip);
+    setSourceTemplateStyle(paintTarget, 'background-clip', clip);
     setSourceTemplateStyle(paintTarget, '-webkit-text-fill-color', 'transparent');
     setSourceTemplateStyle(paintTarget, 'color', 'transparent');
   });
@@ -606,6 +606,7 @@ function applySourceTemplateWordStyle(
   node.dataset.sourceWordAnim = animValue;
   stabilizeSourceTemplateWordAnchor(node);
   const textGradient = typeof wordStyle.textGradient === 'string' ? wordStyle.textGradient.trim() : '';
+  const wordFill = getWordBackgroundFill(wordStyle);
   if (textGradient) {
     node.dataset.sourceWordGradient = 'true';
     setSourceTemplateStyle(node, '--source-word-text-gradient', textGradient);
@@ -654,12 +655,8 @@ function applySourceTemplateWordStyle(
       setSourceTemplateStyle(target, '-webkit-text-fill-color', wordStyle.color);
     }
 
-    if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
-      setSourceTemplateStyle(
-        target,
-        'background',
-        wordStyle.highlightGradient || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)
-      );
+    if (wordFill) {
+      setSourceTemplateStyle(target, 'background', wordFill);
       setSourceTemplateStyle(target, 'border-radius', '4px');
       setSourceTemplateStyle(target, 'padding', `${(wordStyle.backgroundPadding || 2) * renderScale}px ${4 * renderScale}px`);
       setSourceTemplateStyle(target, 'box-decoration-break', 'clone');
@@ -667,7 +664,7 @@ function applySourceTemplateWordStyle(
     }
 
     if (textGradient) {
-      applySourceTemplateTextGradient(target, textGradient);
+      applySourceTemplateTextGradient(target, textGradient, wordFill);
     } else if (wordStyle.color) {
       setSourceTemplateStyle(target, 'color', wordStyle.color);
       setSourceTemplateStyle(target, '-webkit-text-fill-color', wordStyle.color);
@@ -695,7 +692,7 @@ function applySourceTemplateWordStyle(
     });
 
     if (textGradient) {
-      applySourceTemplateTextGradient(target, textGradient);
+      applySourceTemplateTextGradient(target, textGradient, wordFill);
     }
   });
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { normalizeHexColor } from '@/lib/colorUtils';
 import { useAuth } from '@/lib/AuthContext';
 import {
   Sheet,
@@ -47,7 +48,8 @@ import {
 
 import { Progress } from "@/components/ui/progress";
 import { getDailyLimitMessage, getPlanLimitErrorKind } from './exportPlanLimits';
-import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
+
+import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 
 // TESTING ONLY: unlock the export UI for an explicitly configured local test.
 // Limits are on by default in every build; a production build cannot bypass
@@ -726,6 +728,17 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         'cptPaintedFontWeight',
         'cptPaintedFontStyle',
       ];
+      // Colours the user picked in the word editor's Style tab must export
+      // like the preview shows them. Only that editor writes these keys, and it
+      // writes `color` as #rrggbb; the drag snapshot stores the computed
+      // rgb(...) string, so a snapshot can never flatten the authored look.
+      const WORD_PAINT_KEYS = [
+        'textGradient',
+        'backgroundColor',
+        'backgroundOpacity',
+        'backgroundPadding',
+        'highlightGradient',
+      ];
       const pickWordGeometryStyles = (patchedWs) => {
         const out = {};
         for (const [k, v] of Object.entries(patchedWs || {})) {
@@ -734,6 +747,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           for (const key of WORD_GEOMETRY_KEYS) {
             if (v[key] !== undefined) picked[key] = v[key];
           }
+          for (const key of WORD_PAINT_KEYS) {
+            if (v[key] !== undefined && v[key] !== '') picked[key] = v[key];
+          }
+          if (normalizeHexColor(v.color)) picked.color = normalizeHexColor(v.color);
           if (hasRealAbsPosition(v)) {
             picked.abs_x_pct = v.abs_x_pct;
             picked.abs_y_pct = v.abs_y_pct;

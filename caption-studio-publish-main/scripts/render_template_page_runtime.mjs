@@ -132,6 +132,40 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       }
     };
 
+    // Mirrors src/lib/wordPaint.js so the export paints words like the editor:
+    // a highlight gradient wins over a solid background, and a text gradient
+    // plus a background are separate layers (text clip / box clip).
+    const wordBackgroundFill = (wordStyle = {}) => {
+      const highlight = String(wordStyle.highlightGradient || '').trim();
+      if (highlight) return highlight;
+      if (!wordStyle.backgroundColor) return '';
+      const raw = String(wordStyle.backgroundColor).trim().replace('#', '');
+      const hex = /^[0-9a-f]{3}$/i.test(raw) || /^[0-9a-f]{6}$/i.test(raw) ? raw : '000000';
+      const alpha = Math.max(0, Math.min(1, Number(wordStyle.backgroundOpacity ?? 0.6)));
+      return rgbaFromHex(hex, Number.isFinite(alpha) ? alpha : 0.6);
+    };
+    const wordFillLayer = (fill) => (fill
+      ? (/gradient\\(/i.test(fill) ? fill : 'linear-gradient(' + fill + ', ' + fill + ')')
+      : '');
+    const wordPaintDeclarations = (wordStyle = {}) => {
+      const textGradient = String(wordStyle.textGradient || '').trim();
+      const fill = wordBackgroundFill(wordStyle);
+      if (!textGradient) return fill ? ['background:' + fill] : [];
+      const fillLayer = wordFillLayer(fill);
+      const clip = fillLayer ? 'text, padding-box' : 'text';
+      return [
+        'background-color:transparent',
+        'background-image:' + (fillLayer ? textGradient + ', ' + fillLayer : textGradient),
+        'background-size:100% 100%',
+        'background-repeat:no-repeat',
+        'background-position:center',
+        '-webkit-background-clip:' + clip,
+        'background-clip:' + clip,
+        'color:transparent',
+        '-webkit-text-fill-color:transparent !important',
+      ];
+    };
+
     const transformText = (text, style) => {
       if (!text) return '';
       if (style?.is_caps || style?.text_case === 'uppercase') return text.toUpperCase();
@@ -1212,15 +1246,18 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           current = current.parentElement;
         }
       };
-      const applyTextGradient = (target, gradient) => {
+      const applyTextGradient = (target, gradient, fill = '') => {
+        const fillLayer = wordFillLayer(fill);
+        const image = fillLayer ? gradient + ', ' + fillLayer : gradient;
+        const clip = fillLayer ? 'text, padding-box' : 'text';
         setImportant(target, 'background-color', 'transparent');
-        setImportant(target, 'background', gradient);
-        setImportant(target, 'background-image', gradient);
+        setImportant(target, 'background', image);
+        setImportant(target, 'background-image', image);
         setImportant(target, 'background-size', '100% 100%');
         setImportant(target, 'background-repeat', 'no-repeat');
         setImportant(target, 'background-position', 'center');
-        setImportant(target, '-webkit-background-clip', 'text');
-        setImportant(target, 'background-clip', 'text');
+        setImportant(target, '-webkit-background-clip', clip);
+        setImportant(target, 'background-clip', clip);
         setImportant(target, '-webkit-text-fill-color', 'transparent');
         setImportant(target, 'color', 'transparent');
       };
@@ -1356,13 +1393,14 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             setImportant(target, 'color', wordStyle.color);
             setImportant(target, '-webkit-text-fill-color', wordStyle.color);
           }
-          if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
-            setImportant(target, 'background', wordStyle.highlightGradient || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6));
+          const wordFill = wordBackgroundFill(wordStyle);
+          if (wordFill) {
+            setImportant(target, 'background', wordFill);
             setImportant(target, 'border-radius', '4px');
             setImportant(target, 'padding', \`\${wordStyle.backgroundPadding || 2}px 4px\`);
             setImportant(target, 'box-decoration-break', 'clone');
             setImportant(target, '-webkit-box-decoration-break', 'clone');
-            if (textGradient) applyTextGradient(target, textGradient);
+            if (textGradient) applyTextGradient(target, textGradient, wordFill);
           }
           Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => {
             setImportant(target, property, value);
@@ -2424,23 +2462,11 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           const effectStyles = getWordEffectInlineStyles(wordStyle);
           const effectInline = inlineStyleObject(effectStyles);
           if (effectInline) inline.push(effectInline);
-          if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
-            inline.push(
-              'background:' + (
-                wordStyle.highlightGradient
-                || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)
-              ),
-            );
+          if (wordBackgroundFill(wordStyle)) {
             inline.push('border-radius:' + scaleExportPx(3) + 'px');
             inline.push('padding:' + scaleExportPx(wordStyle.backgroundPadding ?? 2) + 'px ' + scaleExportPx(4) + 'px');
           }
-          const textGradient = wordStyle.textGradient || '';
-          if (textGradient) {
-            inline.push('background-image:' + textGradient);
-            inline.push('-webkit-background-clip:text');
-            inline.push('background-clip:text');
-            inline.push('-webkit-text-fill-color:transparent !important');
-          }
+          inline.push(...wordPaintDeclarations(wordStyle));
           return '<span data-word-key="' + escapeHtml(word.key) + '"'
             + ' data-absolute-cpt-word="true"'
             + ' data-absolute-cpt-emphasis="' + (isEmphasis ? 'true' : 'false') + '"'
@@ -2495,15 +2521,11 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           inline.push(\`text-shadow:0 0 \${scaleEffectPx(18)}px \${accent}99,0 0 \${scaleEffectPx(6)}px \${accent}66\`);
         }
         const wordGradient = wordStyle.textGradient || globalStyle?.text_gradient || '';
-        if (wordGradient) {
-          inline.push(\`background:\${wordGradient}\`);
-          inline.push('background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent');
-        }
-        if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
-          inline.push(\`background:\${wordStyle.highlightGradient || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)}\`);
+        if (wordBackgroundFill(wordStyle)) {
           inline.push(\`padding:\${scaleExportPx(wordStyle.backgroundPadding ?? 2)}px \${scaleExportPx((wordStyle.backgroundPadding ?? 2) * 2)}px\`);
           inline.push('border-radius:4px');
         }
+        inline.push(...wordPaintDeclarations({ ...wordStyle, textGradient: wordGradient }));
         Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => inline.push(\`\${property}:\${value}\`));
         // Escape the attribute: font-family is double-quoted, and a raw quote
         // here ends style="..." early, dropping every later declaration.
