@@ -174,6 +174,7 @@ export default function Dashboard() {
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
+  const exitFullscreenForWordEditor = useCallback(() => setIsVideoFullscreen(false), []);
   const [timelineHeight, setTimelineHeight] = useState(COLLAPSED_TIMELINE_HEIGHT);
   const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
   const collapseTimeline = () => {
@@ -840,14 +841,36 @@ export default function Dashboard() {
   };
 
   const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
-  const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
+  // A native colour picker fires on every move of a drag; one burst of style
+  // changes is one undo step instead of dozens (and a flushed history).
+  const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle, { coalesce: 'caption-style' });
   const addToHistory = () => pushHistory(undefined, undefined);
 
-  // Word popup edits use raw setCaptions: history is recorded separately via
-  // onHistoryRecord (pointer-down on sliders). Recording here captured stale
-  // closure snapshots and corrupted other words.
+  // Word popup edits apply with the functional raw setter (building new
+  // captions from a render's closure corrupted other words), and record one
+  // undo snapshot per gesture: a click that sets several keys at once (colour +
+  // clearing its gradient) or a continuous drag of one control. Sliders record
+  // on pointer-down (onHistoryRecord) and pass skipHistory for their ticks.
+  const WORD_STYLE_BURST_MS = 600;
+  const wordStyleHistoryRef = useRef({ key: '', at: 0 });
+  const recordWordStyleGesture = () => {
+    addToHistory();
+    wordStyleHistoryRef.current = { key: '*', at: Date.now() };
+  };
+  // Slider ticks pass skipHistory because their pointer-down already recorded
+  // the drag ('*' gesture). A slider moved with the keyboard has no such
+  // gesture, so every change records once per burst here either way.
+  const recordWordStyleChange = (key) => {
+    const now = Date.now();
+    const last = wordStyleHistoryRef.current;
+    const sameGesture = now - last.at < 50
+      || (now - last.at < WORD_STYLE_BURST_MS && (last.key === key || last.key === '*'));
+    wordStyleHistoryRef.current = { key: sameGesture && last.key === '*' ? '*' : key, at: now };
+    if (!sameGesture) addToHistory();
+  };
   const handleWordStyleChange = (key, value) => {
     if (!wordPopup) return;
+    recordWordStyleChange(key);
     setCaptions(prev => updatePopupWordStyle(prev, wordPopup, (style) => applyWordStyleChange(style, key, value)));
     setWordPopup(prev => {
       if (!prev?.caption || prev.type === 'element') return prev;
@@ -1052,6 +1075,38 @@ export default function Dashboard() {
 
     return null;
   };
+
+  // One word editor, docked where it cannot cover the preview: the inspector
+  // column (desktop), the dock sheet (tablet/phone) or beside the frame
+  // (fullscreen). If fullscreen leaves no room beside it, leave fullscreen.
+  const renderWordEditor = (placement) => (
+    <Suspense fallback={null}>
+      <WordClickPopup
+        key={wordPopup._openKey ?? wordPopupOpenCount}
+        placement={placement}
+        onCannotFloat={exitFullscreenForWordEditor}
+        wordKey={wordPopupStyleKey(wordPopup)}
+        inheritedFontSize={Math.round(Number(captionStyle?.font_size) || 18)}
+        inheritedColor={captionStyle?.text_color || '#ffffff'}
+        word={getPopupWordText(captions, wordPopup)}
+        position={wordPopup.position}
+        onStyleChange={handleWordStyleChange}
+        currentStyle={getPopupWordStyle(captions, wordPopup)}
+        onEdit={() => {
+          const targetId = wordPopupTargetId(wordPopup);
+          setActiveTab('captions');
+          setIsMobileSheetOpen(true);
+          if (targetId) setSelectedCaptionId(targetId);
+          // On tablet/phone the word editor holds the dock sheet; free it.
+          if (!isDesktopLayout) setWordPopup(null);
+        }}
+        onClose={() => setWordPopup(null)}
+        onResetPosition={handleResetWordPosition}
+        onResetFontSize={handleResetWordFontSize}
+        onHistoryRecord={recordWordStyleGesture}
+      />
+    </Suspense>
+  );
 
   const renderStylePanel = () => (
     <div data-style-panel="true" className="contents">
@@ -1326,7 +1381,13 @@ export default function Dashboard() {
 
             {!isVideoFullscreen && isDesktopLayout && (
               <div className="hidden lg:block w-full overflow-hidden min-h-0">
-                {renderStylePanel()}
+                {/* The word editor takes the inspector column while open (the
+                    Styling panel stays mounted to keep its state), so it never
+                    covers the video preview. */}
+                <div className={wordPopup ? 'hidden' : 'contents'}>
+                  {renderStylePanel()}
+                </div>
+                {wordPopup && renderWordEditor('panel')}
               </div>
             )}
 
@@ -1350,6 +1411,7 @@ export default function Dashboard() {
                 onSelectCaption={setSelectedCaptionId}
                 onToggleFullscreen={() => setIsVideoFullscreen(true)}
                 getVideoElement={() => previewVideoElRef.current}
+                wordEditor={wordPopup ? renderWordEditor('sheet') : null}
               />
             )}
           </div>
@@ -1357,34 +1419,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Word Click Popup: fixed at Dashboard root, above EVERYTHING including navbar */}
-      {wordPopup && (
-        <>
-          <div
-            className="pointer-events-none fixed inset-0 z-[9998]"
-            onClick={() => setWordPopup(null)}
-          />
-          <Suspense fallback={null}>
-            <WordClickPopup
-              key={wordPopup._openKey ?? wordPopupOpenCount}
-              word={getPopupWordText(captions, wordPopup)}
-              position={wordPopup.position}
-              onStyleChange={handleWordStyleChange}
-              currentStyle={getPopupWordStyle(captions, wordPopup)}
-              onEdit={() => {
-                const targetId = wordPopupTargetId(wordPopup);
-                setActiveTab('captions');
-                setIsMobileSheetOpen(true);
-                if (targetId) setSelectedCaptionId(targetId);
-              }}
-              onClose={() => setWordPopup(null)}
-              onResetPosition={handleResetWordPosition}
-              onResetFontSize={handleResetWordFontSize}
-              onHistoryRecord={addToHistory}
-            />
-          </Suspense>
-        </>
-      )}
+      {/* Fullscreen has no editor columns: the word editor floats beside the frame. */}
+      {wordPopup && isVideoFullscreen && renderWordEditor('floating')}
 
       {/* Modals */}
       {isUploadModalOpen && (

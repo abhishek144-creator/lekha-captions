@@ -43,6 +43,7 @@ export default function MobileDashboardDock({
   onSelectCaption,
   onToggleFullscreen,
   getVideoElement,
+  wordEditor = null,
 }) {
   const [scrubTime, setScrubTime] = useState(null)
   const sheetDragControls = useDragControls()
@@ -201,8 +202,16 @@ export default function MobileDashboardDock({
         </div>
       )}
 
+      {/* The word editor takes the sheet slot in the layout, so the preview
+          shrinks above it instead of being covered. */}
+      {wordEditor && (
+        <section aria-label="Word editor" className="relative shadow-[0_-18px_40px_-28px_rgba(0,0,0,0.95)]">
+          {wordEditor}
+        </section>
+      )}
+
       {/* Tool sheet */}
-      {isSheetOpen && (
+      {!wordEditor && isSheetOpen && (
         <motion.section
           aria-label={`${activeToolLabel} tools`}
           initial={{ y: 48, opacity: 0 }}

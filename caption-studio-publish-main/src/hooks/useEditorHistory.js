@@ -18,16 +18,20 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
   const [history, setHistory] = useState([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [redoStack, setRedoStack] = useState([])
-  const lastCoalescedPushRef = useRef(0)
+  const lastCoalescedPushRef = useRef({ key: '', at: 0 })
 
   // Records the current state, then applies the new captions and/or style.
   // options.coalesce: without it, typing a sentence pushed ~50 single-character
-  // entries and flushed the entire useful undo history.
+  // entries and flushed the entire useful undo history. A string names the
+  // burst ('caption-style'), so a colour-picker drag never merges with typing.
   const pushHistory = (newCaptions, newStyle, options = {}) => {
     const now = Date.now()
-    const coalesce = options.coalesce === true
-    const withinBurst = coalesce && (now - lastCoalescedPushRef.current < COALESCE_WINDOW_MS)
-    lastCoalescedPushRef.current = coalesce ? now : 0
+    const coalesceKey = options.coalesce === true ? 'text' : (options.coalesce || '')
+    const last = lastCoalescedPushRef.current
+    const withinBurst = Boolean(coalesceKey)
+      && last.key === coalesceKey
+      && (now - last.at < COALESCE_WINDOW_MS)
+    lastCoalescedPushRef.current = coalesceKey ? { key: coalesceKey, at: now } : { key: '', at: 0 }
     if (!withinBurst) {
       const newHistory = [...history.slice(0, historyIndex + 1), snapshotOf(captions, captionStyle)]
       if (newHistory.length > HISTORY_LIMIT) newHistory.shift()
@@ -42,6 +46,8 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
 
   const undo = () => {
     if (historyIndex < 0) return
+    // An undo ends any burst: the next change must get its own undo step.
+    lastCoalescedPushRef.current = { key: '', at: 0 }
     const prevState = history[historyIndex]
     // Save the state being undone so redo can bring it back: history only
     // holds pre-change snapshots, never the state after a change.
@@ -53,6 +59,7 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
 
   const redo = () => {
     if (redoStack.length === 0) return
+    lastCoalescedPushRef.current = { key: '', at: 0 }
     const nextState = redoStack[redoStack.length - 1]
     setRedoStack((stack) => stack.slice(0, -1))
     // The state being replaced becomes the pre-change snapshot again.

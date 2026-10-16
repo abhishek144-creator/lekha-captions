@@ -26,6 +26,8 @@ import { loadGoogleFont, detectScript, scriptFontMap } from './fontUtils';
 import { Check, Search, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { apiRequest } from '@/lib/apiClient';
+import { computeFloatingWordEditorRect } from './wordEditorPlacement';
+import { cssColorToHex, normalizeHexColor } from '@/lib/colorUtils';
 
 const FontRow = React.memo(({ data, index, style }) => {
   const font = data.items[index];
@@ -97,7 +99,10 @@ const wordAnimations = [
   { value: 'tumble', label: 'Tumble' }
 ];
 
-export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord }) {
+// placement: 'panel' docks into the desktop inspector column, 'sheet' into the
+// tablet/phone dock above the toolbar, and 'floating' (fullscreen preview
+// only) sits beside the video frame. None of them may cover the preview.
+export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord, placement = 'floating', onCannotFloat, wordKey = '', inheritedFontSize = 18, inheritedColor = '#ffffff' }) {
   const dragControls = useDragControls();
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
@@ -138,6 +143,22 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     dragY.set(0);
   }, [word, position?.x, position?.y, dragX, dragY]);
 
+  // Without its own colour a word shows the caption/template colour; the
+  // picker must show that, not a hard-coded white.
+  const ownColor = normalizeHexColor(currentStyle?.color);
+  const renderedColor = useRenderedWordColor(wordKey, !ownColor && !currentStyle?.textGradient, inheritedColor);
+  const effectiveColor = ownColor || renderedColor || normalizeHexColor(inheritedColor) || '#ffffff';
+  const [hexDraft, setHexDraft] = useState(null);
+  const commitHexDraft = () => {
+    if (hexDraft === null) return;
+    const next = normalizeHexColor(hexDraft);
+    setHexDraft(null);
+    if (!next || next === ownColor) return;
+    onStyleChange('color', next);
+    onStyleChange('textGradient', '');
+  };
+  const hexDraftInvalid = hexDraft !== null && hexDraft.trim() !== '' && !normalizeHexColor(hexDraft);
+
   // Escape closes the word editor (it can sit over part of the preview). An
   // open font list or other Radix layer handles that Escape first and marks it
   // defaultPrevented, so it closes alone.
@@ -151,50 +172,51 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [position, onClose]);
 
+  const isFloating = placement === 'floating';
+  const floatingRect = useFloatingEditorRect(isFloating && Boolean(position));
+  React.useEffect(() => {
+    if (floatingRect?.overlapsFrame) onCannotFloat?.();
+  }, [floatingRect?.overlapsFrame, onCannotFloat]);
+
   if (!position) return null;
-  const isMobileViewport = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+
+  const placementClassName = {
+    panel: 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/10 bg-zinc-900',
+    sheet: 'relative flex h-[44dvh] min-h-[230px] max-h-[460px] flex-col overflow-hidden rounded-t-[22px] border-t border-white/10 bg-zinc-900',
+    floating: 'fixed z-[99999] flex flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-2xl',
+  }[placement] || '';
+  const floatingStyle = isFloating && floatingRect ? {
+    left: `${floatingRect.left}px`,
+    top: `${floatingRect.top}px`,
+    width: `${floatingRect.width}px`,
+    maxHeight: `${floatingRect.maxHeight}px`,
+    backgroundColor: 'rgba(24, 24, 27, 0.95)',
+    backdropFilter: 'blur(12px)',
+  } : undefined;
 
   return (
     <>
-      <div
-        className="pointer-events-none fixed inset-0 z-[99998] bg-transparent"
-        onClick={() => {
-          onClose();
-        }}
-      />
-
-      {/* Popup Panel - Anchored to right of video preview, vertically centered */}
       <motion.div
-        drag
+        drag={isFloating}
         dragListener={false}
         dragControls={dragControls}
         dragMomentum={false}
-        x={dragX}
-        y={dragY}
+        x={isFloating ? dragX : undefined}
+        y={isFloating ? dragY : undefined}
         data-word-popup-panel="true"
-        className="fixed z-[99999] bg-zinc-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden w-[300px] max-w-[calc(100vw-24px)]"
-        style={{
-          position: 'fixed',
-          top: isMobileViewport ? 'auto' : '124px',
-          right: isMobileViewport ? '12px' : '340px',
-          bottom: isMobileViewport ? 'max(12px, env(safe-area-inset-bottom))' : 'auto',
-          left: isMobileViewport ? '12px' : 'auto',
-          width: isMobileViewport ? 'auto' : '300px',
-          zIndex: 99999,
-          // Phones: a short bottom sheet, so the word being edited stays visible
-          // in the preview above it.
-          maxHeight: isMobileViewport ? 'min(48dvh, 420px)' : 'calc(100vh - 200px)',
-          backgroundColor: 'rgba(24, 24, 27, 0.95)',
-          backdropFilter: 'blur(12px)',
-        }}
+        data-placement={placement}
+        role="dialog"
+        aria-label={`Edit word ${word}`}
+        className={placementClassName}
+        style={floatingStyle}
       >
-        {/* Header with Drag Handle */}
+        {/* Header (drag handle when floating) */}
         <div
-          className="flex items-center justify-between p-3 border-b border-white/5 bg-white/5 cursor-move"
-          onPointerDown={(e) => dragControls.start(e)}
+          className={`flex shrink-0 items-center justify-between p-3 border-b border-white/5 bg-white/5 ${isFloating ? 'cursor-move' : ''}`}
+          onPointerDown={isFloating ? (e) => dragControls.start(e) : undefined}
         >
           <div className="flex items-center gap-2 max-w-[240px]">
-            <Move className="w-4 h-4 text-gray-500 shrink-0" />
+            {isFloating && <Move className="w-4 h-4 text-gray-500 shrink-0" />}
             <div className="flex flex-col overflow-hidden">
               <span className="text-[10px] text-gray-500 uppercase tracking-wider leading-none">Editing:</span>
               <span className="text-xs font-bold text-white truncate leading-tight">{word}</span>
@@ -228,9 +250,9 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
         </div>
 
         {/* Tabs - Reordered: Font, Style, FX */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex w-full min-h-0 flex-1 flex-col">
 
-          <TabsList className="w-full grid grid-cols-3 rounded-none bg-transparent border-b border-white/5 p-0 h-10">
+          <TabsList className="w-full shrink-0 grid grid-cols-3 rounded-none bg-transparent border-b border-white/5 p-0 h-10">
             <TabsTrigger
               value="font"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-white data-[state=active]:bg-transparent data-[state=active]:text-white text-gray-500 h-10 text-sm"
@@ -255,7 +277,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
           </TabsList>
 
           <div
-            className="p-3 max-h-[min(54dvh,calc(100vh-320px))] max-md:max-h-[calc(min(48dvh,420px)-106px)] overflow-y-auto overscroll-contain custom-scrollbar bg-zinc-950/95"
+            className="p-3 min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar bg-zinc-950/95"
             onPointerDown={(e) => e.stopPropagation()}
           >
 
@@ -376,12 +398,12 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         <RotateCcw className="h-3 w-3" />
                       </Button>
                     ) : <span className="h-5 w-5" />}
-                    <span className="w-[38px] text-right text-xs tabular-nums text-white">{currentStyle.fontSize || 18}px</span>
+                    <span className="w-[38px] text-right text-xs tabular-nums text-white">{currentStyle.fontSize || inheritedFontSize}px</span>
                   </div>
                 </div>
                 <Slider
                   aria-label="Word font size"
-                  value={[currentStyle.fontSize || 18]}
+                  value={[currentStyle.fontSize || inheritedFontSize]}
                   onValueChange={([val]) => onStyleChange('fontSize', val)}
                   onPointerDown={() => onHistoryRecord && onHistoryRecord()}
                   min={12}
@@ -552,7 +574,8 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         onStyleChange('color', color);
                         onStyleChange('textGradient', '');
                       }}
-                      className={`h-6 rounded border transition-all ${(currentStyle.color === color && !currentStyle.textGradient)
+                      aria-pressed={ownColor === normalizeHexColor(color) && !currentStyle.textGradient}
+                      className={`h-6 rounded border transition-all ${(ownColor === normalizeHexColor(color) && !currentStyle.textGradient)
                         ? 'border-white scale-110'
                         : 'border-white/10 hover:border-white/30'
                         }`}
@@ -565,13 +588,42 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   <input
                     type="color"
                     aria-label="Custom word color"
-                    value={currentStyle.color || '#ffffff'}
+                    value={effectiveColor}
+                    onPointerDown={() => onHistoryRecord && onHistoryRecord()}
                     onChange={(e) => {
                       onStyleChange('color', e.target.value);
                       onStyleChange('textGradient', '');
                     }}
                     className="w-8 h-8 rounded bg-white/5 border border-white/10 cursor-pointer"
                   />
+                  <input
+                    type="text"
+                    aria-label="Word color hex"
+                    aria-invalid={hexDraftInvalid}
+                    spellCheck={false}
+                    maxLength={7}
+                    value={hexDraft ?? effectiveColor}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setHexDraft(e.target.value)}
+                    onBlur={commitHexDraft}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitHexDraft();
+                      if (e.key === 'Escape') { e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); setHexDraft(null); }
+                    }}
+                    className={`h-8 w-[84px] rounded border bg-white/5 px-2 font-mono text-xs uppercase text-white outline-none ${hexDraftInvalid ? 'border-red-400' : 'border-white/10 focus:border-white/30'}`}
+                  />
+                  {(ownColor || currentStyle.textGradient) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onStyleChange('color', '');
+                        onStyleChange('textGradient', '');
+                      }}
+                      className="ml-auto text-[11px] text-gray-400 underline-offset-2 hover:text-white hover:underline"
+                    >
+                      Use caption color
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -654,10 +706,8 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                       <Slider
                         aria-label="Word background padding"
                         value={[currentStyle.backgroundPadding || 2]}
-                        onValueChange={([val]) => {
-                          if (onHistoryRecord) onHistoryRecord();
-                          onStyleChange('backgroundPadding', val, false);
-                        }}
+                        onValueChange={([val]) => onStyleChange('backgroundPadding', val, true)}
+                        onPointerDown={() => onHistoryRecord && onHistoryRecord()}
                         min={2}
                         max={12}
                         step={1}
@@ -916,4 +966,80 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
       </motion.div >
     </>
   );
+}
+
+// Fullscreen-only floating position, kept clear of the video frame. The frame
+// moves on resize, zoom (an inline transform) and layout changes.
+function useFloatingEditorRect(active) {
+  const [rect, setRect] = React.useState(null);
+  React.useEffect(() => {
+    if (!active || typeof window === 'undefined') {
+      setRect(null);
+      return undefined;
+    }
+    let frameId = 0;
+    const measure = () => {
+      frameId = 0;
+      const frame = document.querySelector('.lekha-video-frame')?.getBoundingClientRect() || null;
+      const obstacles = [...document.querySelectorAll('[aria-label="Preview tools"]')]
+        .map((node) => node.getBoundingClientRect())
+        .filter((box) => box.width && box.height);
+      const next = computeFloatingWordEditorRect({
+        frame,
+        obstacles,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      });
+      setRect((previous) => (
+        previous
+        && previous.left === next.left
+        && previous.top === next.top
+        && previous.width === next.width
+        && previous.maxHeight === next.maxHeight
+        && previous.overlapsFrame === next.overlapsFrame
+          ? previous
+          : next
+      ));
+    };
+    const schedule = () => {
+      if (!frameId) frameId = window.requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener('resize', schedule);
+    const frameNode = document.querySelector('.lekha-video-frame');
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+    if (frameNode && resizeObserver) resizeObserver.observe(frameNode);
+    // Entering fullscreen moves the frame without always resizing it.
+    if (resizeObserver) resizeObserver.observe(document.body);
+    const mutationObserver = frameNode && typeof MutationObserver !== 'undefined'
+      ? new MutationObserver(schedule)
+      : null;
+    mutationObserver?.observe(frameNode, { attributes: true, attributeFilter: ['style', 'class'] });
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', schedule);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [active]);
+  return rect;
+}
+
+// The colour a word is actually painted with when it has no colour of its own
+// (caption colour, template colour, highlight). Read after paint so a caption
+// colour change made in the Styling panel is reflected here too.
+function useRenderedWordColor(wordKey, active, inheritedColor) {
+  const [color, setColor] = React.useState('');
+  React.useEffect(() => {
+    if (!active || !wordKey || typeof document === 'undefined') {
+      setColor('');
+      return undefined;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      const node = document.querySelector(`.lekha-video-frame [data-word-key="${CSS.escape(wordKey)}"]`);
+      const visual = node?.querySelector('[data-word-drag-visual="true"], [data-source-word-visual="true"]') || node;
+      setColor(visual ? cssColorToHex(getComputedStyle(visual).color) : '');
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [wordKey, active, inheritedColor]);
+  return color;
 }

@@ -14,6 +14,7 @@ import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
+import { getWordBackgroundFill, getWordPaintStyle } from '@/lib/wordPaint';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
@@ -1260,8 +1261,8 @@ export default function VideoPlayer({
               width: `${ws.boxWidth * previewRenderScale}px`,
               textAlign: 'center',
             } : {}),
-            ...(ws.backgroundColor || ws.highlightGradient ? {
-              background: ws.highlightGradient || `rgba(${parseInt(ws.backgroundColor.slice(1,3),16)}, ${parseInt(ws.backgroundColor.slice(3,5),16)}, ${parseInt(ws.backgroundColor.slice(5,7),16)}, ${ws.backgroundOpacity ?? 0.6})`,
+            ...(getWordBackgroundFill(ws) ? {
+              background: getWordBackgroundFill(ws),
               borderRadius: '3px',
               padding: `${(ws.backgroundPadding || 2) * previewRenderScale}px ${4 * previewRenderScale}px`,
             } : {}),
@@ -1513,8 +1514,8 @@ export default function VideoPlayer({
           width: selectedWordBoxWidth
             ? `${selectedWordBoxWidth * previewRenderScale * selectedDetachedWordViewport.scale}px`
             : 'auto',
-          ...(!selectedWordIsPending && (selectedWordStyle.backgroundColor || selectedWordStyle.highlightGradient) ? {
-            background: selectedWordStyle.highlightGradient || `rgba(${parseInt(selectedWordStyle.backgroundColor.slice(1,3),16)}, ${parseInt(selectedWordStyle.backgroundColor.slice(3,5),16)}, ${parseInt(selectedWordStyle.backgroundColor.slice(5,7),16)}, ${selectedWordStyle.backgroundOpacity ?? 0.6})`,
+          ...(!selectedWordIsPending && getWordBackgroundFill(selectedWordStyle) ? {
+            background: getWordBackgroundFill(selectedWordStyle),
             borderRadius: '3px',
             padding: `${(selectedWordStyle.backgroundPadding || 2) * previewRenderScale * selectedDetachedWordViewport.scale}px ${4 * previewRenderScale * selectedDetachedWordViewport.scale}px`,
           } : {}),
@@ -2660,24 +2661,15 @@ export default function VideoPlayer({
                                 textTransform: ws.textTransform || undefined,
                                 color: ws.color || sidebarWordStyle.color || 'inherit',
                                 ...(sidebarTemplateActive ? sidebarWordStyle : {}),
-                                ...(ws.backgroundColor ? {
-                                  backgroundColor: `rgba(${parseInt(ws.backgroundColor.slice(1,3),16)}, ${parseInt(ws.backgroundColor.slice(3,5),16)}, ${parseInt(ws.backgroundColor.slice(5,7),16)}, ${ws.backgroundOpacity ?? 0.6})`,
+                                ...(getWordBackgroundFill(ws) ? {
                                   borderRadius: '3px',
                                   padding: `${(ws.backgroundPadding || 2) * previewRenderScale}px ${4 * previewRenderScale}px`,
                                 } : {}),
                                 ...computeWordEffectCSS(ws),
                                 ...emphasisStyle,
-                                ...(ws.textGradient ? {
-                                  background: ws.textGradient,
-                                  backgroundImage: ws.textGradient,
-                                  backgroundSize: '100% 100%',
-                                  backgroundRepeat: 'no-repeat',
-                                  backgroundPosition: 'center',
-                                  WebkitBackgroundClip: 'text',
-                                  backgroundClip: 'text',
-                                  WebkitTextFillColor: 'transparent',
-                                  color: 'transparent',
-                                } : {}),
+                                // Background, highlight gradient and text gradient
+                                // combine exactly as the export renders them.
+                                ...getWordPaintStyle(ws),
                                 ...resolvedWordMotionStyle,
                               }}
                             >
