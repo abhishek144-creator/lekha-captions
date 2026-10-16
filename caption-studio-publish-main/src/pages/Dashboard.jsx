@@ -17,6 +17,7 @@ import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/font
 import { recordRecentTemplate } from '@/components/dashboard/templateBrowserUtils';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
+import { toast } from '@/components/ui/use-toast';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
@@ -52,6 +53,7 @@ import {
   captionsFromTranscript,
   mergeCaptionPairs,
   parseWordsPerLine,
+  upsertTranslationTrack,
 } from '@/lib/transcriptTracks'
 import planCatalog from '../../shared/planCatalog.json';
 
@@ -332,6 +334,78 @@ export default function Dashboard() {
     resetHistory()
   }
 
+  // Translate after upload: always from the original transcript (never a
+  // translation of a translation) into its own language track.
+  const [isTranslatingCaptions, setIsTranslatingCaptions] = useState(false)
+  const handleTranslateCaptions = async (targetLanguage, targetLabel) => {
+    if (!targetLanguage || isTranslatingCaptions) return
+    if (!currentUser) {
+      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`)
+      return
+    }
+    const sourceTrack = captionTracks.find((track) => track.id === 'source')
+    if (sourceTrack && getLanguageIdentity(sourceTrack.language) === getLanguageIdentity(targetLanguage)) {
+      selectCaptionTrack('source')
+      return
+    }
+    const sourceCaptions = activeCaptionTrackId === 'source' || !sourceTrack ? captions : sourceTrack.captions
+    const transcriptLines = (sourceCaptions || [])
+      .filter((caption) => caption && !caption.isTextElement)
+      .map((caption) => ({ id: caption.id, text: caption.text || '' }))
+    if (transcriptLines.length === 0) {
+      toast({ title: 'Nothing to translate', description: 'Add or generate captions first.' })
+      return
+    }
+    if (transcriptLines.length > 500) {
+      toast({ title: 'Too many captions', description: 'Translation supports up to 500 captions at a time.', variant: 'destructive' })
+      return
+    }
+    setIsTranslatingCaptions(true)
+    setTranslationNotice('')
+    try {
+      const translateToken = await getEffectiveAuthToken(currentUser)
+      const translateData = await apiRequest('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          captions: transcriptLines,
+          target_language: targetLanguage,
+          id_token: translateToken || '',
+        }),
+        dedupeKey: 'translate-captions',
+        cancelPrevious: true,
+      })
+      if (!translateData.success || !translateData.captions) {
+        throw new Error(translateData.error || `Translation to ${targetLabel || targetLanguage} failed`)
+      }
+      // A draft made before language tracks existed has no source track yet.
+      const baseTracks = sourceTrack ? captionTracks : [
+        { id: 'source', language: 'Original', label: 'Original', captions: sourceCaptions },
+        ...captionTracks,
+      ]
+      const trackState = upsertTranslationTrack(baseTracks, {
+        sourceCaptions,
+        translatedItems: translateData.captions,
+        targetLanguage,
+        label: getLanguageDisplayName(targetLanguage),
+      })
+      setCaptionTracks(trackState.tracks)
+      setActiveCaptionTrackId(trackState.activeTrackId)
+      setCaptions(JSON.parse(JSON.stringify(trackState.captions)))
+      setSelectedCaptionId(null)
+      setWordPopup(null)
+      resetHistory()
+      trackAnalytics('funnel.translate.success', getClientContext({ stage: 'editor_translate', targetLanguage }))
+      toast({ title: 'Captions translated', description: `Switched to ${targetLabel || targetLanguage}. The original stays in Language track.` })
+    } catch (error) {
+      if (error?.name === 'AbortError') return
+      trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'editor_translate', targetLanguage }))
+      notifyApiError(error, 'Translation failed')
+    } finally {
+      setIsTranslatingCaptions(false)
+    }
+  }
+
   useEffect(() => {
     if (!videoUrl) setWordPopup(null);
   }, [videoUrl]);
@@ -555,7 +629,7 @@ export default function Dashboard() {
         } catch (translateErr) {
           trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
           console.warn(`Translation to ${targetLang} failed; keeping the original language track.`, translateErr);
-          setTranslationNotice(`Original captions are ready. Translation to ${targetLang} failed; you can retry from Language tracks.`);
+          setTranslationNotice(`Original captions are ready. Translation to ${targetLang} failed; retry with Translate in the Captions tab.`);
         }
       }
 
@@ -893,6 +967,8 @@ export default function Dashboard() {
             captionTracks={captionTracks}
             activeCaptionTrackId={activeCaptionTrackId}
             onSelectTrack={selectCaptionTrack}
+            onTranslate={handleTranslateCaptions}
+            isTranslating={isTranslatingCaptions}
             selectedCaptionId={selectedCaptionId}
             setSelectedCaptionId={setSelectedCaptionId}
             onSeek={handleSeek}
@@ -986,7 +1062,6 @@ export default function Dashboard() {
         setCaptionStyleRaw={setCaptionStyle}
         addToHistory={addToHistory}
         selectedCaption={captions.find(c => c.id === selectedCaptionId)}
-        selectedWord={selectedWordForAnimation}
         captions={captions}
         setCaptions={updateCaptions}
         setCaptionsRaw={setCaptions}
