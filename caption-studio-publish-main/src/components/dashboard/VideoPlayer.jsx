@@ -1573,19 +1573,22 @@ export default function VideoPlayer({
         >
           {renderWordTextContent(selectedDetachedWord.word, selectedWordStyle, captionStyle?.text_color || '#ffffff')}
         </span>
+        {/* On a short word the hit areas overlap. Corner (font size) handles sit
+            above the side (box width) handles so their visible dots resize the
+            word instead of stretching its box. */}
         {[
-          { classes: '-top-4 -left-4 cursor-nwse-resize', axis: 'corner', sideX: 'left', sideY: 'top' },
-          { classes: '-top-4 -right-4 cursor-nesw-resize', axis: 'corner', sideX: 'right', sideY: 'top' },
-          { classes: '-bottom-4 -left-4 cursor-nesw-resize', axis: 'corner', sideX: 'left', sideY: 'bottom' },
-          { classes: '-bottom-4 -right-4 cursor-nwse-resize', axis: 'corner', sideX: 'right', sideY: 'bottom' },
-          { classes: 'top-1/2 -left-4 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'left' },
-          { classes: 'top-1/2 -right-4 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'right' },
+          { classes: '-top-3 -left-3 z-[96] h-6 w-6 cursor-nwse-resize', axis: 'corner', sideX: 'left', sideY: 'top' },
+          { classes: '-top-3 -right-3 z-[96] h-6 w-6 cursor-nesw-resize', axis: 'corner', sideX: 'right', sideY: 'top' },
+          { classes: '-bottom-3 -left-3 z-[96] h-6 w-6 cursor-nesw-resize', axis: 'corner', sideX: 'left', sideY: 'bottom' },
+          { classes: '-bottom-3 -right-3 z-[96] h-6 w-6 cursor-nwse-resize', axis: 'corner', sideX: 'right', sideY: 'bottom' },
+          { classes: 'top-1/2 -left-3 z-[95] h-4 w-6 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'left' },
+          { classes: 'top-1/2 -right-3 z-[95] h-4 w-6 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'right' },
         ].map((handle) => (
           <span
             key={handle.classes}
             onPointerDown={handleDetachedWordResizeStart}
             onDragStart={(e) => e.preventDefault()}
-            className={`word-resize-handle absolute z-[95] flex h-8 w-8 items-center justify-center rounded-full bg-transparent ${handle.classes}`}
+            className={`word-resize-handle absolute flex items-center justify-center rounded-full bg-transparent ${handle.classes}`}
             title="Resize word"
             data-resize-axis={handle.axis}
             data-resize-side={handle.sideX}
@@ -1620,6 +1623,7 @@ export default function VideoPlayer({
                   stopPropagation: () => e.stopPropagation(),
                   clientX: e.clientX,
                   clientY: e.clientY,
+                  pointerId: e.pointerId,
                   currentTarget: selectionBox,
                 }, selectedDetachedWord.caption, selectedDetachedWord.wordIndex, false, true, 'action-move');
               }}
