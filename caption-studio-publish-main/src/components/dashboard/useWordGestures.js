@@ -1,5 +1,6 @@
 import { useDocumentGesture } from './useDocumentGesture'
 import { resolveCptWordSnap } from './cptSmartGuides'
+import { settleSourceTemplateWord } from './videoPlayerWordEditing'
 
 import { useCallback } from 'react'
 
@@ -249,12 +250,22 @@ export function useWordGestures({
     // A word drag enters editing mode. Stop playback so the canvas stays stable
     // while the word is positioned and the committed CPT can be inspected.
     const editingRoot = videoContainerRef.current
+    const ownsCptDragMarker = Boolean(editingRoot && !isElement)
     if (editingRoot) {
       const captionWordPrefix = `${caption.id}-`
+      if (ownsCptDragMarker) editingRoot.dataset.cptDragCaption = String(caption.id)
       editingRoot.querySelectorAll('[data-word-key]').forEach((node) => {
         if (!String(node.getAttribute('data-word-key') || '').startsWith(captionWordPrefix)) return
         node.style.setProperty('opacity', '1', 'important')
+        // Measure template words at rest, the state they keep after the drop
+        // (and in export). Mid-entrance rects put the drop and guides off.
+        if (ownsCptDragMarker && node.hasAttribute('data-source-word-index')) settleSourceTemplateWord(node)
       })
+    }
+    const clearCptDragMarker = () => {
+      if (ownsCptDragMarker && editingRoot.dataset.cptDragCaption === String(caption.id)) {
+        delete editingRoot.dataset.cptDragCaption
+      }
     }
     if (isPlayingRef.current) {
       videoRef.current?.pause()
@@ -374,7 +385,7 @@ export function useWordGestures({
     })
     const resolveDelta = (deltaX, deltaY, bypassSnap = false) => bypassSnap
       ? { deltaX, deltaY, guides: [] }
-      : resolveCptWordSnap({ draggedRect: wordRectAtStart, siblingRects, deltaX, deltaY })
+      : resolveCptWordSnap({ draggedRect: wordRectAtStart, siblingRects, frameRect: containerRectAtStart, deltaX, deltaY })
     const canvasGuides = guides => guides.map(guide => ({
       ...guide,
       ...(guide.x != null ? { x: (guide.x - containerRectAtStart.left) / viewportScaleX } : {}),
@@ -594,6 +605,7 @@ export function useWordGestures({
         lastDragDropTime.current = Date.now()
       }
 
+      clearCptDragMarker()
       setDraggingWord(null)
       currentDragCoordinates.current = null
       setSnapGuides({ hLines: [], vLines: [] })
@@ -603,6 +615,7 @@ export function useWordGestures({
     const cancelWordDrag = () => {
       restoreInlineTranslate()
       if (isElement) dragPreviewElement.style.transform = initialInlineTransform
+      clearCptDragMarker()
       setDraggingWord(null)
       currentDragCoordinates.current = null
       setSnapGuides({ hLines: [], vLines: [] })
