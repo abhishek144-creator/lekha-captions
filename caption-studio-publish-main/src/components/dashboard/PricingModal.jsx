@@ -134,13 +134,21 @@ function getPlanFeatures(plan, billing) {
   return [creditsLabel, ...plan.features.slice(1)]
 }
 
+const topupOffer = (planId) => ({
+  plan_id: planId,
+  credits: planCatalog[planId].credits,
+  inrPaise: planCatalog[planId].inr_paise,
+  usdCents: planCatalog[planId].usd_cents,
+  limit: planCatalog[planId].purchase_limit_30d,
+})
+
 const TOPUP_MAP = {
-  starter: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise), limit: planCatalog.topup_starter.purchase_limit_30d },
-  starter_yearly: { plan_id: 'topup_starter', credits: planCatalog.topup_starter.credits, price: formatInrPrice(planCatalog.topup_starter.inr_paise), limit: planCatalog.topup_starter.purchase_limit_30d },
-  creator: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise), limit: planCatalog.topup_creator.purchase_limit_30d },
-  creator_yearly: { plan_id: 'topup_creator', credits: planCatalog.topup_creator.credits, price: formatInrPrice(planCatalog.topup_creator.inr_paise), limit: planCatalog.topup_creator.purchase_limit_30d },
-  pro: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise), limit: planCatalog.topup_pro.purchase_limit_30d },
-  pro_yearly: { plan_id: 'topup_pro', credits: planCatalog.topup_pro.credits, price: formatInrPrice(planCatalog.topup_pro.inr_paise), limit: planCatalog.topup_pro.purchase_limit_30d },
+  starter: topupOffer('topup_starter'),
+  starter_yearly: topupOffer('topup_starter'),
+  creator: topupOffer('topup_creator'),
+  creator_yearly: topupOffer('topup_creator'),
+  pro: topupOffer('topup_pro'),
+  pro_yearly: topupOffer('topup_pro'),
 }
 
 function createIdempotencyKey(scope, planId) {
@@ -170,6 +178,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
   const planMinor = (plan, period) => billingCurrency === 'USD'
     ? (period === 'yearly' ? plan.yearlyUsdCents : plan.monthlyUsdCents)
     : (period === 'yearly' ? plan.yearlyPaise : plan.monthlyPaise)
+  const topupMinor = topup => billingCurrency === 'USD' ? topup.usdCents : topup.inrPaise
   const changeCurrency = event => {
     const currency = event.target.value
     setBillingCurrency(currency)
@@ -372,6 +381,8 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
 
   const handleTopup = async (topup) => {
     setProcessingPlan(topup.plan_id)
+    const topupCurrency = billingCurrency
+    const expectedTopupMinor = topupMinor(topup)
     try {
       await loadRazorpayScript()
       if (!window.Razorpay) {
@@ -396,7 +407,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         body: JSON.stringify({
           plan_id: topup.plan_id,
           id_token: idToken,
-          currency: 'INR',
+          currency: topupCurrency,
           idempotency_key: paymentAttemptKey,
         }),
       })
@@ -407,7 +418,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
       if (!keyToUse) {
         throw new Error('Razorpay payment key is not set. Please configure VITE_RAZORPAY_KEY_ID.')
       }
-      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount <= 0 || orderData.order.currency !== 'INR') {
+      if (!Number.isSafeInteger(orderData.order.amount) || orderData.order.amount !== expectedTopupMinor || orderData.order.currency !== topupCurrency) {
         throw new Error('Top-up order returned an invalid amount or currency.')
       }
       let checkoutResolved = false
@@ -613,16 +624,17 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
           }
           const topup = TOPUP_MAP[tier]
           if (!topup) return null
+          const topupPrice = formatBillingPrice(topupMinor(topup), billingCurrency)
           return (
             <div className="mt-4 p-4 rounded-xl border border-white/10 bg-zinc-900/60">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-white mb-0.5">Need more credits?</p>
                   <p className="text-xs text-gray-400">
-                    Add {topup.credits} credits to your current plan for {topup.price} - no plan change.
+                    Add {topup.credits} credits to your current plan for {topupPrice} - no plan change.
                   </p>
                   <p className="mt-1 text-[11px] text-gray-500">
-                    Top-ups are billed in INR. Limit: {topup.limit} {topup.limit === 1 ? 'top-up' : 'top-ups'} per rolling 30 days.
+                    Limit: {topup.limit} {topup.limit === 1 ? 'top-up' : 'top-ups'} per rolling 30 days.
                   </p>
                 </div>
                 <Button
@@ -636,7 +648,7 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
                   {processingPlan === topup.plan_id ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
                   ) : (
-                    `Top Up · ${topup.price}`
+                    `Top Up · ${topupPrice}`
                   )}
                 </Button>
               </div>

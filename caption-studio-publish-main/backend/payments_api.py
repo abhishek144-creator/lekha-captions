@@ -117,12 +117,12 @@ def create_order(req: CreateOrderRequest, request: Request, response: Response):
             raise
 
     currency = req.currency.upper() if req.currency else "INR"
-    # Top-ups are INR only; USD only applies to subscription plans
-    if plan.get('is_topup') or currency != "USD":
+    # USD only for plans with a catalog USD price; never charge paise as cents.
+    if currency == "USD" and plan.get('usd_cents'):
+        amount = plan['usd_cents']
+    else:
         amount = plan['inr_paise']
         currency = "INR"
-    else:
-        amount = plan.get('usd_cents', plan['inr_paise'])
 
     if not optional_deps.RAZORPAY_AVAILABLE or app_state.rzp_client is None:
         if topup_db is not None and topup_user_ref is not None:

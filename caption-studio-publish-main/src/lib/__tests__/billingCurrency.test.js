@@ -6,6 +6,7 @@ import {
   followVisitorBillingCurrency,
   formatBillingPrice,
   getPreferredBillingCurrency,
+  onBillingCurrencySaved,
   resetVisitorBillingCurrencyForTests,
   saveBillingCurrency,
 } from '../../../shared/billingCurrency'
@@ -35,6 +36,15 @@ describe('billing currency', () => {
     expect(getPreferredBillingCurrency()).toBe('USD')
     saveBillingCurrency('INR')
     expect(getPreferredBillingCurrency()).toBe('INR')
+  })
+  it('tells listeners about a saved selection until they unsubscribe', () => {
+    const listener = vi.fn()
+    const unsubscribe = onBillingCurrencySaved(listener)
+    saveBillingCurrency('INR')
+    saveBillingCurrency('EUR')
+    unsubscribe()
+    saveBillingCurrency('USD')
+    expect(listener.mock.calls).toEqual([['INR']])
   })
   it('ignores unsupported currencies', () => {
     saveBillingCurrency('USD')

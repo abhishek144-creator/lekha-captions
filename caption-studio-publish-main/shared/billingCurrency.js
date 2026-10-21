@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'lekha.billingCurrency'
 const SUPPORTED_CURRENCIES = ['USD', 'INR']
+const SAVED_EVENT = 'lekha:billing-currency-saved'
 // Netlify edge function (netlify/edge-functions/visitor-country.js).
 const VISITOR_COUNTRY_ENDPOINT = '/__geo'
 const VISITOR_COUNTRY_TIMEOUT_MS = 2500
@@ -85,6 +86,15 @@ export function saveBillingCurrency(currency) {
   } catch {
     // The selected currency remains active for this page.
   }
+  window.dispatchEvent(new CustomEvent(SAVED_EVENT, { detail: currency }))
+}
+
+// Lets prices shown outside the pricing dialog follow a currency picked in it.
+// Returns a cleanup function for useEffect.
+export function onBillingCurrencySaved(onCurrency) {
+  const listener = event => onCurrency(event.detail)
+  window.addEventListener(SAVED_EVENT, listener)
+  return () => window.removeEventListener(SAVED_EVENT, listener)
 }
 
 export function formatBillingPrice(minor, currency) {
