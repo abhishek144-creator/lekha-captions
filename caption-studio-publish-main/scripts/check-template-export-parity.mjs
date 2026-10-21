@@ -978,6 +978,29 @@ const CASES = [
     },
   },
   {
+    // User report 2026-10-21: in a Hindi LC export the planner's keyword (टिप)
+    // came out in the accent colour but at body weight, next to the bold
+    // authored hero word. The canvas draws both bold.
+    id: 'left-lc-hindi-highlight-weight',
+    sidebar: true,
+    template20Id: 'T166',
+    templateSource: 'lekha-lc',
+    text: 'रहे हो वो टिप नहीं ये.',
+    phaseIndex: 1,
+    impWordIndex: 3,
+    requiredColors: [],
+    requireUniformHighlightWeight: true,
+    minHighlightedWords: 2,
+    style: {
+      template_name: 'LC Hindi Highlight Weight',
+      font_family: 'Archivo',
+      font_size: 24,
+      font_weight: '800',
+      text_color: '#FFFFFF',
+      secondary_color: '#DDAA03',
+    },
+  },
+  {
     id: 'right-basic-green-neon-pulse',
     basic: true,
     templateId: 't-115',
@@ -1254,6 +1277,20 @@ function buildLeftHighlightPairCases() {
       template_color_customized: true,
     },
   }];
+}
+
+// Every LC phase with a Hindi caption: the planner's keyword and the authored
+// hero word must export at one weight wherever both are highlighted.
+function buildLcHighlightWeightCases() {
+  const hindiCase = CASES.find((testCase) => testCase.id === 'left-lc-hindi-highlight-weight');
+  return buildLcSidebarCases().map((testCase) => ({
+    ...testCase,
+    id: `${testCase.id}-highlight-weight`,
+    text: hindiCase.text,
+    impWordIndex: hindiCase.impWordIndex,
+    motionCritical: false,
+    requireUniformHighlightWeight: true,
+  }));
 }
 
 // Right-side "Basic" templates render their `.btcard` source markup in both the
@@ -1939,6 +1976,7 @@ const selectedCases = (() => {
     if (scope === 'lc-boxed') return buildLcBoxedHeroCases();
     if (scope === 'lc-zoomed') return buildZoomedLcCases();
     if (scope === 'left-highlight-pair') return buildLeftHighlightPairCases();
+    if (scope === 'lc-highlight-weight') return buildLcHighlightWeightCases();
     if (scope === 'all-right') return buildExhaustiveAdvancedCases();
     if (scope === 'all-right-phases') return buildExhaustiveAdvancedCases({ allPhases: true });
     if (scope === 'affected-right-phases') return buildAffectedAdvancedPhaseCases();
@@ -2044,6 +2082,15 @@ try {
         && audits.some((audit) => audit.pairedEmphasisUnderlinesMatch === false)
       ) {
         fail(`${testCase.id} exported only one underline in a highlighted pair: ${JSON.stringify(audits)}`);
+      }
+    }
+    if (testCase.requireUniformHighlightWeight) {
+      const highlightedWords = audits.flatMap((audit) => audit.highlightedWords || []);
+      if (highlightedWords.length < (testCase.minHighlightedWords || 1)) {
+        fail(`${testCase.id} exported too few highlighted words to compare: ${JSON.stringify(highlightedWords)}`);
+      }
+      if (audits.some((audit) => audit.highlightedWeightsMatch === false)) {
+        fail(`${testCase.id} exported highlighted words at different weights: ${JSON.stringify(highlightedWords)}`);
       }
     }
     if (testCase.positionAudit) {
@@ -2179,6 +2226,8 @@ try {
         ? 'LC templates zoomed 1.5x by the Font Size slider'
       : scope === 'left-highlight-pair'
         ? 'left multi-word highlight phase'
+      : scope === 'lc-highlight-weight'
+        ? 'LC phases with a Hindi highlighted caption'
     : scope === 'all-right'
       ? 'right templates'
       : scope === 'all-right-phases'
