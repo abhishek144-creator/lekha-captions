@@ -3218,6 +3218,22 @@ async function main() {
             });
             const pairedEmphasisLines = Array.from(emphasisByLine.values())
               .filter((lineWords) => lineWords.length >= 2);
+            // Highlighted = the semantic keyword(s) plus the template's own hero
+            // word(s). The hero pass can strip .is-emphasis and leave only an
+            // inline accent colour, so that colour counts as a highlight too.
+            const highlightedWords = Array.from(anchor.querySelectorAll('.w, .wbw-word, .sw, .sw-w, .is-emphasis'))
+              .filter((word) => isVisibleTextParent(word, anchor) && (
+                word.matches('.is-emphasis, [data-hero-emphasis="true"], .hero, .ns3hero, .ns3box, .ns3mark, .ns3bracket, .ns3dot')
+                || Boolean(word.style.getPropertyValue('color'))
+              ))
+              .map((word) => {
+                const styles = getComputedStyle(word);
+                return {
+                  text: String(word.textContent || '').trim(),
+                  color: styles.color,
+                  fontWeight: styles.fontWeight,
+                };
+              });
             return {
               captionId: String(caption.id || ''),
               complete: containsWordSequence(renderedWords, expectedWords) && lineComplete,
@@ -3233,6 +3249,8 @@ async function main() {
                 !lineWords.some((word) => word.underlined)
                 || lineWords.every((word) => word.underlined)
               )),
+              highlightedWords,
+              highlightedWeightsMatch: new Set(highlightedWords.map((word) => word.fontWeight)).size <= 1,
               script: caption.__export_script || 'latin',
             };
           }).filter(Boolean);

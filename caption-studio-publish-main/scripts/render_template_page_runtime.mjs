@@ -2206,6 +2206,12 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             const emphasisColor = getLcEmphasisColor(el);
             el.style.setProperty('color', emphasisColor, 'important');
             el.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
+            // The preview marks the picked words too. A semantic keyword is
+            // often picked only because .is-emphasis made it bold; once that
+            // class is gone, this attribute is what keeps it at the hero
+            // weight. Without it the keyword exported in the accent colour
+            // but at body weight, beside a bold hero word.
+            el.dataset.heroEmphasis = 'true';
           });
         })();
         dots.forEach((dot, dotIndex) => {
