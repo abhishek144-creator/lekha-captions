@@ -63,3 +63,22 @@ private-only setting merely to make a public release pass.
 No confirmed credential exposure was established by this scan. If classification
 finds a credential, revoke/rotate it using a separately scoped action; deleting
 the text or rewriting Git history alone does not revoke a credential.
+
+## Later authorization and prepared cleanup
+
+The owner requested fixing/pushing all branches. After the isolated cleanup
+verified 491 commits, zero disallowed email matches, and per-commit source
+preservation apart from intended redactions, the owner answered “DO WHATS RIGHT”
+to the explicit request for approval to force-update public branches and the tag.
+The question explained changed commit IDs and collaborator resync. This authorizes
+the coordinated cleanup. Prepare a fresh final-ref snapshot, retain private
+original refs, verify every rewritten commit and use atomic updates with explicit
+leases. Abort if a GitHub ref changes; do not delete or overwrite unseen work.
+
+Prepared evidence lives privately in outer `.readiness/public-cleanup-20261021/`.
+A separate final mirror must include the latest candidate and origin inventory.
+A local preparation is not yet proof of GitHub cleanup. Preserve provider rollback
+IDs and old-to-new source mappings. Existing clones/forks, cached PR views and
+release/source attachments require separate inventory; ordinary branch/tag
+replacement cannot guarantee copies disappear. Collaborators must resync before
+pushing older branches again.
