@@ -32,6 +32,18 @@ apex homepage. Source files remain available for reference.
    MIME types, editor reload, login navigation and old-domain HTTP 301 behavior.
    A hosting-only check does not replace signed-in upload/export acceptance.
 
+The country-pricing endpoint is an Edge Function at
+`netlify/edge-functions/visitor-country.js`, bound to `/__geo` by its exported
+configuration. A static `dist/` upload alone does not contain this function.
+Use a current Netlify CLI manual deploy from this application directory with
+the existing site explicitly selected, so its build uploads static assets,
+redirects, headers **and edge functions** together. Create a draft first and
+retain the shared release-batch environment for that build. Verify `/__geo`
+returns JSON with `Cache-Control: private, no-store`, rather than the SPA HTML,
+before publishing. Do not create another site or link Git as a workaround.
+See [Netlify's deployment reference](https://cli.netlify.com/commands/deploy/)
+and [Edge Functions deployment guide](https://docs.netlify.com/build/edge-functions/get-started/#deploy).
+
 The production deployment is manual. On 2026-10-04 the Netlify dashboard showed
 no Git repository linked, despite obsolete repository metadata in the API.
 Do not assume a GitHub push automatically publishes either frontend site.
