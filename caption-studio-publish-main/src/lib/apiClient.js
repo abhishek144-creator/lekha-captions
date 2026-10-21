@@ -1,4 +1,6 @@
-import { auth, getFirebaseAppCheckToken } from '@/lib/firebase'
+import { loadFirebase } from '@/lib/firebaseLoader'
+
+const getFirebaseAppCheckToken = async (forceRefresh) => (await loadFirebase()).getFirebaseAppCheckToken(forceRefresh)
 import { shouldDispatchAuthLogout } from '@/lib/apiErrorPolicy'
 
 export class ApiError extends Error {
@@ -130,6 +132,10 @@ async function parseResponseBody(response) {
   }
 }
 
+/**
+ * @param {string} url
+ * @param {RequestInit & { dedupeKey?: string, cancelPrevious?: boolean }} [options]
+ */
 export async function apiFetch(url, options = {}) {
   const { dedupeKey = "", cancelPrevious = false, ...fetchOptions } = options
   const localApiRequest = isLocalApiRequest(url)
@@ -219,7 +225,10 @@ export async function apiFetch(url, options = {}) {
             )
           }
         }
-        if (localApiRequest && response.status === 401 && !authRefreshAttempted && auth?.currentUser?.getIdToken) {
+        const { auth } = localApiRequest && response.status === 401 && !authRefreshAttempted
+          ? await loadFirebase().catch(() => ({}))
+          : {}
+        if (auth?.currentUser?.getIdToken) {
           authRefreshAttempted = true
           try {
             const refreshedToken = await auth.currentUser.getIdToken(true)

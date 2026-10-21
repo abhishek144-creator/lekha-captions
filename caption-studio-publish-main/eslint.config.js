@@ -27,7 +27,7 @@ export default [
     ...pluginJs.configs.recommended,
     ...pluginReact.configs.flat.recommended,
     files: ["src/**/*.{js,mjs,cjs,jsx}"],
-    ignores: ["src/lib/**/*", "src/components/ui/**/*"],
+    ignores: ["src/components/ui/**/*"],
     languageOptions: {
       globals: globals.browser,
       parserOptions: {

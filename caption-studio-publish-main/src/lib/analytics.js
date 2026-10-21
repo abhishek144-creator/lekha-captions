@@ -1,6 +1,9 @@
 import { apiRequest } from "@/lib/apiClient"
 import { featureFlags } from "@/lib/featureFlags"
-import { appCheck } from "@/lib/firebase"
+import { getLoadedFirebase } from "@/lib/firebaseLoader"
+
+// True once a protected request has started App Check (never starts it here).
+const appCheckStarted = () => Boolean(getLoadedFirebase()?.appCheck)
 
 const PENDING_ANALYTICS_KEY = "lekha.pendingAnalytics.v1"
 const MAX_PENDING_ANALYTICS_EVENTS = 25
@@ -34,7 +37,7 @@ async function sendAnalyticsEvent(item) {
 }
 
 async function flushPendingAnalytics() {
-  if (!appCheck) return
+  if (!appCheckStarted()) return
   if (flushPromise) return flushPromise
   flushPromise = (async () => {
     const pending = readPendingAnalytics()
@@ -58,7 +61,7 @@ async function flushPendingAnalytics() {
 export async function trackAnalytics(event, payload = {}) {
   // Optional telemetry must not start browser attestation for public readers.
   // A protected application request initializes App Check when it is needed.
-  if (!featureFlags.analyticsDepth || !appCheck) return
+  if (!featureFlags.analyticsDepth || !appCheckStarted()) return
   const item = { event, payload, queuedAt: new Date().toISOString() }
   try {
     await flushPendingAnalytics()

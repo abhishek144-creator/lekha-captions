@@ -152,24 +152,34 @@ assertIncludes("frontend embeds an immutable release identity", viteConfig, "lek
 assertExcludes("frontend CSP does not allow arbitrary HTTPS connections", viteConfig, "connect-src 'self' https:;")
 
 // Template-card previews run in srcdoc frames, so the production CSP must allow
-// their small, static runtime by hash. Verify every hosting configuration stays
-// in sync whenever that runtime changes.
-const previewRuntimePath = "src/assets/template-preview-runtime.js"
-assertFile("template preview runtime exists", previewRuntimePath)
-if (fs.existsSync(path.join(root, previewRuntimePath))) {
-  const previewRuntimeHash = `sha256-${createHash("sha256")
-    .update(readText(previewRuntimePath).replace(/\r\n/g, "\n"))
-    .digest("base64")}`
-  for (const [host, cspPath] of [
-    ["Vite", "vite.config.js"],
-    ["Firebase Hosting", "firebase.json"],
-  ]) {
-    assertIncludes(
-      `${host} CSP allows the template preview runtime`,
-      readText(cspPath),
-      `'${previewRuntimeHash}'`,
-    )
+// their fixed scripts by hash. Verify every hosting configuration stays in sync
+// whenever a script changes, and that no fixed nonce comes back: anyone who can
+// inject markup could reuse a nonce that never changes.
+const { TEMPLATE_PREVIEW_SCRIPT_FILES, toPreviewScriptText } = await import(
+  pathToFileURL(path.join(root, "src/components/dashboard/templatePreviewScriptText.js")).href
+)
+const previewScriptHashes = []
+for (const scriptPath of TEMPLATE_PREVIEW_SCRIPT_FILES) {
+  assertFile(`template preview script exists: ${scriptPath}`, scriptPath)
+  if (!fs.existsSync(path.join(root, scriptPath))) continue
+  const scriptText = toPreviewScriptText(readText(scriptPath))
+  // ASCII only, so the hash never depends on how the bundle's encoding is served.
+  if (/[^\x00-\x7f]/.test(scriptText)) fail(`template preview script is ASCII-only: ${scriptPath}`, "Replace non-ASCII characters (comments included)")
+  else pass(`template preview script is ASCII-only: ${scriptPath}`)
+  previewScriptHashes.push([scriptPath, `sha256-${createHash("sha256")
+    .update(scriptText)
+    .digest("base64")}`])
+}
+for (const [host, cspPath] of [
+  ["Vite", "vite.config.js"],
+  ["Firebase Hosting", "firebase.json"],
+  ["Netlify", "netlify.toml"],
+]) {
+  const cspSource = readText(cspPath)
+  for (const [scriptPath, hash] of previewScriptHashes) {
+    assertIncludes(`${host} CSP allows ${path.basename(scriptPath)} (expects '${hash}')`, cspSource, `'${hash}'`)
   }
+  assertExcludes(`${host} CSP has no fixed script nonce`, cspSource, "'nonce-")
 }
 
 const apiClient = readText("src/lib/apiClient.js")
@@ -473,6 +483,8 @@ const toastComponent = readText("src/components/ui/toast.jsx")
 const sitemap = readText("public/sitemap.xml")
 const firebaseHosting = readText("firebase.json")
 const htmlDocument = readText("index.html")
+// Checkout loads Razorpay on demand; a tag here blocks every page's first paint.
+assertExcludes("pages do not load the Razorpay checkout script up front", htmlDocument, "checkout.razorpay.com")
 assertIncludes("home links to the support route", homePage, "createPageUrl('HelpAndSupport')")
 assertIncludes("home links to the terms route", homePage, "createPageUrl('TermsAndConditions')")
 assertIncludes("primary landing page visibly identifies the beta", homePage, "beta={true}")
