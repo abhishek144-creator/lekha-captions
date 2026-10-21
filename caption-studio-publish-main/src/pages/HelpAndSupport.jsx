@@ -22,7 +22,7 @@ const topics = [
   {
     icon: FileText,
     title: 'Templates & Styles',
-    desc: 'Browse 25+ templates in the Templates tab. Use the Style, Animation, and Effects tabs to fully customize.',
+    desc: 'Browse 100+ caption styles in the Templates tab. Use the Style, Animation, and Effects tabs to fully customize.',
     color: '#9B59B6',
   },
   {

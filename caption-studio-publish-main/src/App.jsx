@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -8,6 +8,10 @@ import PageNotFound from './lib/PageNotFound';
 import { useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { canonicalPublicPath } from '@/lib/publicRoutes'
+import { lazyWithRefresh } from '@/lib/lazyWithRefresh'
+
+const Status = lazyWithRefresh(() => import('./pages/Status'), 'Status')
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -23,16 +27,19 @@ const RouteLoadingFallback = () => (
   </div>
 );
 
-const publicPaths = new Set([
-  '/', '/home', '/homev2', '/login', '/faq', '/termsandconditions',
-  '/privacypolicy', '/refundpolicy', '/acceptableusepolicy', '/helpandsupport',
-  '/knownlimitations', '/changelog',
-])
-
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
-  const { pathname } = useLocation()
-  const isPublicPage = publicPaths.has(pathname.toLowerCase().replace(/\/$/, '') || '/')
+  const { pathname, search, hash } = useLocation()
+  const canonicalPath = canonicalPublicPath(pathname)
+  const isPublicPage = Boolean(canonicalPath)
+  useEffect(() => {
+    const link = document.querySelector('link[rel="canonical"]')
+    if (link) link.href = `https://lekhacaptions.com${canonicalPath || '/'}`
+  }, [canonicalPath])
+
+  if (canonicalPath && canonicalPath !== pathname) {
+    return <Navigate to={{ pathname: canonicalPath, search, hash }} replace />
+  }
 
   // Show loading spinner while checking app public settings or auth
   if (!isPublicPage && (isLoadingPublicSettings || isLoadingAuth)) {
@@ -56,6 +63,7 @@ const AuthenticatedApp = () => {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       <Routes>
+        <Route path="/status" element={<LayoutWrapper><Status /></LayoutWrapper>} />
         <Route path="/" element={
           <LayoutWrapper>
             <MainPage />

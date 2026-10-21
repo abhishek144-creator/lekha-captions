@@ -17,27 +17,27 @@ export default function Footer() {
 
           <div>
             <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/70">Product</p>
-            <div className="mt-6 space-y-3.5 text-xl text-white/86">
-              <Link to={createPageUrl('Home')} className="block transition hover:text-white">Features</Link>
-              <Link to={createPageUrl('Home')} className="block transition hover:text-white">Pricing</Link>
-              <Link to={createPageUrl('Home')} className="block transition hover:text-white">Templates</Link>
-              <Link to={createPageUrl('Home')} className="block transition hover:text-white">Languages</Link>
-            </div>
+            <nav aria-label="Product links" className="mt-6 text-xl text-white/86">
+              <ul className="space-y-3.5">
+                {['Features', 'Pricing', 'Templates', 'Languages'].map(label => <li key={label}><Link to={createPageUrl('Home')} className="block transition hover:text-white">{label}</Link></li>)}
+              </ul>
+            </nav>
           </div>
 
           <div>
             <p className="text-[0.64rem] font-semibold uppercase tracking-[0.34em] text-white/70">Support</p>
-            <div className="mt-6 space-y-3.5 text-xl text-white/86">
-              <Link to={createPageUrl('Faq')} className="block transition hover:text-white">FAQ</Link>
-              <Link to={createPageUrl('HelpAndSupport')} className="block transition hover:text-white">Help</Link>
-              <Link to={createPageUrl('TermsAndConditions')} className="block transition hover:text-white">Terms</Link>
-              <Link to={createPageUrl('PrivacyPolicy')} className="block transition hover:text-white">Privacy</Link>
-              <Link to={createPageUrl('RefundPolicy')} className="block transition hover:text-white">Refunds</Link>
-              <Link to={createPageUrl('AcceptableUsePolicy')} className="block transition hover:text-white">Acceptable Use</Link>
-              <Link to={createPageUrl('KnownLimitations')} className="block transition hover:text-white">Known limitations</Link>
-              <Link to={createPageUrl('Changelog')} className="block transition hover:text-white">Changelog</Link>
-              <Link to={createPageUrl('HelpAndSupport')} className="block transition hover:text-white">Contact</Link>
-            </div>
+            <nav aria-label="Support links" className="mt-6 text-xl text-white/86">
+              <ul className="space-y-3.5">
+                {[
+                  ['FAQ', createPageUrl('Faq')], ['Help', createPageUrl('HelpAndSupport')], ['Terms', createPageUrl('TermsAndConditions')],
+                  ['Privacy', createPageUrl('PrivacyPolicy')], ['Refunds', createPageUrl('RefundPolicy')], ['Acceptable Use', createPageUrl('AcceptableUsePolicy')],
+                  ['Known limitations', createPageUrl('KnownLimitations')], ['Changelog', createPageUrl('Changelog')],
+                  ['Service status', createPageUrl('Status')], ['Contact', createPageUrl('HelpAndSupport')],
+                ].map(([label, to]) => (
+                  <li key={label}><Link to={to} className="block transition hover:text-white">{label}</Link></li>
+                ))}
+              </ul>
+            </nav>
           </div>
         </div>
 

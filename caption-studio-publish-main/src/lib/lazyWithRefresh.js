@@ -9,11 +9,20 @@ export function lazyWithRefresh(importer, chunkName) {
   return lazy(async () => {
     try {
       const module = await importer()
-      window.sessionStorage.removeItem(retryKey)
+      // A successful import must survive blocked browser storage.
+      try { window.sessionStorage.removeItem(retryKey) } catch { /* Optional retry bookkeeping. */ }
       return module
     } catch (error) {
-      if (import.meta.env.PROD && !window.sessionStorage.getItem(retryKey)) {
-        window.sessionStorage.setItem(retryKey, '1')
+      let canRefresh = false
+      if (import.meta.env.PROD) {
+        try {
+          if (!window.sessionStorage.getItem(retryKey)) {
+            window.sessionStorage.setItem(retryKey, '1')
+            canRefresh = true
+          }
+        } catch { /* Without a durable guard, reloading could loop indefinitely. */ }
+      }
+      if (canRefresh) {
         window.location.reload()
         return new Promise(() => {})
       }

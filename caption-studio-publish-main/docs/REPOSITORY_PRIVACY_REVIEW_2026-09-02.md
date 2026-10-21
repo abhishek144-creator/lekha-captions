@@ -61,3 +61,12 @@ report. The current working tree has no privacy-audit findings; older commits
 still contain that address. Those commits remain available to authorized
 collaborators, and copies made while the repository was public cannot be
 retracted by changing visibility.
+
+## 21 October 2026 update
+
+GitHub now reports public visibility. The owner explicitly chose to keep it
+public and receive a cleanup report. The new public-only audit finds 829
+email-content/author occurrences across advertised history; private-only audit
+passes do not clear public exposure. See
+`PUBLIC_REPOSITORY_CLEANUP_2026-10-21.md`. No history rewrite or force-push is
+authorized, and the privacy gate must remain failing until cleanup is verified.
