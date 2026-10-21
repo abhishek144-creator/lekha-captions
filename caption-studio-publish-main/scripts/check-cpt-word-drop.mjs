@@ -112,7 +112,7 @@ async function checkTemplate(kind) {
     const start = await wordBox(key)
     assert.ok(start, `${templateId}: ${key} must render on the canvas`)
     const { during, after } = await dragBy(page, start, dx, dy, () => wordBox(key))
-    assert.ok(Math.hypot(during.x - start.x, during.y - start.y) > 40, `${templateId}: dragging ${key} must move it while dragging`)
+    assert.ok(Math.hypot(during.x - start.x, during.y - start.y) > 40, `${templateId}: dragging ${key} must move it while dragging (${JSON.stringify({ dx, dy, start, during, after })})`)
     assert.ok(
       Math.abs(after.x - during.x) <= 1.5 && Math.abs(after.y - during.y) <= 1.5,
       `${templateId}: ${key} must stay where it was dropped (during ${during.x},${during.y} after ${after.x},${after.y})`,

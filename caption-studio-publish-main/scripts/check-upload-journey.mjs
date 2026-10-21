@@ -32,9 +32,13 @@ await page.setViewport({ width: 1440, height: 1100 })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 
-const fileId = '123e4567-e89b-12d3-a456-426614174111'
+let fileId = '123e4567-e89b-12d3-a456-426614174111'
 let calls = []
 let refuseInit = false
+let holdProcessing = false
+let failProcessing = false
+let pendingProcess = null
+const savedProjects = new Map()
 const caption = { text: 'hello bright world', start_time: 0, end_time: 1, words: [{ word: 'hello', start: 0, end: 0.3 }, { word: 'bright', start: 0.3, end: 0.6 }, { word: 'world', start: 0.6, end: 1 }] }
 
 await page.setRequestInterception(true)
@@ -52,11 +56,20 @@ page.on('request', async (request) => {
     else payload = { success: true, direct_upload_available: true, file_id: fileId, upload_url: `${origin}/test-storage-session`, expires_at: 'later' }
   } else if (url.pathname === '/api/uploads/complete') payload = { success: true, file_id: fileId, upload_state: 'pending_scan', raw_url: `/api/media/upload/${fileId}?token=t` }
   else if (url.pathname === '/api/uploads/discard') payload = { success: true, file_id: fileId }
-  else if (url.pathname === '/api/process') payload = { success: true, captions: [caption], detected_language: 'english' }
+  else if (url.pathname === '/api/process') {
+    if (holdProcessing) { pendingProcess = request; return }
+    if (failProcessing) { status = 422; payload = { detail: 'Fixture transcription refused' } }
+    else payload = { success: true, captions: [caption], detected_language: 'english' }
+  }
   else if (url.pathname === '/api/editor-preferences/load') payload.preferences = { revision: 0, brand_kits: [], glossary_terms: [] }
   else if (url.pathname === '/api/editor-preferences/save') payload.preferences = { revision: 1, brand_kits: [], glossary_terms: [] }
   else if (url.pathname === '/api/draft/load') payload = { revision: 0, draft: null }
-  else if (url.pathname === '/api/draft/save' || url.pathname === '/api/projects/save') payload = { success: true, revision: 1, project_id: 'test-project' }
+  else if (url.pathname === '/api/draft/save' || url.pathname === '/api/projects/save') {
+    const submitted = JSON.parse(body)
+    const projectId = submitted.project_id || 'current'
+    savedProjects.set(projectId, submitted.draft)
+    payload = { success: true, revision: 1, project_id: projectId, draft: submitted.draft }
+  }
   else if (url.pathname === '/api/projects/list') payload.projects = []
   else if (url.pathname === '/api/workspaces') payload.workspaces = []
   else if (url.pathname === '/api/fonts') payload = { fonts: [] }
@@ -130,7 +143,65 @@ try {
   assert.equal(called('/api/uploads/discard').length, 0, 'a used upload is never discarded')
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').videoUrl || ''), `/api/media/upload/${fileId}?token=t`, 'saved drafts keep the storage link, not the device-only link')
 
-  // 2. Closing the window before Generate deletes the finished upload.
+  // A replacement must not attach its media to the previous account project
+  // while the provider is still processing. Wait beyond the autosave debounce.
+  for (let wait = 0; wait < 100 && !savedProjects.size; wait += 1) await new Promise((done) => setTimeout(done, 100))
+  assert.equal(savedProjects.size, 1, 'the original project has an account copy')
+  const [previousId, previousDraft] = [...savedProjects][0]
+  const previousJson = JSON.stringify(previousDraft)
+  fileId = '123e4567-e89b-12d3-a456-426614174222'
+  holdProcessing = true
+  await textClick('Upload New')
+  await page.waitForSelector('[role=dialog] input[type=file]')
+  await pickFile(clipPath)
+  await page.waitForFunction(() => document.body.textContent.includes('Generate Captions'))
+  calls = []
+  await textClick('Generate Captions')
+  for (let wait = 0; wait < 100 && !pendingProcess; wait += 1) await new Promise((done) => setTimeout(done, 100))
+  assert.ok(pendingProcess, 'replacement transcription is held open')
+  await new Promise((done) => setTimeout(done, 3500))
+  assert.equal(JSON.stringify(savedProjects.get(previousId)), previousJson, 'pending replacement preserves the previous cloud project')
+  assert.equal(called('/api/draft/save').filter((call) => call.body.project_id === previousId).length, 0, 'no replacement request writes under the old project ID')
+  holdProcessing = false
+  await pendingProcess.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, captions: [caption], detected_language: 'english' }) })
+  pendingProcess = null
+  for (let wait = 0; wait < 200 && savedProjects.size < 2; wait += 1) await new Promise((done) => setTimeout(done, 100))
+  assert.equal(savedProjects.size, 2, 'replacement saves as a separate account project')
+  assert.equal(JSON.stringify(savedProjects.get(previousId)), previousJson)
+  assert.equal([...savedProjects.values()].find((draft) => draft.fileId === fileId)?.captions.length, 1)
+
+  const completedProjects = [...savedProjects].map(([id, draft]) => [id, JSON.stringify(draft)])
+  const completedMedia = fileId
+  // Refusing a replacement before acceptance leaves the open project intact.
+  await textClick('Upload New')
+  await page.waitForSelector('[role=dialog] input[type=file]')
+  calls = []
+  refuseInit = true
+  await pickFile(clipPath)
+  await page.waitForFunction(() => document.body.textContent.includes('Your plan allows videos up to 120s'))
+  assert.equal(called('/test-storage-session').length, 0, 'no bytes move after a plan refusal')
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).fileId), completedMedia)
+  await page.keyboard.press('Escape')
+  refuseInit = false
+
+  // A provider failure after acceptance keeps a separate, retryable project;
+  // neither of the completed cloud projects may acquire the failed media.
+  fileId = '123e4567-e89b-12d3-a456-426614174333'
+  failProcessing = true
+  await textClick('Upload New')
+  await page.waitForSelector('[role=dialog] input[type=file]')
+  await pickFile(clipPath)
+  await page.waitForFunction(() => document.body.textContent.includes('Generate Captions'))
+  await textClick('Generate Captions')
+  await page.waitForFunction(() => document.body.textContent.includes('Fixture transcription refused'), { timeout: 60000 })
+  for (let wait = 0; wait < 200 && ![...savedProjects.values()].some((draft) => draft.fileId === fileId); wait += 1) await new Promise((done) => setTimeout(done, 100))
+  for (const [id, json] of completedProjects) assert.equal(JSON.stringify(savedProjects.get(id)), json, 'failed/refused replacement preserves each completed account project')
+  const failedDraft = [...savedProjects.values()].find((draft) => draft.fileId === fileId)
+  assert.ok(failedDraft, 'accepted video remains saved for transcription retry')
+  assert.deepEqual(failedDraft.captions, [], 'failed replacement never inherits the preceding captions')
+  failProcessing = false
+
+  // Closing the window before Generate deletes the finished upload.
   await openUploadWindow()
   calls = []
   await pickFile(clipPath)
@@ -140,7 +211,7 @@ try {
   assert.deepEqual(called('/api/uploads/discard').map((call) => call.body.file_id), [fileId], 'an abandoned upload is deleted')
   assert.equal(called('/api/process').length, 0)
 
-  // 3. A plan refusal stops before any bytes move and explains why.
+  // A plan refusal stops before any bytes move and explains why.
   await openUploadWindow()
   calls = []
   refuseInit = true
@@ -151,7 +222,7 @@ try {
   refuseInit = false
 
   assert.deepEqual(errors, [])
-  console.log('Local upload journey passed: upload on pick, reuse on Generate, device playback, abandoned-upload deletion and early plan refusal.')
+  console.log('Local upload journey passed: upload reuse, device playback, delayed/failed/refused replacements preserve cloud projects, abandoned-upload deletion and early plan refusal.')
 } catch (error) {
   console.error('Upload journey diagnostics:', errors, calls.map((call) => `${call.method} ${call.path}`).slice(-30), await page.evaluate(() => document.body.innerText.slice(0, 2500)))
   throw error

@@ -338,7 +338,7 @@ class DurableWorkflowTests(unittest.TestCase):
     def test_draft_drops_bearer_urls_and_rejects_unbounded_or_invalid_data(self):
         draft = normalize_draft({**self.draft, "videoUrl": "secret", "id_token": "secret", "settings": {"preUploadedRawUrl": "secret"}})
         self.assertNotIn("secret", str(draft))
-        for invalid in [{**self.draft, "captions": [{}] * 501}, {**self.draft, "duration": float("nan")}, {**self.draft, "settings": "bad"}]:
+        for invalid in [{**self.draft, "captions": [{}] * 1001}, {**self.draft, "duration": float("nan")}, {**self.draft, "settings": "bad"}]:
             with self.assertRaises(HTTPException): normalize_draft(invalid)
 
     def test_draft_preserves_bounded_language_tracks(self):
@@ -358,11 +358,21 @@ class DurableWorkflowTests(unittest.TestCase):
         invalid = [
             {**self.draft, "captionTracks": [track], "activeCaptionTrackId": "missing"},
             {**self.draft, "captionTracks": [track] * 21, "activeCaptionTrackId": "source"},
-            {**self.draft, "captionTracks": [{"id": "source", "captions": [{}] * 501}], "activeCaptionTrackId": "source"},
+            {**self.draft, "captionTracks": [{"id": "source", "captions": [{}] * 1001}], "activeCaptionTrackId": "source"},
         ]
         for candidate in invalid:
             with self.assertRaises(HTTPException):
                 normalize_draft(candidate)
+
+    def test_translation_sized_project_survives_account_save_and_restore(self):
+        captions = [{"id": str(i), "text": "word", "start_time": i / 10, "end_time": (i + 1) / 10}
+                    for i in range(1000)]
+        draft = {**self.draft, "projectId": "full-transcript", "captions": captions,
+                 "captionTracks": [{"id": "source", "captions": captions}], "activeCaptionTrackId": "source"}
+        save_draft(self.db, "a", draft, 0, "full-transcript")
+        restored = read_draft(self.db, "a", "full-transcript")["draft"]
+        self.assertEqual(len(restored["captions"]), 1000)
+        self.assertEqual(restored["captionTracks"][0]["captions"][-1], captions[-1])
 
     def test_editor_preferences_are_account_scoped_and_portable(self):
         saved = save_editor_preferences(self.db, "a", {

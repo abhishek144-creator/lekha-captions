@@ -880,11 +880,11 @@ export default function Dashboard() {
     refreshVideoPlaybackUrl(event);
   };
 
-  const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
+  const updateCaptions = useCallback((newCaptions, options) => pushHistory(newCaptions, undefined, options), [pushHistory])
   // A native colour picker fires on every move of a drag; one burst of style
   // changes is one undo step instead of dozens (and a flushed history).
-  const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle, { coalesce: 'caption-style' });
-  const addToHistory = () => pushHistory(undefined, undefined);
+  const updateCaptionStyle = useCallback((newStyle) => pushHistory(undefined, newStyle, { coalesce: 'caption-style' }), [pushHistory])
+  const addToHistory = useCallback(() => pushHistory(undefined, undefined), [pushHistory])
 
   // Word popup edits apply with the functional raw setter (building new
   // captions from a render's closure corrupted other words), and record one

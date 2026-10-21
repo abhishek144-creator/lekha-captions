@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { deploymentComponentTargets, releaseMetadata, releaseIdentityErrors } from './release-metadata.mjs'
+import { createReleaseBatch } from './prepare-release-batch.mjs'
 
 const env = { APP_RELEASE: 'a'.repeat(40), APP_BUILD_TIME: '2026-09-05T00:00:00Z', RELEASE_VERSION: 'v1.0.0-rc.1', RELEASE_ENVIRONMENT: 'staging' }
 const editor = releaseMetadata(env, 'editor', true)
@@ -26,3 +27,16 @@ assert.ok(releaseIdentityErrors(editor, separate[1].component, 'staging').includ
 assert.equal(deploymentComponentTargets('https://example.com/editor', 'https://example.com/marketing')[1].component, 'marketing')
 assert.throws(() => deploymentComponentTargets('not a URL', 'https://example.com'), /Invalid URL/)
 console.log('Release metadata: 19 assertions passed')
+
+const batch = createReleaseBatch('b'.repeat(40), '2026-10-21T12:00:00.000Z')
+for (const component of ['editor', 'marketing', 'api', 'worker']) {
+  const metadata = releaseMetadata(batch.env, component, true)
+  assert.equal(metadata.release, batch.release)
+  assert.equal(metadata.release_version, batch.release_version)
+  assert.equal(metadata.built_at, batch.built_at)
+  assert.deepEqual(releaseIdentityErrors(metadata, component), [])
+}
+assert.equal(batch.env.CLAMAV_SIGNATURES_REFRESH, '2026-10-21')
+assert.throws(() => createReleaseBatch('latest'), /Git SHA/)
+assert.throws(() => createReleaseBatch('b'.repeat(40), '2026-10-21T12:00:00+05:30'), /UTC/)
+console.log('Coordinated release batch identity passed for frontend, API and worker artifacts')

@@ -2116,18 +2116,20 @@ export default function VideoPlayer({
                     </button>
                   )}
 
-                  {/* Resize handles — shown for regular and templated captions alike */}
+                  {/* Keep resize hit areas outside the text. Authored template
+                      glyphs can extend past their line box; an edge handle
+                      there otherwise intercepts a word drag. */}
                   {setCaptionStyle && !isEditingThis && !hasDetachedWords && !isSidebarTemplate && (
                     <>
                       {[
-                        ['top-left', 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize'],
-                        ['top', 'left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],
-                        ['top-right', 'right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize'],
-                        ['left', 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],
-                        ['right', 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize'],
-                        ['bottom-left', 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize'],
-                        ['bottom', 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],
-                        ['bottom-right', 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize'],
+                        ['top-left', '-left-4 -top-4 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize'],
+                        ['top', 'left-1/2 -top-4 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],
+                        ['top-right', '-right-4 -top-4 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize'],
+                        ['left', '-left-4 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],
+                        ['right', '-right-4 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize'],
+                        ['bottom-left', '-bottom-4 -left-4 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize'],
+                        ['bottom', '-bottom-4 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],
+                        ['bottom-right', '-bottom-4 -right-4 translate-x-1/2 translate-y-1/2 cursor-nwse-resize'],
                       ].map(([edge, positionClass]) => (
                         <div
                           key={edge}

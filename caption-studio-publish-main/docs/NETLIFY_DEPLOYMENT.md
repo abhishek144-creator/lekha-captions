@@ -44,6 +44,20 @@ UTC build-batch timestamp before building any artifact. Reuse those exact values
 for both Netlify builds and all Railway app-service source rebuilds. Record the
 batch once; do not choose a new timestamp independently for each publisher.
 
+After the final reviewed commit is clean, prepare the shared values once:
+
+```powershell
+npm run release:batch -- --output=../.readiness/release-batch.json
+```
+
+The command rejects a dirty tree and refuses to overwrite an existing batch.
+Keep the JSON with the local release receipts. Its `env` object contains only
+public release settings; use the same values for frontend builds and existing
+Railway services. The Dockerfile accepts `APP_BUILD_TIME` as a build argument
+and records it inside both Python and render images. Pass
+`CLAMAV_SIGNATURES_REFRESH` from the same batch to force the bounded signature
+update during this release. Never reuse a previous batch file for new source.
+
 Pass the SHA as `APP_RELEASE`/`VITE_APP_RELEASE`, the version as `RELEASE_VERSION`
 and the timestamp as `APP_BUILD_TIME` to the frontend build. On Railway retain
 its platform Git SHA and canonical version defaults, prepare the common

@@ -2,7 +2,8 @@ name: Production synthetic monitor
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Hourly coverage uses one quarter of the former scheduled runner starts.
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:

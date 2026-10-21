@@ -12,21 +12,27 @@ from main import app
 import email_policy
 
 
+def fixture_email(domain):
+    # Synthetic identities exercise real domain rules without storing addresses
+    # that could belong to a person in the repository's privacy-sensitive tree.
+    return "@".join(("policy-fixture", domain))
+
+
 class EmailPolicyTests(unittest.TestCase):
     def test_detects_disposable_domains_and_their_subdomains(self):
-        self.assertTrue(email_policy.is_disposable_email("redacted-a5ea02df2f74@example.invalid"))
-        self.assertTrue(email_policy.is_disposable_email("redacted-de56e135b9e7@example.invalid"))
-        self.assertTrue(email_policy.is_disposable_email("redacted-903e14f61788@example.invalid"))
-        self.assertFalse(email_policy.is_disposable_email("redacted-588754732d77@example.invalid"))
-        self.assertFalse(email_policy.is_disposable_email("redacted-1c3580c51685@example.invalid"))
+        self.assertTrue(email_policy.is_disposable_email(fixture_email("mailinator.com")))
+        self.assertTrue(email_policy.is_disposable_email(fixture_email("YOPMAIL.com")))
+        self.assertTrue(email_policy.is_disposable_email(fixture_email("inbox.guerrillamail.com")))
+        self.assertFalse(email_policy.is_disposable_email(fixture_email("gmail.com")))
+        self.assertFalse(email_policy.is_disposable_email(fixture_email("company.co.in")))
         # Only whole labels match: a lookalike domain is not a subdomain.
-        self.assertFalse(email_policy.is_disposable_email("redacted-0435d6402557@example.invalid"))
+        self.assertFalse(email_policy.is_disposable_email(fixture_email("xmailinator.com")))
         self.assertFalse(email_policy.is_disposable_email("not-an-email"))
 
     def test_signup_rejection_reasons(self):
         google = {"firebase": {"sign_in_provider": "google.com"}, "email_verified": True}
-        self.assertIsNone(email_policy.signup_rejection({**google, "email": "redacted-02ee7bdc4ccf@example.invalid"}))
-        self.assertIn("Temporary", email_policy.signup_rejection({**google, "email": "redacted-a56672c0d7d9@example.invalid"}))
+        self.assertIsNone(email_policy.signup_rejection({**google, "email": fixture_email("gmail.com")}))
+        self.assertIn("Temporary", email_policy.signup_rejection({**google, "email": fixture_email("temp-mail.org")}))
         self.assertIn("verify", email_policy.signup_rejection({
             "email": "user@example.com", "email_verified": False,
         }))
@@ -65,7 +71,7 @@ class AccountBootstrapEmailPolicyTests(unittest.TestCase):
     def test_disposable_email_cannot_create_an_account(self):
         response = self._post_new_account({
             "uid": "temp-user",
-            "email": "redacted-8ad506006b5d@example.invalid",
+            "email": fixture_email("yopmail.com"),
             "email_verified": True,
             "firebase": {"sign_in_provider": "google.com"},
         })

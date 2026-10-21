@@ -102,6 +102,16 @@ describe('useEditorHistory', () => {
     expect(result.current.canRedo).toBe(false)
   })
 
+  it('reset ends a coalesced style gesture before the next project edit', () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(useEditor)
+    act(() => result.current.pushHistory(undefined, { text_color: '#111111' }, { coalesce: 'caption-style' }))
+    act(() => result.current.resetHistory())
+    act(() => result.current.pushHistory(undefined, { text_color: '#222222' }, { coalesce: 'caption-style' }))
+    act(() => result.current.undo())
+    expect(result.current.captionStyle.text_color).toBe('#111111')
+  })
+
   it('undoes with Ctrl+Z but leaves typing fields to the browser', () => {
     const { result } = renderHook(useEditor)
     edit(result, 'second')

@@ -36,6 +36,7 @@
     "release:contracts": "node scripts/check-release-readiness.mjs",
     "release:check": "npm run release:contracts && npm run test:security:xss && npm run ci:frontend",
     "release:tree": "node scripts/check-clean-release-tree.mjs",
+    "release:batch": "node scripts/prepare-release-batch.mjs",
     "launch:evidence": "node scripts/check-launch-evidence.mjs",
     "launch:verify-deployed": "node scripts/check-deployed-release.mjs",
     "monitor:synthetic": "node scripts/check-synthetic-health.mjs",

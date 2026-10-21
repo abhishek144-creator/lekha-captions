@@ -1,4 +1,5 @@
 ARG APP_RELEASE
+ARG APP_BUILD_TIME
 # Railway passes service variables to declared build args, so each service picks
 # its image with LEKHA_SERVICE_TARGET=api|transcription|render (default render).
 ARG LEKHA_SERVICE_TARGET=render
@@ -8,7 +9,7 @@ ARG LEKHA_SERVICE_TARGET=render
 # Change this date (or pass the build arg) during the required weekly refresh;
 # it invalidates the update layer without starting a runtime updater daemon.
 FROM clamav/clamav-debian:stable AS clamav-signatures
-ARG CLAMAV_SIGNATURES_REFRESH=2026-10-06
+ARG CLAMAV_SIGNATURES_REFRESH=2026-10-21
 RUN test -n "$CLAMAV_SIGNATURES_REFRESH" \
     && timeout 180 freshclam --stdout --datadir=/var/lib/clamav --user=root \
     && mkdir /prepared-db \
@@ -16,6 +17,7 @@ RUN test -n "$CLAMAV_SIGNATURES_REFRESH" \
 
 FROM python:3.11-slim-bookworm AS python-runtime
 ARG APP_RELEASE
+ARG APP_BUILD_TIME
 LABEL org.opencontainers.image.revision=${APP_RELEASE}
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
@@ -38,7 +40,7 @@ RUN clamscan --version \
     && ls /opt/clamav-db
 COPY . .
 # Release identity: the app reports this as APP_BUILD_TIME unless it is set.
-RUN date -u +%Y-%m-%dT%H:%M:%SZ > .build-time
+RUN if [ -n "$APP_BUILD_TIME" ]; then printf '%s\n' "$APP_BUILD_TIME" > .build-time; else date -u +%Y-%m-%dT%H:%M:%SZ > .build-time; fi
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin lekha \
     && chown -R lekha:lekha /app
 USER lekha
@@ -56,6 +58,7 @@ CMD ["sh", "-c", "clamd --config-file=/app/deploy/clamav/clamd.conf & exec pytho
 
 FROM node:22-bookworm-slim AS render
 ARG APP_RELEASE
+ARG APP_BUILD_TIME
 LABEL org.opencontainers.image.revision=${APP_RELEASE}
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -84,7 +87,7 @@ RUN node --input-type=module -e "import puppeteer from 'puppeteer'; const browse
 COPY backend/requirements.lock backend/requirements.lock
 RUN python3 -m pip install --break-system-packages --no-cache-dir --require-hashes -r backend/requirements.lock
 COPY . .
-RUN date -u +%Y-%m-%dT%H:%M:%SZ > .build-time \
+RUN (if [ -n "$APP_BUILD_TIME" ]; then printf '%s\n' "$APP_BUILD_TIME"; else date -u +%Y-%m-%dT%H:%M:%SZ; fi) > .build-time \
     && install -d /usr/local/share/fonts/truetype/lekha \
     && cp backend/flat_fonts/*.ttf /usr/local/share/fonts/truetype/lekha/ \
     && fc-cache -f \
