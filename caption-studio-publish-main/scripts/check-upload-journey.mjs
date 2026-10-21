@@ -192,8 +192,12 @@ try {
   await page.waitForSelector('[role=dialog] input[type=file]')
   await pickFile(clipPath)
   await page.waitForFunction(() => document.body.textContent.includes('Generate Captions'))
+  const failedGenerateAt = Date.now()
   await textClick('Generate Captions')
   await page.waitForFunction(() => document.body.textContent.includes('Fixture transcription refused'), { timeout: 60000 })
+  await page.waitForFunction(() => !document.querySelector('[data-target-percent]'), { timeout: 15000 })
+  const failedScreenMs = Date.now() - failedGenerateAt
+  assert.ok(failedScreenMs < 6000, `a failed transcription closes the generating screen at once (took ${failedScreenMs} ms)`)
   for (let wait = 0; wait < 200 && ![...savedProjects.values()].some((draft) => draft.fileId === fileId); wait += 1) await new Promise((done) => setTimeout(done, 100))
   for (const [id, json] of completedProjects) assert.equal(JSON.stringify(savedProjects.get(id)), json, 'failed/refused replacement preserves each completed account project')
   const failedDraft = [...savedProjects.values()].find((draft) => draft.fileId === fileId)

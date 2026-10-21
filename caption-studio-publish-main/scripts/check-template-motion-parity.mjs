@@ -43,11 +43,19 @@ const basicTemplateInlineSource = await readSource(
 const templateTextRulesSource = await readSource(
   new URL('src/components/dashboard/templateTextRules.js', projectRoot),
 );
+// Template-card previews: the gallery modules plus the sequencers their
+// srcdoc frames run (kept as separate files so the CSP can hash them).
 const gallerySource = await readSource(
   new URL('src/components/dashboard/AdvancedTemplateLibrary.jsx', projectRoot),
+) + '\n' + await readSource(
+  new URL('src/assets/template-preview/advanced-sequencer.js', projectRoot),
+) + '\n' + await readSource(
+  new URL('src/assets/template-preview/basic-sequencer.js', projectRoot),
 );
 const sidebarGallerySource = await readSource(
   new URL('src/components/dashboard/SidebarTemplateGallery20.jsx', projectRoot),
+) + '\n' + await readSource(
+  new URL('src/assets/template-preview/sidebar-sequencer.js', projectRoot),
 );
 const exportRendererSource = await readSource(
   new URL('scripts/render_template_overlay.mjs', projectRoot),
@@ -139,11 +147,15 @@ if (!sidebarGallerySource.includes('stampLcMotion') || !sidebarGallerySource.inc
 if (!firebaseSource.includes('const authDomain = configuredAuthDomain;')) {
   fail('Firebase auth does not use the registered Firebase OAuth callback domain');
 }
+// Preview frames inherit the page CSP, which allows these sequencers by hash
+// (check-release-readiness.mjs keeps the hashes in sync). A fixed nonce would
+// let any injected markup carrying it run script, so none may come back.
 if (
-  !sidebarGallerySource.includes("const TEMPLATE_PREVIEW_CSP_NONCE = 'lekha-template-preview-v1'")
-  || !sidebarGallerySource.includes('<script nonce="${TEMPLATE_PREVIEW_CSP_NONCE}">')
+  !sidebarGallerySource.includes('SIDEBAR_PREVIEW_SCRIPT')
+  || !sidebarGallerySource.includes('LC_MOTION_SCHEDULE_SCRIPT')
+  || /<script nonce=/.test(sidebarGallerySource + gallerySource)
 ) {
-  fail('sidebar template previews are missing the CSP nonce required to run their sequencer');
+  fail('template previews must run their hashed sequencer files, not nonce-tagged inline scripts');
 }
 if (!sidebarGallerySource.includes('const HOLD = 2200;')) {
   fail('sidebar template previews must advance quickly enough to make motion visible in the gallery');

@@ -56,6 +56,12 @@ import {
   upsertTranslationTrack,
 } from '@/lib/transcriptTracks'
 import planCatalog from '../../shared/planCatalog.json';
+import {
+  followVisitorBillingCurrency,
+  formatBillingPrice,
+  getPreferredBillingCurrency,
+  onBillingCurrencySaved,
+} from '../../shared/billingCurrency';
 
 // Dashboard panels are independently code-split. Recover an outdated browser
 // shell once when a deployment replaces their content-hashed files; otherwise
@@ -96,21 +102,10 @@ const SARVAM_SPOKEN_LANGUAGES = new Set([
 const COLLAPSED_TIMELINE_HEIGHT = 42;
 const EXPANDED_TIMELINE_HEIGHT = 204;
 
-const formatTopUpPrice = (paise) => `Rs ${Math.round(Number(paise || 0) / 100)}`;
-
 const TOP_UP_OFFERS = {
-  starter: {
-    credits: planCatalog.topup_starter.credits,
-    price: formatTopUpPrice(planCatalog.topup_starter.inr_paise),
-  },
-  creator: {
-    credits: planCatalog.topup_creator.credits,
-    price: formatTopUpPrice(planCatalog.topup_creator.inr_paise),
-  },
-  pro: {
-    credits: planCatalog.topup_pro.credits,
-    price: formatTopUpPrice(planCatalog.topup_pro.inr_paise),
-  },
+  starter: planCatalog.topup_starter,
+  creator: planCatalog.topup_creator,
+  pro: planCatalog.topup_pro,
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -744,9 +739,11 @@ export default function Dashboard() {
         )
       }
     } finally {
+      // The minimum screen time only paces a successful result. A failure
+      // (including the out-of-credits upgrade prompt) is shown at once.
       const elapsedMs = Date.now() - generationStart;
       const remainingMinDurationMs = Math.max(0, GENERATING_SCREEN_MIN_MS - elapsedMs);
-      if (remainingMinDurationMs > 0) {
+      if (captionsReady && remainingMinDurationMs > 0) {
         await sleep(remainingMinDurationMs);
       }
       setIsUploading(false);
@@ -1222,6 +1219,17 @@ export default function Dashboard() {
   const subscriptionBaseTier = String(userData?.subscription_tier || '')
     .replace(/_yearly$/, '');
   const lowCreditTopUpOffer = TOP_UP_OFFERS[subscriptionBaseTier] || null;
+  // Same currency as the pricing dialog, so the notice and checkout agree.
+  const [billingCurrency, setBillingCurrency] = useState(getPreferredBillingCurrency);
+  useEffect(() => followVisitorBillingCurrency(setBillingCurrency), []);
+  useEffect(() => onBillingCurrencySaved(setBillingCurrency), []);
+  const lowCreditTopUpNotice = useMemo(() => (lowCreditTopUpOffer ? {
+    credits: lowCreditTopUpOffer.credits,
+    price: formatBillingPrice(
+      billingCurrency === 'USD' ? lowCreditTopUpOffer.usd_cents : lowCreditTopUpOffer.inr_paise,
+      billingCurrency,
+    ),
+  } : null), [lowCreditTopUpOffer, billingCurrency]);
 
   useEffect(() => {
     const shouldShow = Boolean(
@@ -1261,7 +1269,7 @@ export default function Dashboard() {
         saveMessage={cloudSaveMessage}
         translationNotice={translationNotice}
         onDismissTranslation={() => setTranslationNotice('')}
-        lowCreditOffer={showLowCreditNotice ? lowCreditTopUpOffer : null}
+        lowCreditOffer={showLowCreditNotice ? lowCreditTopUpNotice : null}
         onTopUp={() => setIsPricingModalOpen(true)}
         showCaptionRetry={Boolean(showCaptionRetryNotice && fileId && captions.length === 0)}
         onRetryCaptions={handleRetryTranscription}

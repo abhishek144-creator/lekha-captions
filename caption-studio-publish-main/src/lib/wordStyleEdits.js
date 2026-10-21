@@ -9,6 +9,7 @@ export const wordPopupTargetId = (popup) => (
 export const wordPopupStyleKey = (popup) => `${wordPopupTargetId(popup)}-${popup?.wordIndex}`
 
 // Applies one popup control change to a word's existing style.
+/** @type {(existingStyle: Record<string, any>, key: string, value: any) => Record<string, any>} */
 export const applyWordStyleChange = (existingStyle = {}, key, value) => {
   const updatedStyle = { ...existingStyle, [key]: value }
   if (key === 'textGradient') {

@@ -1,25 +1,33 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import {
-    auth,
-    db,
-    googleProvider,
-    signInAnonymously,
-    signInWithPopup,
-    signInWithRedirect,
-    getRedirectResult,
-    signOut,
-    onAuthStateChanged,
-    doc,
-    getDoc
-} from '../lib/firebase'
+import { loadFirebase } from '../lib/firebaseLoader'
 import { apiRequest } from '../lib/apiClient'
 import { toast } from '@/components/ui/use-toast'
 
-const AuthContext = createContext()
+const AuthContext = createContext(undefined)
 const PENDING_CONSENT_KEY = 'lekha.pendingConsent'
 const RAZORPAY_REVIEW_MODE = import.meta.env.VITE_RAZORPAY_REVIEW_MODE === '1'
 // The API refuses to create accounts for temporary/disposable inboxes.
 const SIGNUP_REJECTED_CODE = 'signup_email_rejected'
+// Marketing and legal pages paint first and restore the session once the
+// browser is idle; login, editor and account routes need Firebase at once.
+const DEFERRED_AUTH_PATHS = new Set([
+    '/', '/home', '/homev2', '/faq', '/termsandconditions', '/privacypolicy',
+    '/refundpolicy', '/acceptableusepolicy', '/helpandsupport', '/knownlimitations', '/changelog',
+])
+
+function runAuthStartup(start) {
+    const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/'
+    if (!DEFERRED_AUTH_PATHS.has(path)) {
+        start()
+        return () => {}
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+        const handle = window.requestIdleCallback(start, { timeout: 3000 })
+        return () => window.cancelIdleCallback(handle)
+    }
+    const timer = window.setTimeout(start, 1500)
+    return () => window.clearTimeout(timer)
+}
 
 export function useAuth() {
     return useContext(AuthContext)
@@ -62,7 +70,9 @@ export function AuthProvider({ children }) {
             if (error?.data?.detail?.code !== SIGNUP_REJECTED_CODE) throw error
             // No account was created: end the Firebase session so the editor
             // never runs signed in without one, and say why once.
-            const rejection = new Error(error.data.detail.message || 'This email address cannot be used to sign up.')
+            const rejection = /** @type {Error & { signupRejected?: boolean }} */ (
+                new Error(error.data.detail.message || 'This email address cannot be used to sign up.')
+            )
             rejection.signupRejected = true
             if (rejectedSignupUidRef.current !== user.uid) {
                 rejectedSignupUidRef.current = user.uid
@@ -70,6 +80,7 @@ export function AuthProvider({ children }) {
             }
             setAuthError(rejection)
             if (typeof window !== 'undefined') window.localStorage.removeItem(PENDING_CONSENT_KEY)
+            const { auth, signOut } = await loadFirebase()
             await signOut(auth).catch(() => {})
             throw rejection
         }
@@ -82,6 +93,16 @@ export function AuthProvider({ children }) {
     }
 
     const loginWithGoogle = async ({ preferRedirect = false, consent = null } = {}) => {
+        // Already loaded on the login page, so the popup still opens within
+        // the click's user activation.
+        let firebase
+        try {
+            firebase = await loadFirebase()
+        } catch (error) {
+            setAuthError(error)
+            throw error
+        }
+        const { auth, googleProvider, signInWithPopup, signInWithRedirect } = firebase
         const transportFallbackCodes = new Set([
             'auth/internal-error',
             'auth/popup-blocked',
@@ -152,12 +173,16 @@ export function AuthProvider({ children }) {
         }
     }
 
-    const logout = () => signOut(auth)
+    const logout = async () => {
+        const { auth, signOut } = await loadFirebase()
+        return signOut(auth)
+    }
 
-    useEffect(() => {
+    // Restores the session and follows sign-in changes; returns the unsubscribe.
+    const watchAuth = ({ auth, getRedirectResult, onAuthStateChanged, signInAnonymously }) => {
         if (!auth) {
             setLoading(false)
-            return
+            return () => {}
         }
 
         getRedirectResult(auth)
@@ -230,14 +255,40 @@ export function AuthProvider({ children }) {
             setAuthError(error)
             return () => {}
         }
+    }
+
+    useEffect(() => {
+        let cancelled = false
+        let unsubscribe = () => {}
+        const cancelStartup = runAuthStartup(() => {
+            loadFirebase()
+                .then((firebase) => {
+                    if (!cancelled) unsubscribe = watchAuth(firebase)
+                })
+                .catch((error) => {
+                    console.error('Firebase Auth Init Error:', error)
+                    if (cancelled) return
+                    setLoading(false)
+                    setAuthError(error)
+                })
+        })
+        return () => {
+            cancelled = true
+            cancelStartup()
+            unsubscribe()
+        }
+        // Subscribes once per mount; watchAuth only uses state setters and refs.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     useEffect(() => {
-        if (!auth || typeof window === 'undefined') return undefined
+        if (typeof window === 'undefined') return undefined
         const handleForcedLogout = () => {
-            signOut(auth).catch((error) => {
-                console.warn('Failed to clear rejected Firebase session:', error.message)
-            })
+            loadFirebase()
+                .then(({ auth, signOut }) => auth && signOut(auth))
+                .catch((error) => {
+                    console.warn('Failed to clear rejected Firebase session:', error.message)
+                })
         }
         window.addEventListener('auth:logout', handleForcedLogout)
         return () => window.removeEventListener('auth:logout', handleForcedLogout)
@@ -254,6 +305,7 @@ export function AuthProvider({ children }) {
             // Keep the direct read only as an offline fallback for an already
             // initialized account. Do not replace a known server balance with
             // an empty cache result.
+            const { db, doc, getDoc } = await loadFirebase()
             if (!db) throw serverError
             const userRef = doc(db, 'users', currentUser.uid)
             const userSnap = await getDoc(userRef)

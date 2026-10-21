@@ -48,7 +48,9 @@ function selectSemanticEmphasis(words = [], audioImpWordIndex = -1) {
     }
   }
 
+  /** @type {{ index: number, score: number, word: string } | null} */
   let best = null;
+  /** @type {{ index: number, word: string, length: number } | null} */
   let fallback = null;
   words.forEach((rawWord, index) => {
     const word = normalizeEmphasisWord(rawWord);

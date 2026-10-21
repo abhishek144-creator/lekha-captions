@@ -99,8 +99,7 @@ let fetchCalls = 0
 const apiContext = vm.createContext({
   testEnv: { DEV: true, VITE_LOCAL_API_RETRY_MS: '0' },
   window: { location: { origin: 'http://localhost:3000' } },
-  auth: null,
-  getFirebaseAppCheckToken: async () => '',
+  loadFirebase: async () => ({ auth: null, getFirebaseAppCheckToken: async () => '' }),
   shouldDispatchAuthLogout: () => false,
   Headers, URL, AbortController, setTimeout,
   fetch: async () => {

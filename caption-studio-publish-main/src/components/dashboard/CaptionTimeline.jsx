@@ -287,11 +287,16 @@ export default function CaptionTimeline({
   };
 
   // The drag effect reads the latest snapping/bounds helpers (waveform peaks
-  // can arrive mid-session) and history callback without re-subscribing.
+  // can arrive mid-session), history callback and caption setter without
+  // re-subscribing. Re-running the effect mid-drag resets its pre-drag
+  // snapshot, so a parent passing a new setter per render (every drag frame
+  // re-renders it) recorded a second undo step partway through the drag.
   const dragHelpersRef = useRef(null);
   dragHelpersRef.current = { getSnapTime, getMoveBounds, getResizeBounds };
   const addToHistoryRef = useRef(addToHistory);
   addToHistoryRef.current = addToHistory;
+  const rawSetCaptionsRef = useRef(null);
+  rawSetCaptionsRef.current = setCaptionsRaw || setCaptions;
 
   const updateScrubFromClientX = React.useCallback((clientX) => {
     const bounds = scrubBoundsRef.current || timelineRef.current?.getBoundingClientRect();
@@ -409,8 +414,8 @@ export default function CaptionTimeline({
     if (!draggingElement) return;
     // Use setCaptionsRaw (bypasses history) for continuous drag updates
     // History was already pushed in handleElementDragStart
-    const rawSet = setCaptionsRaw || setCaptions;
-    if (!rawSet) return;
+    if (!rawSetCaptionsRef.current) return;
+    const rawSet = (update) => rawSetCaptionsRef.current?.(update);
 
     let rafId = null;
     let dragStarted = false;
@@ -540,7 +545,7 @@ export default function CaptionTimeline({
       document.removeEventListener('pointerup', handleMouseUp);
       document.removeEventListener('pointercancel', handleMouseUp);
     };
-  }, [draggingElement, dragType, dragStartX, dragStartTime, duration, setCaptionsRaw, setCaptions]);
+  }, [draggingElement, dragType, dragStartX, dragStartTime, duration]);
 
   const waveformBars = React.useMemo(() => {
     const source = waveformData && waveformData.length > 0

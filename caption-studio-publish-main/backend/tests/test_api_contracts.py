@@ -1417,6 +1417,7 @@ class ApiContractTests(unittest.TestCase):
             with self.subTest(plan_id=plan_id):
                 plan = main.settings.PLAN_PRICING[plan_id]
                 self.assertEqual(plan["inr_paise"], 19900)
+                self.assertEqual(plan["usd_cents"], 249)
                 self.assertEqual(plan["credits"], credits)
                 self.assertEqual(plan["purchase_limit_30d"], limit)
 
@@ -2137,6 +2138,74 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertTrue(res_second.json().get("idempotent_replay"))
         self.assertEqual(res_first.json()["order"]["id"], res_second.json()["order"]["id"])
+
+    @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "topup-user"})
+    def test_topup_order_uses_the_requested_catalog_currency(self, _verify_token):
+        calls = []
+
+        class FakeOrderApi:
+            def create(self, data):
+                calls.append(data)
+                return {"id": f"order_{len(calls)}", **data}
+
+        class CreatorSnapshot:
+            exists = True
+
+            def to_dict(self):
+                return {"subscription_tier": "creator"}
+
+        fake_db = SimpleNamespace(
+            collection=lambda _name: SimpleNamespace(
+                document=lambda _uid: SimpleNamespace(get=lambda: CreatorSnapshot()),
+            ),
+        )
+        with (
+            patch.object(main.app_state, "rzp_client", SimpleNamespace(order=FakeOrderApi())),
+            patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True),
+            patch.object(main.firebase_admin_setup, "get_db", return_value=fake_db),
+            patch.object(main.entitlements, "_effective_subscription_tier", return_value="creator"),
+            patch.object(main.billing, "_assert_topup_purchase_available"),
+            patch.object(main.billing, "_reserve_topup_order_slot", return_value="reservation-1"),
+        ):
+            for currency, amount in (("USD", 249), ("INR", 19900)):
+                with self.subTest(currency=currency):
+                    res = self.client.post("/api/create-order", json={
+                        "plan_id": "topup_creator",
+                        "id_token": "token-123",
+                        "currency": currency,
+                        "idempotency_key": f"topup-{currency}",
+                    })
+                    self.assertEqual(res.status_code, 200)
+                    self.assertEqual(calls[-1]["currency"], currency)
+                    self.assertEqual(calls[-1]["amount"], amount)
+                    self.assertEqual(calls[-1]["notes"]["topup_reservation_id"], "reservation-1")
+
+    @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "payment-user"})
+    def test_usd_request_for_a_plan_without_usd_price_is_charged_in_inr(self, _verify_token):
+        calls = []
+
+        class FakeOrderApi:
+            def create(self, data):
+                calls.append(data)
+                return {"id": "order_inr_only", **data}
+
+        inr_only_plan = {**main.settings.PLAN_PRICING["starter"]}
+        inr_only_plan.pop("usd_cents")
+        with (
+            patch.dict(main.settings.PLAN_PRICING, {"starter": inr_only_plan}),
+            patch.object(main.app_state, "rzp_client", SimpleNamespace(order=FakeOrderApi())),
+            patch.object(main.optional_deps, "RAZORPAY_AVAILABLE", True),
+        ):
+            res = self.client.post("/api/create-order", json={
+                "plan_id": "starter",
+                "id_token": "token-123",
+                "currency": "USD",
+                "idempotency_key": "inr-only-plan",
+            })
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(calls[0]["currency"], "INR")
+        self.assertEqual(calls[0]["amount"], inr_only_plan["inr_paise"])
 
     def test_api_version_contract(self):
         res = self.client.get("/api/version")

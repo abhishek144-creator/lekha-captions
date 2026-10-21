@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Check, Zap, Crown, Star, Loader2 } from 'lucide-react'
 import { createPageUrl } from '@/utils'
 import { useAuth } from '@/lib/AuthContext'
-import { auth } from '@/lib/firebase'
+import { loadFirebase } from '@/lib/firebaseLoader'
 import { toast } from '@/components/ui/use-toast'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
@@ -225,7 +225,7 @@ export default function PricingSection() {
   }, [])
 
   const handleSelectPlan = async (plan, requestedBilling = billing, requestedCurrency = billingCurrency) => {
-    const checkoutUser = currentUser || auth?.currentUser
+    const checkoutUser = currentUser || (await loadFirebase().catch(() => ({}))).auth?.currentUser
     if (!checkoutUser) {
       savePendingPurchase(plan.id, requestedBilling, requestedCurrency)
       toast({ variant: 'destructive', title: 'Sign up to continue', description: 'Create your account, then choose your plan.' })

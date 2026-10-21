@@ -266,7 +266,11 @@ class ScratchRecoveryTests(unittest.TestCase):
     def test_killed_child_orphan_is_removed_and_next_render_can_start(self):
         with tempfile.TemporaryDirectory() as directory:
             code = 'from backend.render_scratch import RenderScratch; import sys,time; s=RenderScratch(sys.argv[1]); print(s.path,flush=True); time.sleep(60)'
-            child = subprocess.Popen([sys.executable, "-c", code, directory], stdout=subprocess.PIPE, text=True)
+            # The child imports `backend`, so it needs the app root on its path
+            # whichever directory pytest was started from.
+            app_root = str(Path(__file__).resolve().parents[2])
+            env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [app_root, os.environ.get("PYTHONPATH")]))}
+            child = subprocess.Popen([sys.executable, "-c", code, directory], stdout=subprocess.PIPE, text=True, env=env)
             try:
                 path = Path(child.stdout.readline().strip())
                 self.assertTrue(path.is_dir())

@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.typecheck.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "strict": false
+  },
+  "include": [
+    "src/lib/**/*.js",
+    "src/lib/**/*.jsx",
+    "src/**/*.d.ts",
+    "shared/billingCurrency.js"
+  ],
+  "exclude": ["node_modules", "dist", "src/lib/__tests__"]
+}

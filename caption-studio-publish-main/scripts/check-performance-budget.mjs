@@ -78,6 +78,14 @@ if (cssGzipKb > maxCssGzipKb) failures.push(`CSS gzip budget exceeded: ${cssGzip
 if (totalGzipKb > maxTotalGzipKb) {
   failures.push(`Total gzip budget exceeded: ${totalGzipKb}KB > ${maxTotalGzipKb}KB`)
 }
+// Firebase and Razorpay checkout load on demand (src/lib/firebaseLoader.js,
+// the pricing components); public pages must paint without either.
+if ([...assetRefs].some((ref) => ref.includes("vendor-firebase"))) {
+  failures.push("index.html loads the Firebase chunk up front; import it through src/lib/firebaseLoader.js")
+}
+if (html.includes("checkout.razorpay.com")) {
+  failures.push("index.html loads the Razorpay checkout script up front; checkout loads it on demand")
+}
 
 console.log(
   `Performance budgets: raw JS ${jsKb}KB/${maxJsKb}KB, CSS ${cssKb}KB/${maxCssKb}KB, total ${totalKb}KB/${maxTotalKb}KB; ` +
