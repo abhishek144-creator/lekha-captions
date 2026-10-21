@@ -66,6 +66,30 @@ const FontRow = React.memo(({ data, index, style }) => {
 FontRow.displayName = 'FontRow';
 
 
+// Word offset field. A controlled number input turned the "-" typed before a
+// negative value into 0, so negative offsets could not be typed; the text is
+// kept as typed and committed whenever it parses to a whole number.
+function OffsetInput({ value, onCommit, ...props }) {
+  const [text, setText] = useState(String(value));
+  React.useEffect(() => { setText(String(value)); }, [value]);
+  return (
+    <input
+      {...props}
+      type="text"
+      inputMode="numeric"
+      value={text}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (!/^-?\d*$/.test(next)) return;
+        setText(next);
+        if (/^-?\d+$/.test(next)) onCommit(Math.max(-300, Math.min(300, parseInt(next, 10))));
+      }}
+      onBlur={() => setText(String(value))}
+      className="w-16 px-1.5 py-0.5 text-[10px] text-white bg-zinc-800 border border-white/10 rounded text-right"
+    />
+  );
+}
+
 const presetColors = [
   '#ffffff', '#000000', '#facc15', '#ef4444',
   '#3b82f6', '#F5A623', '#ec4899', '#22c55e'
@@ -97,7 +121,7 @@ const wordAnimations = [
   { value: 'tumble', label: 'Tumble' }
 ];
 
-export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord }) {
+export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange }) {
   const dragControls = useDragControls();
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
@@ -370,7 +394,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   aria-label="Word font size"
                   value={[currentStyle.fontSize || 18]}
                   onValueChange={([val]) => onStyleChange('fontSize', val)}
-                  onPointerDown={() => onHistoryRecord && onHistoryRecord()}
+                 
                   min={12}
                   max={60}
                   step={1}
@@ -471,21 +495,17 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   <div className="mb-2">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[10px] text-gray-400">Position X</span>
-                      <input
-                        type="number"
+                      <OffsetInput
+                        aria-label="Word horizontal offset"
                         value={Math.round(currentStyle.x || 0)}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
-                          onStyleChange('x', val);
-                        }}
-                        className="w-16 px-1.5 py-0.5 text-[10px] text-white bg-zinc-800 border border-white/10 rounded text-right"
+                        onCommit={(val) => onStyleChange('x', val)}
                       />
                     </div>
                     <Slider
                       aria-label="Word horizontal position"
                       value={[currentStyle.x || 0]}
                       onValueChange={([val]) => onStyleChange('x', Math.round(val), true)}
-                      onPointerDown={() => onHistoryRecord && onHistoryRecord()}
+                     
                       min={-300}
                       max={300}
                       step={1}
@@ -497,21 +517,17 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[10px] text-gray-400">Position Y</span>
-                      <input
-                        type="number"
+                      <OffsetInput
+                        aria-label="Word vertical offset"
                         value={Math.round(currentStyle.y || 0)}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
-                          onStyleChange('y', val);
-                        }}
-                        className="w-16 px-1.5 py-0.5 text-[10px] text-white bg-zinc-800 border border-white/10 rounded text-right"
+                        onCommit={(val) => onStyleChange('y', val)}
                       />
                     </div>
                     <Slider
                       aria-label="Word vertical position"
                       value={[currentStyle.y || 0]}
                       onValueChange={([val]) => onStyleChange('y', Math.round(val), true)}
-                      onPointerDown={() => onHistoryRecord && onHistoryRecord()}
+                     
                       min={-300}
                       max={300}
                       step={1}
@@ -625,7 +641,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         aria-label="Word background opacity"
                         value={[(currentStyle.backgroundOpacity ?? 0.65) * 100]}
                         onValueChange={([val]) => onStyleChange('backgroundOpacity', val / 100, true)}
-                        onPointerDown={() => onHistoryRecord && onHistoryRecord()}
+                       
                         min={0}
                         max={100}
                         step={5}
@@ -641,10 +657,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                       <Slider
                         aria-label="Word background padding"
                         value={[currentStyle.backgroundPadding || 2]}
-                        onValueChange={([val]) => {
-                          if (onHistoryRecord) onHistoryRecord();
-                          onStyleChange('backgroundPadding', val, false);
-                        }}
+                        onValueChange={([val]) => onStyleChange('backgroundPadding', val)}
                         min={2}
                         max={12}
                         step={1}
@@ -785,37 +798,37 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                         {['hollow', 'splice', 'outline'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Thickness</span><span className="text-[10px] text-gray-500">{currentStyle.effectThickness ?? 50}</span></div>
-                            <Slider aria-label="Word effect thickness" value={[currentStyle.effectThickness ?? 50]} onValueChange={([val]) => onStyleChange('effectThickness', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
+                            <Slider aria-label="Word effect thickness" value={[currentStyle.effectThickness ?? 50]} onValueChange={([val]) => onStyleChange('effectThickness', val)} max={100} step={1} />
                           </div>
                         )}
                         {['shadow', 'splice', 'echo', 'lift'].includes(currentStyle.effectType) && (
                           <>
                             <div>
                               <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Offset</span><span className="text-[10px] text-gray-500">{currentStyle.effectOffset ?? 50}</span></div>
-                              <Slider aria-label="Word effect offset" value={[currentStyle.effectOffset ?? 50]} onValueChange={([val]) => onStyleChange('effectOffset', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
+                              <Slider aria-label="Word effect offset" value={[currentStyle.effectOffset ?? 50]} onValueChange={([val]) => onStyleChange('effectOffset', val)} max={100} step={1} />
                             </div>
                             <div>
                               <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Direction</span><span className="text-[10px] text-gray-500">{currentStyle.effectDirection ?? -45}°</span></div>
-                              <Slider aria-label="Word effect direction" value={[currentStyle.effectDirection ?? -45]} onValueChange={([val]) => onStyleChange('effectDirection', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} min={-180} max={180} step={1} />
+                              <Slider aria-label="Word effect direction" value={[currentStyle.effectDirection ?? -45]} onValueChange={([val]) => onStyleChange('effectDirection', val)} min={-180} max={180} step={1} />
                             </div>
                           </>
                         )}
                         {['shadow', 'neon', 'lift'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Blur</span><span className="text-[10px] text-gray-500">{currentStyle.effectBlur ?? 50}</span></div>
-                            <Slider aria-label="Word effect blur" value={[currentStyle.effectBlur ?? 50]} onValueChange={([val]) => onStyleChange('effectBlur', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
+                            <Slider aria-label="Word effect blur" value={[currentStyle.effectBlur ?? 50]} onValueChange={([val]) => onStyleChange('effectBlur', val)} max={100} step={1} />
                           </div>
                         )}
                         {['shadow', 'echo'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Transparency</span><span className="text-[10px] text-gray-500">{currentStyle.effectTransparency ?? 40}</span></div>
-                            <Slider aria-label="Word effect transparency" value={[currentStyle.effectTransparency ?? 40]} onValueChange={([val]) => onStyleChange('effectTransparency', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
+                            <Slider aria-label="Word effect transparency" value={[currentStyle.effectTransparency ?? 40]} onValueChange={([val]) => onStyleChange('effectTransparency', val)} max={100} step={1} />
                           </div>
                         )}
                         {['neon'].includes(currentStyle.effectType) && (
                           <div>
                             <div className="flex justify-between mb-1"><span className="text-[10px] text-gray-400">Intensity</span><span className="text-[10px] text-gray-500">{currentStyle.effectIntensity ?? 50}</span></div>
-                            <Slider aria-label="Word effect intensity" value={[currentStyle.effectIntensity ?? 50]} onValueChange={([val]) => onStyleChange('effectIntensity', val)} onPointerDown={() => onHistoryRecord && onHistoryRecord()} max={100} step={1} />
+                            <Slider aria-label="Word effect intensity" value={[currentStyle.effectIntensity ?? 50]} onValueChange={([val]) => onStyleChange('effectIntensity', val)} max={100} step={1} />
                           </div>
                         )}
                         {!['lift'].includes(currentStyle.effectType) && (
@@ -879,7 +892,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                     aria-label="Word animation speed"
                     value={[currentStyle.animationSpeed || 1]}
                     onValueChange={([val]) => onStyleChange('animationSpeed', val)}
-                    onPointerDown={() => onHistoryRecord && onHistoryRecord()}
+                   
                     min={0.25}
                     max={3}
                     step={0.25}

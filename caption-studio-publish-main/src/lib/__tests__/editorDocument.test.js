@@ -3,6 +3,7 @@ import {
   defaultCaptionStyle,
   emptyEditorDocument,
   getLanguageDisplayName,
+  compactDraftForStorage,
   getLanguageIdentity,
   normalizeCaptionStyle,
   normalizeRestoredCaptionTrackState,
@@ -117,5 +118,57 @@ describe('language helpers', () => {
     expect(getLanguageDisplayName('')).toBe('Original')
     expect(getLanguageIdentity('en-US')).toBe(getLanguageIdentity('english'))
     expect(getLanguageIdentity('hi')).not.toBe(getLanguageIdentity('en'))
+  })
+})
+
+describe('compactDraftForStorage', () => {
+  const markup = '<div class="btcard">'.padEnd(3000, 'x') + '</div>'
+  const templated = (id) => caption(id, {
+    template_id: 't-106',
+    template_source: 'lekha-basic',
+    template_markup: markup,
+    applied_template_style: { template_id: 't-106', template_source: 'lekha-basic', template_markup: markup, font_family: 'Inter' },
+  })
+  const templatedDraft = () => {
+    const captions = [templated('a'), templated('b')]
+    return {
+      captions,
+      captionTracks: [{ id: 'source', label: 'Original', captions }],
+      activeCaptionTrackId: 'source',
+      captionStyle: { ...defaultCaptionStyle, template_id: 't-106', template_source: 'lekha-basic', template_snapshot: { template_id: 't-106', template_source: 'lekha-basic', template_markup: markup } },
+    }
+  }
+
+  it('stores the shared template markup once instead of on every caption', () => {
+    const draft = templatedDraft()
+    const compact = compactDraftForStorage(draft)
+    expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(draft).length / 3)
+    expect(compact.captions[0].template_markup).toBeUndefined()
+    expect(compact.captions[0].applied_template_style.template_markup).toBeUndefined()
+    expect(compact.captionTracks[0].captions[1].template_markup).toBeUndefined()
+    // The input is not modified.
+    expect(draft.captions[0].template_markup).toBe(markup)
+  })
+
+  it('restores the markup on every caption when the draft is opened', () => {
+    const restored = restoreEditorDocument(JSON.parse(JSON.stringify(compactDraftForStorage(templatedDraft()))))
+    for (const item of [...restored.captions, ...restored.captionTracks[0].captions]) {
+      expect(item.template_markup).toBe(markup)
+      expect(item.applied_template_style.template_markup).toBe(markup)
+      expect(item.template_markup_shared).toBeUndefined()
+      expect(item.applied_template_style.template_markup_shared).toBeUndefined()
+    }
+  })
+
+  it('keeps a caption markup that differs from the shared one', () => {
+    const draft = templatedDraft()
+    draft.captions[1] = { ...draft.captions[1], template_markup: '<div>own</div>' }
+    const restored = restoreEditorDocument(compactDraftForStorage(draft))
+    expect(restored.captions[1].template_markup).toBe('<div>own</div>')
+  })
+
+  it('leaves drafts without a template unchanged', () => {
+    const draft = { captions: [caption('a')], captionStyle: defaultCaptionStyle }
+    expect(compactDraftForStorage(draft)).toBe(draft)
   })
 })

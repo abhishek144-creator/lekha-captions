@@ -48,6 +48,7 @@ import {
   computeWordEffectCSS,
   getCaptionRevealWordIndex,
   getCaptionTemplateId,
+  splitCaptionWordTokens,
 } from './videoPlayerWordEditing.js';
 import {
   isAdvancedTemplateId,
@@ -355,10 +356,11 @@ export default function VideoPlayer({
 
   // Handle external seek signals (from CaptionEditor clicking a caption, etc.)
   // seekSignal is set by Dashboard.handleSeek → ensures video element moves too
+  // Each signal is a new { time } object, so repeating the same seek still runs.
   useEffect(() => {
-    if (videoRef.current && seekSignal !== null && seekSignal !== undefined) {
-      videoRef.current.currentTime = seekSignal;
-    }
+    if (!videoRef.current || seekSignal === null || seekSignal === undefined) return;
+    const time = Number(typeof seekSignal === 'object' ? seekSignal.time : seekSignal);
+    if (Number.isFinite(time)) videoRef.current.currentTime = time;
   }, [seekSignal]);
 
   // Listen for 'ready' message from template iframes and reply with the initial sync state
@@ -370,7 +372,11 @@ export default function VideoPlayer({
         const iframes = videoContainer.querySelectorAll('iframe');
         iframes.forEach((iframe) => {
           if (iframe.contentWindow === event.source) {
-            const activeCaption = getActiveCaptions().find(c => !c.isTextElement);
+            const activeCaption = (captions || []).find(c => (
+              c && !c.isTextElement
+              && typeof c.start_time === 'number' && typeof c.end_time === 'number'
+              && currentTime >= c.start_time && currentTime < c.end_time
+            ));
             iframe.contentWindow.postMessage({
               type: 'sync',
               currentTime,
@@ -814,7 +820,9 @@ export default function VideoPlayer({
     startClientY,
   }) => {
     if (setSelectedCaptionId) setSelectedCaptionId(caption.id);
-    handleWordMouseDown({
+    // Through a ref: the gesture handler is created later in this render and
+    // a captured copy went stale (old canvas size, old selected word).
+    handleWordMouseDownRef.current?.({
       preventDefault: () => event.preventDefault(),
       stopPropagation: () => event.stopPropagation(),
       clientX: startClientX ?? event.clientX,
@@ -822,7 +830,7 @@ export default function VideoPlayer({
       pointerId: event.pointerId,
       currentTarget: node,
     }, caption, wordIndex, false, false, 'source-template');
-  }, [captionStyle, setCaptions, setCaptionsRaw, setSelectedCaptionId]);
+  }, [setSelectedCaptionId]);
 
   const activeCaptions = getActiveCaptions();
   const activeTextElements = getActiveTextElements();
@@ -1171,7 +1179,7 @@ export default function VideoPlayer({
 
   const detachedCaptionWordOverlays = activeCaptions.flatMap((caption) => {
     if (isRecreatedAdvancedTemplateId(getCaptionTemplateId(caption, captionStyle))) return [];
-    const words = caption.text.split(' ');
+    const words = splitCaptionWordTokens(caption.text).map((token) => token.word);
     const wordCount = words.length;
     const currentIdx = getCaptionCurrentWordIndex(caption, wordCount);
 
@@ -1310,7 +1318,7 @@ export default function VideoPlayer({
     const ws = liveCaption.wordStyles?.[styleKey] || {};
     if (!isWordDetached(ws)) return null;
 
-    const words = (liveCaption.text || '').split(' ');
+    const words = splitCaptionWordTokens(liveCaption.text).map((token) => token.word);
     const renderOffset = getWordRenderOffset(ws);
     return {
       caption: liveCaption,
@@ -1328,7 +1336,7 @@ export default function VideoPlayer({
   })();
 
   // Handle individual word OR element word style updates
-  const { isEditing, setIsEditing, editText, setEditText, handleCaptionDoubleClick, handleEditComplete, handleEditKeyDown, handleEditInput } = useCanvasTextEditing({
+  const { isEditing, setIsEditing, editInitialText, setEditText, handleCaptionDoubleClick, handleEditComplete, handleEditKeyDown, handleEditInput } = useCanvasTextEditing({
     setCaptions,
     inputRef,
   })
@@ -1350,6 +1358,7 @@ export default function VideoPlayer({
     };
   };
 
+  const handleWordMouseDownRef = useRef(null);
   const { handleWordMouseDown, handleDetachedWordResizeStart, handleDetachedWordRotateStart, handleSelectedDetachedWordDelete } = useWordGestures({
     selectedDetachedWord,
     setDraggingWord,
@@ -1373,6 +1382,7 @@ export default function VideoPlayer({
     setCptWordGuides,
     lastDragDropTime,
   })
+  handleWordMouseDownRef.current = handleWordMouseDown;
 
   const { isDragging, draggedElementId, resizedElementId, isResizing, handleMouseDown, handleResizeMouseDown, handleTextElementMouseDown, handleTextElementResizeDown, handleTextElementRotateStart } = useCanvasTransforms({
     setCaptionStyle,
@@ -2165,7 +2175,7 @@ export default function VideoPlayer({
                         minHeight: '60px'
                       }}
                     >
-                      {editText}
+                      {editInitialText}
                     </div>
                   ) : isSidebarTemplate ? (
                     renderAppliedSidebarTemplateCaption(caption, templateCaptionIndex)
@@ -2257,9 +2267,10 @@ export default function VideoPlayer({
                           );
                         }
 
-                        const words = isBasicSourceTemplate
-                          ? basicTemplateWords
-                          : caption.text.split(' ');
+                        const wordTokens = isBasicSourceTemplate
+                          ? basicTemplateWords.map((word) => ({ word, lineBreakAfter: false }))
+                          : splitCaptionWordTokens(caption.text);
+                        const words = wordTokens.map((token) => token.word);
                         const wordCount = words.length;
                         const isAdvancedTemplate = isAdvancedTemplateId(activeCaptionTemplateId);
                         // Compute which word index is currently being spoken
@@ -2382,7 +2393,7 @@ export default function VideoPlayer({
                           );
                           const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
 
-                          return (
+                          const wordSpan = (
                             <span
                               key={`${wordIndex}-${isBasicSourceTemplate ? basicTemplateCurrentIdx : 'static'}`}
                               data-word-key={detached ? undefined : `${caption.id}-${wordIndex}`}
@@ -2426,9 +2437,12 @@ export default function VideoPlayer({
                               >
                                 {renderWordTextContent(word, wordStyle, 'inherit')}
                               </span>
-                              {wordIndex < arr.length - 1 ? ' ' : ''}
+                              {wordIndex < arr.length - 1 && !wordTokens[wordIndex]?.lineBreakAfter ? ' ' : ''}
                             </span>
                           );
+                          return wordTokens[wordIndex]?.lineBreakAfter
+                            ? <React.Fragment key={`${wordIndex}-break`}>{wordSpan}<br /></React.Fragment>
+                            : wordSpan;
                         });
 
                         return isAdvancedTemplate ? (
@@ -2498,7 +2512,8 @@ export default function VideoPlayer({
                     >
                       {(() => {
                         const sidebarTemplateActive = hasSidebarTemplateStyle(captionStyle);
-                        const sidebarWords = caption.text.split(' ');
+                        const sidebarWordTokens = splitCaptionWordTokens(caption.text);
+                        const sidebarWords = sidebarWordTokens.map((token) => token.word);
                         const sidebarCurrentIdx = getCaptionCurrentWordIndex(caption, sidebarWords.length);
                         const sidebarAccent = captionStyle?.secondary_color || '#DDAA03';
 
@@ -2528,8 +2543,11 @@ export default function VideoPlayer({
                           fontStyle: ws.fontStyle || 'inherit',
                           textTransform: ws.textTransform || undefined,
                         }
+                        const withLineBreak = (node) => (sidebarWordTokens[wordIndex]?.lineBreakAfter
+                          ? <React.Fragment key={`${wordIndex}-break`}>{node}<br /></React.Fragment>
+                          : node);
                         if (detached) {
-                          return (
+                          return withLineBreak(
                             <span
                               key={wordIndex}
                               aria-hidden="true"
@@ -2692,7 +2710,7 @@ export default function VideoPlayer({
                           </span>
                         );
 
-                        return wordNode;
+                        return withLineBreak(wordNode);
                       });
                       })()}
                     </span>
@@ -2725,7 +2743,7 @@ export default function VideoPlayer({
             handleEditInput={handleEditInput}
             handleEditComplete={handleEditComplete}
             handleEditKeyDown={handleEditKeyDown}
-            editText={editText}
+            editText={editInitialText}
             getWordRenderOffset={getWordRenderOffset}
             draggingWord={draggingWord}
             handleWordMouseDown={handleWordMouseDown}

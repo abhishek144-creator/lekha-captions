@@ -88,3 +88,43 @@ describe('useEditorHistory', () => {
     expect(text(result)).toBe('second')
   })
 })
+
+describe('useEditorHistory with templates', () => {
+  const markup = '<div class="btcard">'.padEnd(2000, 'x') + '</div>'
+  const useTemplatedEditor = () => {
+    const [captions, setCaptions] = useState([{ id: '1', text: 'first', template_markup: markup, applied_template_style: { template_markup: markup } }])
+    const [captionStyle, setCaptionStyle] = useState({ template_markup: markup, template_snapshot: { template_markup: markup } })
+    const history = useEditorHistory({ captions, captionStyle, setCaptions, setCaptionStyle })
+    return { captions, captionStyle, ...history }
+  }
+
+  it('restores template markup on undo and applies functional updates', () => {
+    const { result } = renderHook(useTemplatedEditor)
+    act(() => result.current.pushHistory((previous) => previous.map((item) => ({ ...item, text: 'second' }))))
+    expect(text(result)).toBe('second')
+    act(() => result.current.undo())
+    expect(text(result)).toBe('first')
+    expect(result.current.captions[0].template_markup).toBe(markup)
+    expect(result.current.captions[0].applied_template_style.template_markup).toBe(markup)
+    expect(result.current.captions[0].template_markup_shared).toBeUndefined()
+  })
+
+  it('keeps the same function identities across renders', () => {
+    const { result, rerender } = renderHook(useTemplatedEditor)
+    const { pushHistory, undo, redo } = result.current
+    act(() => result.current.pushHistory([{ id: '1', text: 'x' }]))
+    rerender()
+    expect(result.current.pushHistory).toBe(pushHistory)
+    expect(result.current.undo).toBe(undo)
+    expect(result.current.redo).toBe(redo)
+  })
+
+  it('a coalesced edit right after undo is still its own undo step', () => {
+    const { result } = renderHook(useEditor)
+    edit(result, 'second', { coalesce: true })
+    act(() => result.current.undo())
+    edit(result, 'again', { coalesce: true })
+    act(() => result.current.undo())
+    expect(text(result)).toBe('first')
+  })
+})

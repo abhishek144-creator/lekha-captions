@@ -27,10 +27,10 @@ describe('EditorEmptyState', () => {
     expect(handlers.applyLocalDraft).toHaveBeenCalledWith(recoveryDraft)
   })
 
-  it('starting a new upload discards the browser draft first', () => {
+  it('opening the upload window keeps the browser draft until an upload is accepted', () => {
     const handlers = renderEmptyState({ localRecoveryDraft: recoveryDraft })
     fireEvent.click(screen.getByRole('button', { name: /Upload Video/ }))
-    expect(handlers.discardLocalDraft).toHaveBeenCalledTimes(1)
+    expect(handlers.discardLocalDraft).not.toHaveBeenCalled()
     expect(handlers.handleUploadModalOpen).toHaveBeenCalledTimes(1)
   })
 

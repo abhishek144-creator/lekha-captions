@@ -149,10 +149,74 @@ export const emptyEditorDocument = () => ({
   settings: defaultEditorSettings(),
 })
 
+// Applying a template copies its authored markup (several KB) onto every
+// caption twice: `template_markup` and `applied_template_style.template_markup`.
+// Saved drafts store it once, in the style snapshot, and mark each caption
+// that shares it; without this a one-minute templated project exceeded the
+// account save limit. Captions whose markup differs keep their own copy.
+const sharedTemplateMarkup = (captionStyle) => (
+  captionStyle?.template_snapshot?.template_markup || captionStyle?.template_markup || ''
+)
+
+const compactCaptionMarkup = (caption, markup) => {
+  if (!markup || !caption || typeof caption !== 'object' || caption.isTextElement) return caption
+  let next = caption
+  if (caption.template_markup === markup) {
+    next = { ...next, template_markup_shared: true }
+    delete next.template_markup
+  }
+  const applied = caption.applied_template_style
+  if (applied && typeof applied === 'object' && applied.template_markup === markup) {
+    const { template_markup: _markup, ...rest } = applied
+    next = { ...next, applied_template_style: { ...rest, template_markup_shared: true } }
+  }
+  return next
+}
+
+const expandCaptionMarkup = (caption, markup) => {
+  if (!caption || typeof caption !== 'object') return caption
+  let next = caption
+  if (caption.template_markup_shared) {
+    const { template_markup_shared: _shared, ...rest } = caption
+    next = markup ? { ...rest, template_markup: markup } : rest
+  }
+  const applied = next.applied_template_style
+  if (applied && typeof applied === 'object' && applied.template_markup_shared) {
+    const { template_markup_shared: _shared, ...rest } = applied
+    next = { ...next, applied_template_style: markup ? { ...rest, template_markup: markup } : rest }
+  }
+  return next
+}
+
+const mapDraftCaptions = (draft, mapCaption) => ({
+  ...draft,
+  captions: Array.isArray(draft.captions) ? draft.captions.map(mapCaption) : draft.captions,
+  captionTracks: Array.isArray(draft.captionTracks)
+    ? draft.captionTracks.map((track) => (
+      track && Array.isArray(track.captions) ? { ...track, captions: track.captions.map(mapCaption) } : track
+    ))
+    : draft.captionTracks,
+})
+
+// For browser and account storage only; restoreEditorDocument expands it.
+export const compactDraftForStorage = (draft) => {
+  if (!draft || typeof draft !== 'object') return draft
+  const markup = sharedTemplateMarkup(draft.captionStyle)
+  if (!markup) return draft
+  return mapDraftCaptions(draft, (caption) => compactCaptionMarkup(caption, markup))
+}
+
+export const expandStoredDraft = (draft) => {
+  if (!draft || typeof draft !== 'object') return draft
+  const markup = sharedTemplateMarkup(draft.captionStyle)
+  return mapDraftCaptions(draft, (caption) => expandCaptionMarkup(caption, markup))
+}
+
 // Normalizes a saved draft (browser, account or reset point) into a complete,
 // deep-copied editor document. Removed template sets and duplicate or invalid
 // language tracks are dropped so the restored editor renders what was saved.
-export const restoreEditorDocument = (draft = {}) => {
+export const restoreEditorDocument = (storedDraft = {}) => {
+  const draft = expandStoredDraft(storedDraft || {})
   const restoredCaptions = (draft.captions || []).map(sanitizeRestoredCaption)
   const trackState = normalizeRestoredCaptionTrackState(
     draft.captionTracks,

@@ -14,6 +14,8 @@ const memoryStorage = () => {
     setItem: (key, value) => { items.set(key, String(value)) },
     removeItem: (key) => { items.delete(key) },
     keys: () => [...items.keys()],
+    get length() { return items.size },
+    key: (index) => [...items.keys()][index] ?? null,
   }
 }
 
@@ -70,5 +72,19 @@ describe('local draft storage', () => {
     expect(readLocalDraft('alice', storage)).toBeNull()
     // The shared legacy key belongs to bob (last writer) and must survive.
     expect(readLocalDraft('bob', storage)).toMatchObject({ projectId: 'bob-project' })
+  })
+
+  it('drops older projects\' copies so they cannot fill browser storage', () => {
+    const storage = memoryStorage()
+    writeLocalDraft('alice', { ...draft, projectId: 'old-project' }, storage)
+    writeLocalDraft('bob', { ...draft, projectId: 'bob-project' }, storage)
+    writeLocalDraft('alice', draft, storage)
+    expect(storage.keys().sort()).toEqual([
+      'captionEditorState',
+      localDraftKey('alice'),
+      localDraftKey('alice', 'project-1'),
+      localDraftKey('bob'),
+      localDraftKey('bob', 'bob-project'),
+    ].sort())
   })
 })

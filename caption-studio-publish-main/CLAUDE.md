@@ -129,6 +129,12 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 | Glow on all words (Layer 0) | processor.py `_create_styled_ass` | `needs_per_word_glow` flag: suppresses `global_eff` on Layer 0; per-word glow only on Layer 2 active word |
 | t-9/t-12 lost glow | processor.py `needs_per_word_glow` | Added `secondary != primary` check — same-color templates use global Layer-0 glow |
 | Text element backgrounds in ASS | processor.py `_create_styled_ass` | Second ASS Style `TextBg` with `BorderStyle=3` in header; text elements reference it when `has_background=True` |
+| Upload New overwrote the previous cloud project | Dashboard.jsx handleUpload | A new project ID, empty captions and the new video are committed together when the upload is accepted; autosave pauses while transcription has no captions |
+| Shared `current` project → false 409, autosave off | useCloudProjects.js saveCloudDraft | A draft without a project ID gets a client `local_*` ID; never send an empty `project_id` |
+| Templated drafts over the 450 KB save limit | editorDocument.js compactDraftForStorage | Saved drafts and undo snapshots keep the shared template markup once; `restoreEditorDocument` expands it |
+| Word index drift after newline/double space | VideoPlayer.jsx | Split caption words with `splitCaptionWordTokens` (any whitespace), never `split(' ')` |
+| Same-time seek ignored | Dashboard.jsx handleSeek | `seekSignal` is a new `{ time }` object per seek |
+| Word popup font list closed the popup | Dashboard.jsx outside-click handler | Portaled Radix content (`[data-radix-popper-content-wrapper]`) and `data-editor-panel` areas keep the popup open |
 
 ---
 

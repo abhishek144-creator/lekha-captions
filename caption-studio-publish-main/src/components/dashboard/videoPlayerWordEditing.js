@@ -4,6 +4,26 @@ import {
 } from './basicTemplateInline.js';
 import { getCaptionWordRevealIndex } from './cptMotion.js';
 
+// The words of a caption, indexed exactly as word styles, the word editor and
+// the export renderers index them: split on any whitespace. `lineBreakAfter`
+// keeps typed line breaks visible without making them part of a word (a
+// single-space split shifted every later word's index after a newline or a
+// double space, so styles and drags landed on the wrong word).
+export function splitCaptionWordTokens(text) {
+  const source = String(text ?? '')
+  const tokens = []
+  const matcher = /\S+/g
+  let match = matcher.exec(source)
+  while (match) {
+    const end = match.index + match[0].length
+    const next = matcher.exec(source)
+    const gap = source.slice(end, next ? next.index : end)
+    tokens.push({ word: match[0], lineBreakAfter: Boolean(next) && gap.includes('\n') })
+    match = next
+  }
+  return tokens
+}
+
 export function getCaptionTemplateId(caption, fallbackStyle = {}) {
   return String(
     caption?.template_id

@@ -69,6 +69,9 @@ export default [
         { ignore: ["cmdk-input-wrapper", "toast-close"] },
       ],
       "react-hooks/rules-of-hooks": "error",
+      // Missing effect dependencies caused stale snapshots in editor drags;
+      // reported (not fatal, `npm run lint` is --quiet) so new ones are seen.
+      "react-hooks/exhaustive-deps": "warn",
     },
   },
 ];

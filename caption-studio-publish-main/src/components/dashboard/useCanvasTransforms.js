@@ -1,6 +1,13 @@
 import { useDocumentGesture } from './useDocumentGesture'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+
+// A press becomes a move/resize only after this much movement, so a click
+// that selects a caption or text box never records an undo step or snaps it.
+const GESTURE_START_THRESHOLD_PX = 3
+const movedPastThreshold = (e, start) => (
+  Math.hypot(e.clientX - start.x, e.clientY - start.y) >= GESTURE_START_THRESHOLD_PX
+)
 
 export function useCanvasTransforms({
   setCaptionStyle,
@@ -18,6 +25,18 @@ export function useCanvasTransforms({
   previewRenderScale,
 }) {
   const startGesture = useDocumentGesture()
+  // History is recorded once, when a press first moves past the threshold.
+  // A ref survives the effect re-subscribing while the drag updates captions.
+  const gestureStartedRef = useRef(false)
+  const addToHistoryRef = useRef(addToHistory)
+  addToHistoryRef.current = addToHistory
+  const beginGestureOnce = (e, start) => {
+    if (gestureStartedRef.current) return true
+    if (!movedPastThreshold(e, start)) return false
+    gestureStartedRef.current = true
+    addToHistoryRef.current?.()
+    return true
+  }
   const getViewportScale = useCallback(() => {
     const frame = videoContainerRef.current || videoRef.current?.parentElement
     return frame?.offsetWidth ? frame.getBoundingClientRect().width / frame.offsetWidth : 1
@@ -50,7 +69,7 @@ export function useCanvasTransforms({
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture?.(e.pointerId)
-    if (addToHistory) addToHistory()
+    gestureStartedRef.current = false
     setIsDragging(true)
     setDragStartY(e.clientY)
     setDragStartPos(captionStyle?.position_y !== undefined ? captionStyle.position_y : 50)
@@ -72,7 +91,7 @@ export function useCanvasTransforms({
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture?.(e.pointerId)
-    if (addToHistory) addToHistory()
+    gestureStartedRef.current = false
     setDraggedElementId(elementId)
     setElementDragStart({
       x: e.clientX,
@@ -86,7 +105,7 @@ export function useCanvasTransforms({
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture?.(e.pointerId)
-    if (addToHistory) addToHistory()
+    gestureStartedRef.current = false
     setResizedElementId(elementId)
     const measuredWidth = currentStyle.width || 300
     setElementResizeStart({
@@ -146,7 +165,7 @@ export function useCanvasTransforms({
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture?.(e.pointerId)
-    if (addToHistory) addToHistory()
+    gestureStartedRef.current = false
     const measuredWidth = captionStyle?.boxWidth || 300
     setIsResizing(true)
     setResizeStartX(e.clientX)
@@ -185,7 +204,7 @@ export function useCanvasTransforms({
 
     const handleMouseMove = (e) => {
       // 1. Handle Caption Full Drag (X and Y)
-      if (isDragging) {
+      if (isDragging && beginGestureOnce(e, { x: dragStartX, y: dragStartY })) {
         const videoContainer = captionRef.current?.parentElement
         if (!videoContainer) return
 
@@ -229,7 +248,7 @@ export function useCanvasTransforms({
       }
 
       // 3. Handle Text Element Drag
-      if (draggedElementId && setCaptions) {
+      if (draggedElementId && setCaptions && beginGestureOnce(e, elementDragStart)) {
         const videoContainer = videoRef.current?.parentElement
         if (!videoContainer) return
 
@@ -270,7 +289,7 @@ export function useCanvasTransforms({
       }
 
       // 4. Handle Text Element Resize
-      if (resizedElementId && setCaptions) {
+      if (resizedElementId && setCaptions && beginGestureOnce(e, elementResizeStart)) {
         const deltaX = e.clientX - elementResizeStart.x
         const deltaY = e.clientY - elementResizeStart.y
         const resizeDelta = (() => {
@@ -328,25 +347,24 @@ export function useCanvasTransforms({
       setSnapGuides({ hLines: [], vLines: [] }); // clear guides
     }
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
+    // Pointer events cover mouse, pen and touch; also listening to mouse
+    // events ran every handler twice.
     document.addEventListener('pointermove', handleMouseMove, { passive: false })
     document.addEventListener('pointerup', handleMouseUp)
     document.addEventListener('pointercancel', handleMouseUp)
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
       document.removeEventListener('pointermove', handleMouseMove)
       document.removeEventListener('pointerup', handleMouseUp)
       document.removeEventListener('pointercancel', handleMouseUp)
     }
-  }, [isDragging, dragStartY, dragStartPos, dragStartX, dragStartXPos, captions, setCaptionStyleRaw, setCaptionsRaw, setCaptionStyle, setCaptions, draggedElementId, resizedElementId, elementDragStart, elementResizeStart, previewRenderScale, getViewportScale])
+  }, [isDragging, dragStartY, dragStartPos, dragStartX, dragStartXPos, captions, captionRef, videoRef, setSnapGuides, setCaptionStyleRaw, setCaptionsRaw, setCaptionStyle, setCaptions, draggedElementId, resizedElementId, elementDragStart, elementResizeStart, previewRenderScale, getViewportScale])
 
   useEffect(() => {
     if (!isResizing || !setCaptionStyle) return
 
     const handleMouseMove = (e) => {
+      if (!beginGestureOnce(e, { x: resizeStartX, y: resizeStartY })) return
       const deltaX = e.clientX - resizeStartX
       const deltaY = e.clientY - resizeStartY
       const resizeDelta = (() => {
@@ -396,15 +414,13 @@ export function useCanvasTransforms({
       setIsResizing(false)
     }
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
+    // Pointer events cover mouse, pen and touch; also listening to mouse
+    // events ran every handler twice.
     document.addEventListener('pointermove', handleMouseMove, { passive: false })
     document.addEventListener('pointerup', handleMouseUp)
     document.addEventListener('pointercancel', handleMouseUp)
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
       document.removeEventListener('pointermove', handleMouseMove)
       document.removeEventListener('pointerup', handleMouseUp)
       document.removeEventListener('pointercancel', handleMouseUp)

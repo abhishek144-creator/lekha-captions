@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Sparkles, Captions, Clock3, Layers, Layout, SlidersHorizontal, Type } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -230,6 +230,11 @@ export default function Dashboard() {
   // Desktop shows the side panels; phones and tablets get the bottom dock.
   // Mount only one of them so panels are not rendered twice (once hidden).
   const isDesktopLayout = useMediaQuery(DESKTOP_EDITOR_QUERY);
+  // Style and Timeline are dock-only tabs; the desktop side panel has no view
+  // for them, so rotating a tablet to landscape returns to Captions.
+  useEffect(() => {
+    if (isDesktopLayout && (activeTab === 'style' || activeTab === 'timeline')) setActiveTab('captions');
+  }, [activeTab, isDesktopLayout]);
   // Mobile dock: whether the active tool's sheet is open. Closed by default
   // so phones open on a large preview.
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
@@ -240,16 +245,17 @@ export default function Dashboard() {
 
   // A word remains the current animation target while its floating editor is
   // open, including after it has been dragged to a custom canvas position.
-  const selectedWordForAnimation = wordPopup ? {
+  const selectedWordForAnimation = useMemo(() => (wordPopup ? {
     type: wordPopup.type,
     captionId: wordPopupTargetId(wordPopup),
     wordIndex: wordPopup.wordIndex,
     word: wordPopup.word,
-  } : null;
+  } : null), [wordPopup]);
 
   // Waveform data for timeline
   const [waveformData, setWaveformData] = useState(null);
   const mediaRefreshInFlightRef = useRef(false);
+  const lastMediaRefreshRef = useRef({ fileId: null, at: 0, reported: false });
   // The preview <video>, for the mobile dock's live scrubbing.
   const previewVideoElRef = useRef(null);
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
@@ -305,6 +311,7 @@ export default function Dashboard() {
     setIsLoaded,
     setSourceUnavailable,
     onEditorReset: resetEditorUi,
+    pauseAutosave: isGenerating && captions.length === 0,
   })
 
   useEffect(() => {
@@ -322,7 +329,7 @@ export default function Dashboard() {
     return () => window.clearTimeout(timer)
   }, [showCaptionRetryNotice])
 
-  const selectCaptionTrack = (trackId) => {
+  const selectCaptionTrack = useCallback((trackId) => {
     const track = captionTracks.find((item) => item.id === trackId)
     if (!track) return
     setActiveCaptionTrackId(track.id)
@@ -330,7 +337,7 @@ export default function Dashboard() {
     setSelectedCaptionId(null)
     setWordPopup(null)
     resetHistory()
-  }
+  }, [captionTracks, resetHistory, setActiveCaptionTrackId, setCaptions])
 
   useEffect(() => {
     if (!videoUrl) setWordPopup(null);
@@ -363,12 +370,18 @@ export default function Dashboard() {
       const target = event.target;
       if (!(target instanceof Element)) return;
 
+      // Dropdowns opened from the popup (the font list) render in a portal
+      // outside it; the editor panels and dock act on the selected word.
       if (
         target.closest('.lekha-video-frame')
         || target.closest('[data-caption-editor="true"]')
         || target.closest('[data-caption-editor-nav="true"]')
         || target.closest('[data-selected-word-box="true"]')
         || target.closest('[data-word-popup-panel="true"]')
+        || target.closest('[data-radix-popper-content-wrapper]')
+        || target.closest('[data-editor-panel="true"]')
+        || target.closest('[data-style-panel="true"]')
+        || target.closest('[data-mobile-dock="true"]')
         || target.closest('[data-video-control]')
       ) {
         return;
@@ -394,6 +407,7 @@ export default function Dashboard() {
 
       if (
         target.closest('[data-style-panel="true"]')
+        || target.closest('[data-editor-panel="true"]')
         || target.closest('[data-mobile-dock="true"]')
         || target.closest('[data-radix-popper-content-wrapper]')
         || target.closest('[data-caption-layer="true"]')
@@ -421,7 +435,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  const handleUpload = async (file, uploadSettingsWithTask) => {
+  const handleUpload = async (file, uploadSettingsWithTask, { isRetry = false } = {}) => {
     if (!currentUser) {
       navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`);
       return;
@@ -432,22 +446,17 @@ export default function Dashboard() {
     setWordPopup(null);
     setIsUploading(true);
     setUploadProgress(uploadTask?.progress || null);
-    setSettings(uploadSettings);
     setIsUploadModalOpen(false);
     setIsGenerating(true);
-    // The previous video's waveform must not stay on the new timeline.
-    setWaveformData(null);
-    resetHistory();
-    setCaptionTracks([]);
-    setActiveCaptionTrackId('source');
     setTranslationNotice('');
-    setCloudSaveConflict(false);
-    resetPointRef.current = null;
+    // The open project is left untouched until the new upload is accepted, so
+    // a refused or failed upload never clears it.
     const generationStart = Date.now();
     setGenerationStartedAt(generationStart);
     const selectedFileName = file?.name || originalFileName || 'video';
     let acceptedUpload = null;
     let acceptedPlayableVideoUrl = '';
+    let newProjectId = null;
     let captionsReady = false;
 
     try {
@@ -503,6 +512,26 @@ export default function Dashboard() {
       // If the connection changes or transcription is temporarily unavailable,
       // the editor still opens with the user's video instead of discarding it
       // and returning to Start Creating Captions.
+      newProjectId = isRetry ? null : `local_${Date.now()}`;
+      // The upload starts a new project here, in one step: keeping the old
+      // project ID (or captions) while the new video was attached let autosave
+      // overwrite the previous project with the new video.
+      if (newProjectId) {
+        setProjectId(newProjectId);
+        setCaptions([]);
+        setCaptionTracks([]);
+        setActiveCaptionTrackId('source');
+        setDuration(0);
+        resetHistory();
+        resetPointRef.current = null;
+        if (localRecoveryDraft) discardLocalDraft();
+      }
+      setSettings(uploadSettings);
+      setCloudSaveConflict(false);
+      // The previous video's waveform and playhead must not carry over.
+      setWaveformData(null);
+      setCurrentTime(0);
+      setSeekSignal(null);
       setSourceUnavailable(false)
       setVideoUrl(acceptedPlayableVideoUrl);
       setFileId(uploadData.file_id);
@@ -590,7 +619,7 @@ export default function Dashboard() {
       setCaptionStyle(nextCaptionStyle);
       captionsReady = true;
 
-      const nextProjectId = `local_${Date.now()}`;
+      const nextProjectId = newProjectId || projectId || `local_${Date.now()}`;
       setProjectId(nextProjectId);
       resetPointRef.current = restoreEditorDocument({
         videoUrl: acceptedPlayableVideoUrl,
@@ -612,16 +641,13 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Upload failed:', error);
       const uploadWasAccepted = Boolean(acceptedUpload?.file_id && acceptedPlayableVideoUrl);
-      setVideoUrl(uploadWasAccepted ? acceptedPlayableVideoUrl : '');
-      setFileId(uploadWasAccepted ? acceptedUpload.file_id : null);
-      setOriginalFileName(uploadWasAccepted ? selectedFileName : '');
-      setCaptions([]);
-      setCaptionTracks([]);
-      setActiveCaptionTrackId('source');
-      setProjectId(uploadWasAccepted ? `local_${Date.now()}` : null);
-      setDuration(0);
-      setCurrentTime(0);
-      setWaveformData(null);
+      if (uploadWasAccepted) {
+        // The video is kept in the editor (already committed above) so
+        // transcription can be retried without another upload.
+        setCaptions([]);
+        setCaptionTracks([]);
+        setActiveCaptionTrackId('source');
+      }
       setShowCaptionRetryNotice(uploadWasAccepted);
       trackAnalytics('funnel.upload.failed', getClientContext({
         stage: uploadWasAccepted ? 'transcription' : 'upload',
@@ -674,7 +700,7 @@ export default function Dashboard() {
       ...(settings || {}),
       preUploadedFileId: fileId,
       preUploadedRawUrl: videoUrl,
-    });
+    }, { isRetry: true });
   };
 
   const handleSave = async () => {
@@ -686,16 +712,18 @@ export default function Dashboard() {
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
-  const handleSeek = (time) => {
+  // Each seek is a new object so seeking to the same time twice (clicking the
+  // same caption again after playback moved on) still moves the video.
+  const handleSeek = useCallback((time) => {
     setCurrentTime(time);
-    setSeekSignal(time);
-  };
+    setSeekSignal({ time: Number(time) || 0 });
+  }, []);
 
-  const handlePlayCaption = (caption) => {
+  const handlePlayCaption = useCallback((caption) => {
     const startTime = Number(caption?.start_time || 0);
     handleSeek(startTime);
     setIsPlaying(true);
-  };
+  }, [handleSeek]);
 
   const relinkSource = async (file) => {
     if (!file || isRelinking) return
@@ -719,6 +747,18 @@ export default function Dashboard() {
   const playbackUrl = localPlayback && localPlayback.fileId === fileId ? localPlayback.url : videoUrl;
   const refreshVideoPlaybackUrl = useCallback(async (event) => {
     if (!fileId || mediaRefreshInFlightRef.current) return;
+    // A fresh link is requested at most once a minute per video. Every refresh
+    // returns a new signed URL, so a video this browser cannot decode (e.g.
+    // HEVC) otherwise errored and refreshed in an endless loop.
+    const lastRefresh = lastMediaRefreshRef.current;
+    if (lastRefresh.fileId === fileId && Date.now() - lastRefresh.at < 60000) {
+      if (!lastRefresh.reported) {
+        lastMediaRefreshRef.current = { ...lastRefresh, reported: true };
+        setCloudSaveMessage('This browser cannot play this video. Captions can still be edited, saved and exported.');
+      }
+      return;
+    }
+    lastMediaRefreshRef.current = { fileId, at: Date.now(), reported: false };
 
     const videoEl = event?.currentTarget || event?.target || null;
     const resumeAt = Number(videoEl?.currentTime || currentTime || 0);
@@ -745,7 +785,7 @@ export default function Dashboard() {
       if (data?.success && refreshedVideoUrl && refreshedVideoUrl !== videoUrl) {
         setVideoUrl(refreshedVideoUrl);
         setCurrentTime(resumeAt);
-        setSeekSignal(resumeAt);
+        setSeekSignal({ time: resumeAt });
         if (shouldResume) setIsPlaying(true);
       }
     } catch (error) {
@@ -754,7 +794,7 @@ export default function Dashboard() {
     } finally {
       mediaRefreshInFlightRef.current = false;
     }
-  }, [currentTime, currentUser, fileId, isPlaying, setVideoUrl, videoUrl]);
+  }, [currentTime, currentUser, fileId, isPlaying, setCloudSaveMessage, setVideoUrl, videoUrl]);
 
   const handleVideoError = (event) => {
     // If the device copy cannot play, fall back to the storage link.
@@ -765,16 +805,18 @@ export default function Dashboard() {
     refreshVideoPlaybackUrl(event);
   };
 
-  const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
-  const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle);
-  const addToHistory = () => pushHistory(undefined, undefined);
+  // Stable, so memoized panels do not re-render on every playback tick.
+  const updateCaptions = useCallback((newCaptions, options) => pushHistory(newCaptions, undefined, options), [pushHistory]);
+  const updateCaptionStyle = useCallback((newStyle) => pushHistory(undefined, newStyle), [pushHistory]);
+  const addToHistory = useCallback(() => pushHistory(undefined, undefined), [pushHistory]);
 
-  // Word popup edits use raw setCaptions: history is recorded separately via
-  // onHistoryRecord (pointer-down on sliders). Recording here captured stale
-  // closure snapshots and corrupted other words.
+  // Every word popup edit is undoable. The change is applied with a functional
+  // update (so it never rewrites other words from a stale copy) and recorded
+  // as a coalesced history step: one control click that sets several fields,
+  // or one slider drag, is a single undo step.
   const handleWordStyleChange = (key, value) => {
     if (!wordPopup) return;
-    setCaptions(prev => updatePopupWordStyle(prev, wordPopup, (style) => applyWordStyleChange(style, key, value)));
+    pushHistory(prev => updatePopupWordStyle(prev, wordPopup, (style) => applyWordStyleChange(style, key, value)), undefined, { coalesce: true });
     setWordPopup(prev => {
       if (!prev?.caption || prev.type === 'element') return prev;
       const styleKey = wordPopupStyleKey(prev);
@@ -803,7 +845,7 @@ export default function Dashboard() {
     setCaptions(prev => updatePopupWordStyle(prev, wordPopup, resetWordPosition));
   };
 
-  const handleApplyTemplate = async (templateStyle) => {
+  const handleApplyTemplate = useCallback(async (templateStyle) => {
     const application = buildTemplateApplication({
       templateStyle,
       captionStyle,
@@ -828,10 +870,15 @@ export default function Dashboard() {
     }
     setWordPopup(null);
     pushHistory(application.captions, application.style);
-  };
+  }, [captionStyle, captions, duration, pushHistory, waveformData]);
 
   // Reset returns to the project as it was opened or generated.
   const handleRefresh = () => {
+    // Reset discards every edit and cannot be undone, so it is confirmed.
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function'
+        && !window.confirm('Reset to the original captions and style? All edits in this project will be discarded and cannot be undone.')) {
+      return;
+    }
     const resetPoint = resetPointRef.current || snapshotEditorState();
     setWordPopup(null);
     setIsPlaying(false);
@@ -861,6 +908,10 @@ export default function Dashboard() {
     });
   }, []);
 
+  const openCaptionWordPopup = useCallback((caption, wordIndex, position, word) => (
+    openWordPopup({ caption, wordIndex, position, word })
+  ), [openWordPopup]);
+
   // Capture the immutable reset point once the initial project has loaded.
   useEffect(() => {
     if (!videoUrl || !captions.length) return;
@@ -889,6 +940,7 @@ export default function Dashboard() {
         <Suspense fallback={<PanelLoadingFallback label="Loading captions" />}>
           <CaptionEditor
             captions={captions}
+            duration={duration}
             setCaptions={updateCaptions}
             captionTracks={captionTracks}
             activeCaptionTrackId={activeCaptionTrackId}
@@ -897,7 +949,7 @@ export default function Dashboard() {
             setSelectedCaptionId={setSelectedCaptionId}
             onSeek={handleSeek}
             onPlayCaption={handlePlayCaption}
-            onOpenWordPopup={(caption, wordIndex, position, word) => openWordPopup({ caption, wordIndex, position, word })}
+            onOpenWordPopup={openCaptionWordPopup}
             wordPopup={wordPopup}
             user={currentUser}
           />
@@ -910,6 +962,7 @@ export default function Dashboard() {
         <Suspense fallback={<PanelLoadingFallback label="Loading text tools" />}>
           <TextTab
             captions={captions}
+            duration={duration}
             setCaptions={updateCaptions}
             currentTime={currentTime}
             setSelectedCaptionId={setSelectedCaptionId}
@@ -965,7 +1018,6 @@ export default function Dashboard() {
             onSeek={handleSeek}
             captionStyle={captionStyle}
             setCaptionStyle={updateCaptionStyle}
-            addToHistory={addToHistory}
             brandKits={brandKits}
             onBrandKitsChange={setBrandKits}
             preferenceSyncStatus={editorPreferenceSyncStatus}
@@ -1107,7 +1159,6 @@ export default function Dashboard() {
           <EditorEmptyState
             localRecoveryDraft={localRecoveryDraft}
             applyLocalDraft={applyLocalDraft}
-            discardLocalDraft={discardLocalDraft}
             accountDraft={cloudReady && currentUser ? cloudDraft : null}
             onContinueAccountDraft={continueAccountDraft}
             handleUploadModalOpen={handleUploadModalOpen}
@@ -1119,7 +1170,7 @@ export default function Dashboard() {
             {!isVideoFullscreen && isDesktopLayout && (
               <>
                 {/* Vertical Sidebar Navigation */}
-                <div className="hidden lg:block min-h-0">
+                <div data-editor-panel="true" className="hidden lg:block min-h-0">
                 <SidebarNav
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
@@ -1134,7 +1185,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Left Panel - Content based on active tab */}
-                <div className="hidden lg:block w-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden min-h-0">
+                <div data-editor-panel="true" className="hidden lg:block w-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden min-h-0">
                   {renderEditorPanel()}
                 </div>
               </>
@@ -1221,6 +1272,7 @@ export default function Dashboard() {
               )}
               {!isVideoFullscreen && isDesktopLayout && (
                 <div
+                  data-editor-panel="true"
                   className="hidden lg:block"
                   style={{
                     position: 'absolute',
@@ -1305,7 +1357,6 @@ export default function Dashboard() {
               onClose={() => setWordPopup(null)}
               onResetPosition={handleResetWordPosition}
               onResetFontSize={handleResetWordFontSize}
-              onHistoryRecord={addToHistory}
             />
           </Suspense>
         </>
