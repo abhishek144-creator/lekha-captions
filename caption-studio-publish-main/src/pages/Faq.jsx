@@ -22,7 +22,7 @@ const faqs = [
   },
   {
     q: 'What caption styles and templates are available?',
-    a: 'We offer 25+ professional templates including word-by-word reveals, gradient effects, neon glows, bold strokes, and more. You can also fully customize fonts, colors, animations, and effects.',
+    a: 'We offer 100+ caption styles including word-by-word reveals, gradient effects, neon glows, bold strokes, and more. You can also fully customize fonts, colors, animations, and effects.',
   },
   {
     q: 'How do I export the captioned video?',

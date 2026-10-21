@@ -58,7 +58,7 @@ export default function HomeV2() {
         <div className="absolute inset-y-0 right-[7%] w-px bg-gradient-to-b from-transparent via-white/[0.05] to-transparent" />
       </div>
 
-      <nav className="sticky top-0 z-50 h-16 border-b border-white/[0.07] bg-[#080807]/70 px-3 shadow-[0_10px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:px-4 lg:px-5">
+      <nav aria-label="Primary navigation" className="sticky top-0 z-50 h-16 border-b border-white/[0.07] bg-[#080807]/70 px-3 shadow-[0_10px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl sm:px-4 lg:px-5">
         <div className="mx-auto flex h-full max-w-[90rem] items-center justify-between">
           <Link to={createPageUrl('Home')} className="transition-opacity hover:opacity-80" aria-label="Lekha Captions home">
             <CaptionStudioLogo size="default" showText={true} beta={true} />

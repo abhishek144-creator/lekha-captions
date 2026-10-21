@@ -18,8 +18,12 @@ const LANDING_THEME_KEY = 'lekha-landing-theme'
 
 function getInitialTheme() {
   if (typeof window === 'undefined') return 'dark'
-  const savedTheme = window.localStorage.getItem(LANDING_THEME_KEY)
-  return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark'
+  try {
+    const savedTheme = window.localStorage.getItem(LANDING_THEME_KEY)
+    return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark'
+  } catch {
+    return 'dark'
+  }
 }
 
 function ThemeToggle({ theme, onToggle }) {
@@ -43,7 +47,9 @@ export default function Home() {
   const [theme, setTheme] = useState(getInitialTheme)
 
   useEffect(() => {
-    window.localStorage.setItem(LANDING_THEME_KEY, theme)
+    try { window.localStorage.setItem(LANDING_THEME_KEY, theme) } catch {
+      // Theme persistence is optional when browser storage is blocked or full.
+    }
   }, [theme])
 
   const toggleTheme = () => setTheme((currentTheme) => currentTheme === 'dark' ? 'light' : 'dark')
@@ -55,7 +61,7 @@ export default function Home() {
         <div className="landing-guide absolute inset-y-0 left-[7%] w-px" />
         <div className="landing-guide absolute inset-y-0 right-[7%] w-px" />
       </div>
-      <nav className="landing-nav sticky top-0 z-50 h-16 border-b px-3 backdrop-blur-2xl sm:px-4 lg:px-5">
+      <nav aria-label="Primary navigation" className="landing-nav sticky top-0 z-50 h-16 border-b px-3 backdrop-blur-2xl sm:px-4 lg:px-5">
         <div className="mx-auto flex h-full max-w-[90rem] items-center justify-between">
           <Link to={createPageUrl('Home')} className="transition-opacity hover:opacity-80" aria-label="Lekha Captions home">
             <CaptionStudioLogo size="default" showText={true} beta={true} />

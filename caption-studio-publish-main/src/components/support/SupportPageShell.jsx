@@ -12,7 +12,8 @@ const navItems = [
   { label: 'Privacy', to: '/PrivacyPolicy', key: 'privacy' },
   { label: 'Limits', to: '/KnownLimitations', key: 'limitations' },
   { label: 'Updates', to: '/Changelog', key: 'changelog' },
-];
+  { label: 'Status', to: '/Status', key: 'status' },
+].map(item => ({ ...item, to: item.to.toLowerCase() }));
 
 export default function SupportPageShell({
   active,
@@ -28,15 +29,15 @@ export default function SupportPageShell({
   return (
     <div className="min-h-screen overflow-hidden bg-[#090908] text-white">
       <header className="relative z-30 border-b border-white/[0.08] bg-[#090908]/90 backdrop-blur-xl">
-        <nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
+        <nav aria-label="Primary navigation" className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
           <Link to="/" aria-label="Lekha Captions home" className="shrink-0">
             <CaptionStudioLogo size="default" showText={true} />
           </Link>
 
-          <div className="hidden items-center gap-1 md:flex">
+          <ul className="hidden items-center gap-1 xl:flex">
             {navItems.map((item) => (
+              <li key={item.key}>
               <Link
-                key={item.key}
                 to={item.to}
                 aria-current={active === item.key ? 'page' : undefined}
                 className={`rounded-full px-4 py-2 text-sm transition-colors ${
@@ -47,8 +48,9 @@ export default function SupportPageShell({
               >
                 {item.label}
               </Link>
+              </li>
             ))}
-          </div>
+          </ul>
 
           <Link
             to="/Dashboard"
@@ -59,20 +61,21 @@ export default function SupportPageShell({
           </Link>
         </nav>
 
-        <div className="flex gap-1 overflow-x-auto border-t border-white/[0.06] px-4 py-2 md:hidden">
+        <nav aria-label="Support navigation" className="overflow-x-auto border-t border-white/[0.06] px-4 py-2 xl:hidden"><ul className="flex gap-1">
           {navItems.map((item) => (
+            <li key={item.key} className="shrink-0">
             <Link
-              key={item.key}
               to={item.to}
               aria-current={active === item.key ? 'page' : undefined}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-xs ${
+              className={`inline-block whitespace-nowrap rounded-full px-3 py-1.5 text-xs ${
                 active === item.key ? 'bg-white/[0.1] text-white' : 'text-white/50'
               }`}
             >
               {item.label}
             </Link>
+            </li>
           ))}
-        </div>
+        </ul></nav>
       </header>
 
       <section className="relative isolate min-h-[430px] border-b border-white/[0.06]">
@@ -131,13 +134,13 @@ export default function SupportPageShell({
       <footer className="border-t border-white/[0.08] bg-[#090908]">
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-10 text-sm text-white/45 sm:px-8 md:flex-row md:items-center md:justify-between">
           <p>&copy; {new Date().getFullYear()} Lekha Captions</p>
-          <div className="flex flex-wrap gap-x-6 gap-y-3">
+          <nav aria-label="Support links"><ul className="flex flex-wrap gap-x-6 gap-y-3">
             {navItems.map((item) => (
-              <Link key={item.key} to={item.to} className="transition-colors hover:text-white">
+              <li key={item.key}><Link to={item.to} className="transition-colors hover:text-white">
                 {item.label}
-              </Link>
+              </Link></li>
             ))}
-          </div>
+          </ul></nav>
         </div>
       </footer>
     </div>

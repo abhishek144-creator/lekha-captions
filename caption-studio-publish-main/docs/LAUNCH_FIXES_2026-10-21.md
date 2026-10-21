@@ -1,5 +1,11 @@
 # Local launch fixes — 21 October 2026
 
+**Later follow-up:** the pasted-review fixes and the owner's decision to keep
+the repository public are recorded in `EXTERNAL_REVIEW_RESPONSE_2026-10-21.md`.
+Public-history privacy clearance is now an additional launch gate. The former
+private-only audit and the earlier `1566016b` build batch do not clear or label
+the newer candidate.
+
 The owner's “fix all” follows the complete review in the outer repository's
 `.readiness/LAUNCH_REVIEW_2026-10-21.md`. The candidate is on
 `codex/launch-fixes-20261021`. The owner has prohibited pushes until separately

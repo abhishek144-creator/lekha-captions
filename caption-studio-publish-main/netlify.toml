@@ -15,6 +15,86 @@
   status = 301
   force = true
 
+# Canonical public aliases; keep these before the SPA fallback.
+# Netlify normalizes trailing slashes itself: slash-only redirect rules loop.
+[[redirects]]
+  from = "/Home"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/HomeV2"
+  to = "/homev2"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/Login"
+  to = "/login"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/Faq"
+  to = "/faq"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/HelpAndSupport"
+  to = "/helpandsupport"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/TermsAndConditions"
+  to = "/termsandconditions"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/PrivacyPolicy"
+  to = "/privacypolicy"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/RefundPolicy"
+  to = "/refundpolicy"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/AcceptableUsePolicy"
+  to = "/acceptableusepolicy"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/KnownLimitations"
+  to = "/knownlimitations"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/Changelog"
+  to = "/changelog"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/Status"
+  to = "/status"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/home"
+  to = "/"
+  status = 301
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

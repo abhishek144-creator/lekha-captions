@@ -6,43 +6,48 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/Faq</loc>
+    <loc>https://lekhacaptions.com/faq</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/HelpAndSupport</loc>
+    <loc>https://lekhacaptions.com/helpandsupport</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/TermsAndConditions</loc>
+    <loc>https://lekhacaptions.com/termsandconditions</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/PrivacyPolicy</loc>
+    <loc>https://lekhacaptions.com/privacypolicy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/RefundPolicy</loc>
+    <loc>https://lekhacaptions.com/refundpolicy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/AcceptableUsePolicy</loc>
+    <loc>https://lekhacaptions.com/acceptableusepolicy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/KnownLimitations</loc>
+    <loc>https://lekhacaptions.com/knownlimitations</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://lekhacaptions.com/Changelog</loc>
+    <loc>https://lekhacaptions.com/changelog</loc>
     <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://lekhacaptions.com/status</loc>
+    <changefreq>daily</changefreq>
     <priority>0.5</priority>
   </url>
 </urlset>

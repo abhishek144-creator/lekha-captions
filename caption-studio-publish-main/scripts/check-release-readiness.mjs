@@ -501,13 +501,13 @@ assertExcludes("customer crash page does not expose React component stacks", err
 assertIncludes("all toast notifications automatically disappear after ten seconds", readText("src/components/ui/use-toast.jsx"), "TOAST_AUTO_DISMISS_MS = 10000")
 assertIncludes("multiline failure details preserve line breaks", toastComponent, "whitespace-pre-line")
 assertIncludes("long job references wrap on narrow screens", toastComponent, "break-words")
-assertIncludes("sitemap contains the support route", sitemap, "/HelpAndSupport</loc>")
-assertIncludes("sitemap contains the terms route", sitemap, "/TermsAndConditions</loc>")
-assertIncludes("sitemap contains the privacy route", sitemap, "/PrivacyPolicy</loc>")
-assertIncludes("sitemap contains the refund policy route", sitemap, "/RefundPolicy</loc>")
-assertIncludes("sitemap contains the acceptable use route", sitemap, "/AcceptableUsePolicy</loc>")
-assertIncludes("sitemap contains the known limitations route", sitemap, "/KnownLimitations</loc>")
-assertIncludes("sitemap contains the changelog route", sitemap, "/Changelog</loc>")
+assertIncludes("sitemap contains the support route", sitemap, "/helpandsupport</loc>")
+assertIncludes("sitemap contains the terms route", sitemap, "/termsandconditions</loc>")
+assertIncludes("sitemap contains the privacy route", sitemap, "/privacypolicy</loc>")
+assertIncludes("sitemap contains the refund policy route", sitemap, "/refundpolicy</loc>")
+assertIncludes("sitemap contains the acceptable use route", sitemap, "/acceptableusepolicy</loc>")
+assertIncludes("sitemap contains the known limitations route", sitemap, "/knownlimitations</loc>")
+assertIncludes("sitemap contains the changelog route", sitemap, "/changelog</loc>")
 
 // Razorpay requires a reachable refund/cancellation policy, and the checkout
 // surface must link the policies a buyer is agreeing to.

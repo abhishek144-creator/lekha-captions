@@ -1,6 +1,11 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.route(/https:\/\/(?:[^/]+\.)?(?:google\.com|gstatic\.com|firebaseapp\.com|googleapis\.com|googletagmanager\.com)\//, route => route.abort())
+  await page.route(/\/api\/analytics\//, route => route.abort())
+})
+
 const publicRoutes = [
   ['home', '/', /Lekha Captions/i],
   ['faq', '/Faq', /frequently asked|questions/i],
@@ -11,6 +16,7 @@ const publicRoutes = [
   ['acceptable use', '/AcceptableUsePolicy', /acceptable use/i],
   ['known limitations', '/KnownLimitations', /known limitations/i],
   ['changelog', '/Changelog', /release notes|what changed/i],
+  ['status', '/status', /live service checks/i],
   ['login', '/Login', /sign up with google|log in/i],
 ]
 
@@ -24,6 +30,11 @@ for (const [name, path, visibleCopy] of publicRoutes) {
       /https:\/\/(?:[^/]+\.)?(?:google\.com|gstatic\.com|firebaseapp\.com|googleapis\.com|securetoken\.googleapis\.com)\//,
       (route) => route.abort(),
     )
+    // Status presentation is tested with deterministic health responses; no
+    // browser matrix should poll or wake production services.
+    await page.route('**/api/health', route => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { success: true, ready: true } }))
+    await page.route('**/api/health/readiness', route => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { success: true, ready: true } }))
+    await page.route('**/api/service-status', route => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { success: true, controls: {} } }))
 
     // Analytics, media previews, and font requests can keep WebKit's network
     // busy after the page is already interactive. Assert the rendered UI
@@ -52,6 +63,24 @@ for (const [name, path, visibleCopy] of publicRoutes) {
   })
 }
 
+test('public aliases retain query and hash and expose one canonical URL', async ({ page }) => {
+  await page.goto('/Faq/?from=review#templates', { waitUntil: 'domcontentloaded' })
+  await expect(page).toHaveURL(/\/faq\?from=review#templates$/)
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://lekhacaptions.com/faq')
+  await expect(page.locator('main')).toBeVisible()
+})
+
+test('status distinguishes service readiness from a blocked check', async ({ page }) => {
+  await page.route('**/api/health', route => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { success: true, ready: true } }))
+  await page.route('**/api/health/readiness', route => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { success: true, ready: false } }))
+  await page.route('**/api/service-status', route => route.fulfill({ headers: { 'access-control-allow-origin': '*' }, status: 403, json: { detail: 'Check access refused' } }))
+  await page.goto('/status', { waitUntil: 'domcontentloaded' })
+  await expect(page.locator('[data-service-check="API availability"]')).toContainText('Operational')
+  await expect(page.locator('[data-service-check="Processing readiness"]')).toContainText('Limited availability')
+  await expect(page.locator('[data-service-check="Customer service controls"]')).toContainText('Could not verify')
+  await expect(page.locator('[data-service-check="Customer service controls"]')).toContainText('HTTP 403')
+})
+
 test('production build exposes its release identity', async ({ page }) => {
   await page.goto('/')
   const release = await page.locator('meta[name="lekha-release"]').getAttribute('content')
@@ -70,3 +99,22 @@ test('public support content remains available while authentication is unavailab
   await expect(page.locator('main')).toBeVisible()
   expect(attestationRequests).toEqual([])
 })
+
+for (const storage of ['localStorage', 'sessionStorage', 'quota']) {
+  test(`homepage remains usable with ${storage} unavailable`, async ({ page }) => {
+    await page.addInitScript((kind) => {
+      if (kind === 'quota') {
+        Storage.prototype.setItem = () => { throw new DOMException('Storage quota reached', 'QuotaExceededError') }
+      } else {
+        Object.defineProperty(window, kind, { get() { throw new DOMException('Storage blocked', 'SecurityError') } })
+      }
+    }, storage)
+    await page.route(/https:\/\/(?:[^/]+\.)?(?:google\.com|gstatic\.com|firebaseapp\.com|googleapis\.com)\//, route => route.abort())
+    await page.route(/\/api\/analytics\//, route => route.abort())
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('main')).toBeVisible()
+    await expect(page.getByText('Something went wrong in the application.')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Switch to light mode' }).first().click()
+    await expect(page.locator('.landing-page')).toHaveAttribute('data-theme', 'light')
+  })
+}

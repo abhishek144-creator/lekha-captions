@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "review_date": "2026-09-28",
+  "review_date": "2026-10-21",
   "decision_status": "approved",
   "recommended_visibility": "private",
-  "approved_visibility": "private",
-  "history_rewrite_authorized": true,
-  "owner_authorization_record": "The owner changed the GitHub repository visibility to private on 2026-09-28. The earlier public-history rewrite was authorized on 2026-09-02.",
-  "review_report": "docs/REPOSITORY_PRIVACY_REVIEW_2026-09-02.md"
+  "approved_visibility": "public_rewritten",
+  "history_rewrite_authorized": false,
+  "owner_authorization_record": "On 2026-10-21 the owner explicitly chose: Keep public; report cleanup. Public-history cleanup is required, not completed. No history rewrite or force-push is authorized; the current no-push hold remains. The earlier rewrite authorization applied to the September cleanup.",
+  "review_report": "docs/PUBLIC_REPOSITORY_CLEANUP_2026-10-21.md"
 }
