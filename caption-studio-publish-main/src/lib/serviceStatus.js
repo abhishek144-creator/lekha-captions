@@ -4,7 +4,11 @@ export const statusProbes = [
   { name: 'Customer service controls', path: '/api/service-status', ready: body => body?.success === true && !Object.entries(body.controls || {}).some(([key, value]) => (key === 'maintenance_mode' || key.startsWith('pause_')) && value === true) },
 ]
 
-export async function checkServiceStatus(probe, { base, signal, timeoutMs = 15000 } = {}) {
+/**
+ * @param {{ name: string, path: string, ready: (body: any) => boolean }} probe
+ * @param {{ base?: string, signal?: AbortSignal, timeoutMs?: number }} [options]
+ */
+export async function checkServiceStatus(probe, { base = '', signal, timeoutMs = 15000 } = {}) {
   const started = performance.now()
   const controller = new AbortController()
   const cancel = () => controller.abort()
