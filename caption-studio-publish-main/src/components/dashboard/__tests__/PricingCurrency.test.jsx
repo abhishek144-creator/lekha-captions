@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import PricingModal from '../PricingModal'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
+import { resetVisitorBillingCurrencyForTests } from '../../../../shared/billingCurrency'
 
 vi.mock('@/lib/firebase', () => ({ auth: { currentUser: null } }))
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ refreshUserData: vi.fn() }) }))
@@ -15,6 +16,7 @@ let options
 beforeEach(() => {
   window.localStorage.clear()
   window.localStorage.setItem('lekha.billingCurrency', 'USD')
+  resetVisitorBillingCurrencyForTests()
   apiRequest.mockReset()
   notifyApiError.mockReset()
   options = undefined
@@ -58,5 +60,30 @@ describe('pricing display and checkout agree', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Get Starter', exact: true }))
     await waitFor(() => expect(notifyApiError).toHaveBeenCalled())
     expect(window.Razorpay).not.toHaveBeenCalled()
+  })
+})
+describe('pricing currency follows the visitor country', () => {
+  const geo = country => vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+    ok: true,
+    headers: { get: () => 'application/json' },
+    json: async () => ({ country }),
+  })
+  const indiaTimezone = () => vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => ({ resolvedOptions: () => ({ timeZone: 'Asia/Kolkata' }) }))
+
+  it('shows dollars to a visitor outside India without any selection', async () => {
+    window.localStorage.clear()
+    indiaTimezone()
+    geo('US')
+    openPricing()
+    fireEvent.click(screen.getByRole('button', { name: 'Monthly', exact: true }))
+    await waitFor(() => expect(screen.getByText('$3.99', { exact: true })).toBeTruthy())
+    expect(screen.getByRole('combobox', { name: 'Billing currency' }).value).toBe('USD')
+  })
+  it('shows rupees to a visitor in India', async () => {
+    window.localStorage.clear()
+    geo('IN')
+    openPricing()
+    fireEvent.click(screen.getByRole('button', { name: 'Monthly', exact: true }))
+    await waitFor(() => expect(screen.getByText('₹299', { exact: true })).toBeTruthy())
   })
 })
