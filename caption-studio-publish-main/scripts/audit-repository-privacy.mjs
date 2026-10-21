@@ -61,10 +61,10 @@ function inspectText(text, location, revision, findings) {
   }
 }
 
-function scanMatches(revision, expression, findings) {
+function scanMatches(revision, expression, findings, paths = ['.']) {
   let output = ''
   try {
-    output = git(['grep', '-I', '-n', '-E', '-e', expression, revision, '--', '.'])
+    output = git(['grep', '-I', '-n', '-E', '-e', expression, revision, '--', ...paths])
   } catch (error) {
     // Only exit code 1 means no matches. Other failures invalidate the audit.
     if (error.status !== 1) throw error
@@ -78,13 +78,54 @@ function scanMatches(revision, expression, findings) {
   }
 }
 
+// The same immutable blob is often present in hundreds of revisions. Scan its
+// content once, then attribute the unchanged findings to every revision/path.
+// Git grep still performs the text/binary detection and both original searches.
+const blobFindings = new Map()
 function scanRevision(revision, findings) {
-  scanMatches(revision, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}', findings)
-  scanMatches(
-    revision,
-    '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[opusr]_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9-]{20,}|rzp_live_[A-Za-z0-9]{8,}|sk-[A-Za-z0-9_-]{32,}',
-    findings,
-  )
+  const entries = git(['ls-tree', '-r', '-z', revision]).split('\0').flatMap((row) => {
+    const match = row.match(/^\d+ blob ([a-f0-9]+)\t([\s\S]+)$/)
+    return match ? [{ blob: match[1], location: match[2] }] : []
+  })
+  const unseen = new Map()
+  for (const entry of entries) {
+    if (!blobFindings.has(entry.blob) && !unseen.has(entry.blob)) unseen.set(entry.blob, entry)
+  }
+  const paths = [...unseen.values()].map((entry) => entry.location)
+  const fresh = []
+  // Bound command-line length on Windows without excluding any path.
+  const batches = paths.length === entries.length ? [['.']] : []
+  if (!batches.length) {
+    let batch = []
+    let length = 0
+    for (const location of paths) {
+      if (batch.length && length + location.length > 16_000) {
+        batches.push(batch)
+        batch = []
+        length = 0
+      }
+      batch.push(location)
+      length += location.length + 3
+    }
+    if (batch.length) batches.push(batch)
+  }
+  for (const batch of batches) {
+    scanMatches(revision, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}', fresh, batch)
+    scanMatches(revision,
+      '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[opusr]_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9-]{20,}|rzp_live_[A-Za-z0-9]{8,}|sk-[A-Za-z0-9_-]{32,}',
+      fresh, batch)
+  }
+  const byPath = new Map([...unseen.values()].map((entry) => [entry.location, entry.blob]))
+  for (const blob of unseen.keys()) blobFindings.set(blob, [])
+  for (const finding of fresh) {
+    const blob = byPath.get(finding.location)
+    if (blob) blobFindings.get(blob).push({ category: finding.category, fingerprint: finding.fingerprint })
+  }
+  for (const entry of entries) {
+    for (const finding of blobFindings.get(entry.blob)) {
+      findings.push({ ...finding, location: entry.location, revision })
+    }
+  }
 }
 
 // Public-exposure readiness is determined by the checked-out release and every
