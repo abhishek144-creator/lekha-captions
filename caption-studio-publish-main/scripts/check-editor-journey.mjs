@@ -60,6 +60,7 @@ let uploadInitializations = 0
 let uploadResumes = 0
 let uploadOffset = 0
 let interruptedChunk = false
+const translationRequests = []
 let recoveringUpload = false
 const uploadRanges = []
 const chunkBytes = 8 * 1024 * 1024
@@ -137,6 +138,11 @@ page.on('request', async (request) => {
   else if (url.pathname === '/api/export-status/job-1') payload = { status: 'completed', progress: 100 }
   else if (url.pathname === '/api/export-result/job-1') payload = { success: true, video_url: '/api/media/export/redirect-must-not-be-followed.mp4?token=local-media-signature', download_url: 'https://media.example.invalid/exports/test-output.mp4?signature=local-test-signature' }
   else if (url.pathname === '/api/fonts') payload = { fonts: [] }
+  else if (url.pathname === '/api/translate') {
+    const submitted = JSON.parse(request.postData())
+    translationRequests.push(submitted)
+    payload = { success: true, captions: submitted.captions.map((item) => ({ id: item.id, text: `translated ${item.id}` })) }
+  }
   else if (url.pathname.includes('analytics')) payload = { success: true }
   else { status = 404; payload = { detail: `Unexpected local test API: ${url.pathname}` } }
   return request.respond({ status, contentType: 'application/json', body: JSON.stringify(payload) })
@@ -348,6 +354,29 @@ try {
   holdRecoveryMedia = false
   accountRecovery = false
 
+  // The editor must allow the same 1,000-line boundary as translation/export
+  // and account saves, while still refusing an oversized request locally.
+  const translationDraft = (count) => ({ ...draft, projectId: 'translation-boundary', videoUrl: '/launch-video.mp4', captionTracks: [], captions: Array.from({ length: count }, (_, index) => ({ id: `line-${index}`, text: `source ${index}`, start_time: index, end_time: index + 1, words: [], wordStyles: {} })) })
+  await page.evaluate((value) => { localStorage.clear(); localStorage.setItem('captionEditorState', JSON.stringify(value)) }, translationDraft(1000))
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await page.waitForSelector('#caption-translate-target', { timeout: 30000 })
+  await page.select('#caption-translate-target', 'spanish')
+  await textClick('Translate')
+  await page.waitForFunction(() => {
+    const value = JSON.parse(localStorage.getItem('captionEditorState') || '{}')
+    return value.activeCaptionTrackId !== 'source' && value.captions?.[999]?.text === 'translated line-999'
+  }, { timeout: 30000 })
+  assert.equal(translationRequests.length, 1)
+  assert.equal(translationRequests[0].captions.length, 1000)
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).captionTracks.find((track) => track.id === 'source').captions[999].text), 'source 999', 'translation preserves all original lines')
+  await page.evaluate((value) => { localStorage.clear(); localStorage.setItem('captionEditorState', JSON.stringify(value)) }, translationDraft(1001))
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await page.waitForSelector('#caption-translate-target', { timeout: 30000 })
+  await page.select('#caption-translate-target', 'spanish')
+  await textClick('Translate')
+  await page.waitForFunction(() => document.body.textContent.includes('Translation supports up to 1000 captions'))
+  assert.equal(translationRequests.length, 1, '1,001 captions are refused before calling the provider')
+
   // Real pricing UI with a Razorpay double; external requests remain blocked.
   await page.evaluateOnNewDocument(() => {
     window.checkoutOptions = null
@@ -386,7 +415,7 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes('invalid amount or currency'))
   assert.equal(await page.evaluate(() => window.checkoutOpens), 2, 'invalid orders cannot open checkout')
   assert.deepEqual(errors, [])
-  console.log('Local editor journey passed: caption correction, account-only source recovery without a save, expired-source relink, delayed-response account isolation, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, named controls, upload resume after reload and checkout.')
+  console.log('Local editor journey passed: caption correction, account-only source recovery without a save, expired-source relink, delayed-response account isolation, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, named controls, upload resume, 1000-line translation/1001-line refusal and checkout.')
 } catch (error) {
   console.error('Editor test diagnostics:', errors, await page.evaluate(() => document.body.innerText.slice(0, 3500)))
   throw error

@@ -364,8 +364,8 @@ export default function Dashboard() {
       toast({ title: 'Nothing to translate', description: 'Add or generate captions first.' })
       return
     }
-    if (transcriptLines.length > 500) {
-      toast({ title: 'Too many captions', description: 'Translation supports up to 500 captions at a time.', variant: 'destructive' })
+    if (transcriptLines.length > 1000) {
+      toast({ title: 'Too many captions', description: 'Translation supports up to 1000 captions at a time.', variant: 'destructive' })
       return
     }
     setIsTranslatingCaptions(true)
