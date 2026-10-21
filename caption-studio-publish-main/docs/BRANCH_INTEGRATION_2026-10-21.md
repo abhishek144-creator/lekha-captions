@@ -27,7 +27,7 @@ currency, storage-failure, status and canonical-route fixes.
 
 ## Historical branches preserved
 
-No branch is deleted or force-updated. Different historical commit IDs can
+All branches are retained. A later owner-approved email/identity cleanup force-updated their histories under atomic leases; no branch was deleted. Different historical commit IDs can
 represent earlier cherry-picks/squashed integrations. Preserve these original refs:
 
 - `archive/local-main-disconnected-20260916`, `archive/csp-wt-head-930214a`:
@@ -69,3 +69,18 @@ and mocked transactions are not fresh production proof.
 
 Keep Actions $18 stop and Railway $25 cap/$10 alert. No second competing full
 CI matrix or old 15-minute synthetic schedule is enabled by this integration.
+
+## Publication and CI follow-up
+
+Published 31 branches and one tag. Combined PR #63 carries the complete candidate;
+#64–66 were closed as superseded after ancestry checks. Public branch/tag privacy
+passes from a fresh clone and synced origin; cached old PR refs remain separately
+tracked in the cleanup report.
+
+The first hosted run passed backend, frontend, template-static, marketing and both
+exact Linux scanner-image checks. Browser status tests failed because their
+non-routable API fixture origin was correctly blocked by production CSP. The
+browser CI build now uses its own local preview origin, with all five focused
+browser profiles passing locally. Production CSP and assertions are unchanged.
+This narrow workflow correction needs a fresh commit/run; the superseded run's
+successful image/security results remain dated evidence, not a fabricated pass.

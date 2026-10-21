@@ -151,7 +151,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      VITE_API_BASE_URL: https://api.example.invalid
+      # Browser health probes are fulfilled by Playwright on its preview origin.
+      # The production CSP intentionally blocks api.example.invalid; keep the
+      # fixture same-origin without allowing a test domain in production CSP.
+      VITE_API_BASE_URL: http://127.0.0.1:4173
       VITE_FIREBASE_APP_CHECK_SITE_KEY: ci-app-check-placeholder
       VITE_LEGAL_BUSINESS_NAME: Lekha Captions CI Test
       VITE_LEGAL_BUSINESS_ADDRESS: CI test address, not for deployment

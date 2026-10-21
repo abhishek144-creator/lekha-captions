@@ -1,5 +1,30 @@
 # Public repository cleanup — 21 October 2026
 
+
+## Published result
+
+All 31 public branch heads and the release tag were updated atomically under
+explicit leases. The final isolated mirror verified 493 original commits, with
+only intended email/identity redactions. The source candidate is byte-identical
+across the rewrite. A fresh GitHub clone inspected 491 reachable revisions and
+reported zero current and zero historical findings; the unchanged local privacy
+gate also passed after origin synchronization. Original refs and old-to-new maps
+remain private in outer `.readiness/public-cleanup-final-20261021/`.
+
+GitHub still advertises 67 pull-request refs; 63 point to known replaced commits.
+These are separate from the cleaned branch/tag scope. No forks were reported at
+inspection. Existing clones/copies and cached PR views are not claimed erased.
+GitHub Support determines eligibility for sensitive-data purges and does not
+remove ordinary non-sensitive data; no compromised credential was established
+by the supported-pattern scan. A masked support draft was prepared locally and
+not submitted. See [GitHub's removal guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
+
+Other local worktrees preserve their originals. Collaborators must resync/rebase
+onto rewritten origin refs before pushing; merging old history can reintroduce
+redacted data. Do not merge or force-push an old checkout back over cleaned refs.
+
+## Original review and preparation
+
 GitHub readback reports `PUBLIC`, with repository `updated_at`
 `2026-10-21T13:36:58Z`. That field does not establish which setting changed at
 that instant or who changed it. The preceding local privacy audit passed under
