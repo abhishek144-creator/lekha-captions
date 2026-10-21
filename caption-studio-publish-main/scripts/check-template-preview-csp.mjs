@@ -25,7 +25,11 @@ const vite = await createServer({
   server: { host: '127.0.0.1', port: 4195, strictPort: true },
 })
 await vite.listen()
-const browser = await puppeteer.launch({ headless: true })
+const browser = await puppeteer.launch({
+  headless: true,
+  args: process.env.CI === 'true' && process.env.PUPPETEER_CI_NO_SANDBOX === '1'
+    ? ['--no-sandbox'] : [],
+})
 
 async function collectPreviewDocs() {
   const page = await browser.newPage()

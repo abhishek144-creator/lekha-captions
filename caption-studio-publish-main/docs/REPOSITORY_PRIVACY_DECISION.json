@@ -5,6 +5,6 @@
   "recommended_visibility": "private",
   "approved_visibility": "public_rewritten",
   "history_rewrite_authorized": false,
-  "owner_authorization_record": "On 2026-10-21 the owner explicitly chose: Keep public; report cleanup. Public-history cleanup is required, not completed. No history rewrite or force-push is authorized; the current no-push hold remains. The earlier rewrite authorization applied to the September cleanup.",
+  "owner_authorization_record": "On 2026-10-21 the owner chose: Keep public; report cleanup. The later instruction FIX ALL AND PUSH EVERTHING FROM ALL BRANCH authorizes ordinary publication and lifts the no-push hold. Public-history cleanup remains required. Replacing published history and force-updating refs require separate explicit authorization; the earlier rewrite authorization applied to the September cleanup.",
   "review_report": "docs/PUBLIC_REPOSITORY_CLEANUP_2026-10-21.md"
 }

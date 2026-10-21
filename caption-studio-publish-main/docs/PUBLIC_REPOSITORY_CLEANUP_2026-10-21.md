@@ -6,7 +6,9 @@ that instant or who changed it. The preceding local privacy audit passed under
 the September **private** visibility decision; that is not public-history clearance.
 The owner now explicitly chose **“Keep public; report cleanup.”** Visibility was
 not changed. No rewrite, branch/tag deletion, force-push or other publication is
-authorized by that response. The existing no-push hold remains.
+authorized by that response. The later instruction to fix and push all branches
+lifts the ordinary no-push hold. An isolated local cleanup can be prepared for
+review; replacing published history and force-updating refs require explicit approval.
 
 ## Fresh public-only audit
 
