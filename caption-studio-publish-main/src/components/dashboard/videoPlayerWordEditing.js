@@ -3,6 +3,7 @@ import {
   isSourceBasicTemplateId,
 } from './basicTemplateInline.js';
 import { getCaptionWordRevealIndex } from './cptMotion.js';
+import { getWordBackgroundFill } from '../../lib/wordPaint.js';
 
 // The words of a caption, indexed exactly as word styles, the word editor and
 // the export renderers index them: split on any whitespace. `lineBreakAfter`
@@ -298,15 +299,6 @@ function wrapSourceTemplatePlainTextNodes(root, startIndex = 0) {
   return cursor;
 }
 
-function rgbaFromHex(hex = '#000000', alpha = 0.6) {
-  const normalized = String(hex || '#000000').replace('#', '');
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) return hex;
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 function getSourceWordAnimationStyle(animationType, speed = 1) {
   const safeSpeed = Math.max(0.25, Number(speed) || 1);
   const duration = (seconds) => `${+(seconds / safeSpeed).toFixed(2)}s`;
@@ -432,6 +424,47 @@ function stabilizeSourceTemplateWordAnchor(node) {
   setSourceTemplateStyle(node, 'clip-path', 'none');
 }
 
+// The resting frame of a CPT word: the same motion reset the export renderer
+// applies to every word of a CPT caption (render_template_page_runtime.mjs).
+const CPT_SETTLED_STYLE = [
+  ['animation', 'none'],
+  ['animation-delay', '0s'],
+  ['animation-play-state', 'paused'],
+  ['transition', 'none'],
+  ['transform', 'none'],
+  ['clip-path', 'none'],
+  ['-webkit-clip-path', 'none'],
+  ['filter', 'none'],
+];
+
+// While paused, a CPT caption (or one whose word is being dragged) shows every
+// word at rest, exactly as it exports. Measuring a word mid-entrance made the
+// drop land off the pointer and aligned guides to positions that never ship.
+export function settleSourceTemplateWord(node) {
+  if (!node) return;
+  [node, ...node.querySelectorAll(SOURCE_TEMPLATE_VISUAL_SELECTOR)].forEach((target) => {
+    CPT_SETTLED_STYLE.forEach(([property, value]) => setSourceTemplateStyle(target, property, value));
+  });
+  setSourceTemplateStyle(node, 'opacity', '1');
+  node.dataset.cptSettled = 'true';
+}
+
+function unsettleSourceTemplateWord(node) {
+  if (node?.dataset.cptSettled !== 'true') return;
+  [node, ...node.querySelectorAll(SOURCE_TEMPLATE_VISUAL_SELECTOR)].forEach((target) => {
+    CPT_SETTLED_STYLE.forEach(([property]) => target.style.removeProperty(property));
+  });
+  node.style.removeProperty('opacity');
+  delete node.dataset.cptSettled;
+}
+
+// A word drag marks the canvas with the caption it is editing, so a re-render
+// during the gesture keeps that caption at rest instead of restarting motion.
+export function isCaptionCptDragActive(host, caption) {
+  const dragCaptionId = host?.closest?.('[data-cpt-drag-caption]')?.dataset.cptDragCaption;
+  return Boolean(caption && dragCaptionId === String(caption.id));
+}
+
 function getSourceTemplateTextPaintTargets(target) {
   if (!target) return [];
   return [
@@ -443,16 +476,24 @@ function getSourceTemplateTextPaintTargets(target) {
   ];
 }
 
-function applySourceTemplateTextGradient(target, gradient) {
+// `fill` is the word's background box (colour or highlight gradient). On the
+// visual target it stays as its own layer clipped to the box, so a text
+// gradient and a background can coexist (see src/lib/wordPaint.js).
+function applySourceTemplateTextGradient(target, gradient, fill = '') {
   getSourceTemplateTextPaintTargets(target).forEach((paintTarget) => {
+    const fillLayer = paintTarget === target && fill
+      ? (/gradient\(/i.test(fill) ? fill : `linear-gradient(${fill}, ${fill})`)
+      : '';
+    const image = fillLayer ? `${gradient}, ${fillLayer}` : gradient;
+    const clip = fillLayer ? 'text, padding-box' : 'text';
     setSourceTemplateStyle(paintTarget, 'background-color', 'transparent');
-    setSourceTemplateStyle(paintTarget, 'background', gradient);
-    setSourceTemplateStyle(paintTarget, 'background-image', gradient);
+    setSourceTemplateStyle(paintTarget, 'background', image);
+    setSourceTemplateStyle(paintTarget, 'background-image', image);
     setSourceTemplateStyle(paintTarget, 'background-size', '100% 100%');
     setSourceTemplateStyle(paintTarget, 'background-repeat', 'no-repeat');
     setSourceTemplateStyle(paintTarget, 'background-position', 'center');
-    setSourceTemplateStyle(paintTarget, '-webkit-background-clip', 'text');
-    setSourceTemplateStyle(paintTarget, 'background-clip', 'text');
+    setSourceTemplateStyle(paintTarget, '-webkit-background-clip', clip);
+    setSourceTemplateStyle(paintTarget, 'background-clip', clip);
     setSourceTemplateStyle(paintTarget, '-webkit-text-fill-color', 'transparent');
     setSourceTemplateStyle(paintTarget, 'color', 'transparent');
   });
@@ -559,6 +600,9 @@ function applySourceTemplateWordStyle(
     clearTargets.forEach((target) => {
       SOURCE_TEMPLATE_MANAGED_STYLE_PROPS.forEach((property) => {
         if (property === 'animation' && !animChanged) return;
+        // Saved offsets live on the visual targets; a `translate` on the anchor
+        // is the live drag preview, which a mid-drag restyle must not reset.
+        if (property === 'translate' && target === node) return;
         target.style.removeProperty(property);
       });
       clearSourceTemplateTextGradient(target);
@@ -582,6 +626,7 @@ function applySourceTemplateWordStyle(
   node.dataset.sourceWordAnim = animValue;
   stabilizeSourceTemplateWordAnchor(node);
   const textGradient = typeof wordStyle.textGradient === 'string' ? wordStyle.textGradient.trim() : '';
+  const wordFill = getWordBackgroundFill(wordStyle);
   if (textGradient) {
     node.dataset.sourceWordGradient = 'true';
     setSourceTemplateStyle(node, '--source-word-text-gradient', textGradient);
@@ -630,12 +675,8 @@ function applySourceTemplateWordStyle(
       setSourceTemplateStyle(target, '-webkit-text-fill-color', wordStyle.color);
     }
 
-    if (wordStyle.backgroundColor || wordStyle.highlightGradient) {
-      setSourceTemplateStyle(
-        target,
-        'background',
-        wordStyle.highlightGradient || rgbaFromHex(wordStyle.backgroundColor, wordStyle.backgroundOpacity ?? 0.6)
-      );
+    if (wordFill) {
+      setSourceTemplateStyle(target, 'background', wordFill);
       setSourceTemplateStyle(target, 'border-radius', '4px');
       setSourceTemplateStyle(target, 'padding', `${(wordStyle.backgroundPadding || 2) * renderScale}px ${4 * renderScale}px`);
       setSourceTemplateStyle(target, 'box-decoration-break', 'clone');
@@ -643,7 +684,7 @@ function applySourceTemplateWordStyle(
     }
 
     if (textGradient) {
-      applySourceTemplateTextGradient(target, textGradient);
+      applySourceTemplateTextGradient(target, textGradient, wordFill);
     } else if (wordStyle.color) {
       setSourceTemplateStyle(target, 'color', wordStyle.color);
       setSourceTemplateStyle(target, '-webkit-text-fill-color', wordStyle.color);
@@ -671,7 +712,7 @@ function applySourceTemplateWordStyle(
     });
 
     if (textGradient) {
-      applySourceTemplateTextGradient(target, textGradient);
+      applySourceTemplateTextGradient(target, textGradient, wordFill);
     }
   });
 }
@@ -696,6 +737,9 @@ export function wireSourceTemplateWordEditing(
       block.style.setProperty('pointer-events', 'auto', 'important');
       wrapSourceTemplatePlainTextNodes(block);
     });
+    const settleCaption = !isPlaying && (
+      captionHasCreativelyPositionedWords(caption) || isCaptionCptDragActive(host, caption)
+    );
     getEditableSourceTemplateWords(host).forEach(({ node, index }) => {
       const styleKey = `${caption.id}-${index}`;
       const hasCptWords = captionHasCreativelyPositionedWords(caption);
@@ -713,17 +757,25 @@ export function wireSourceTemplateWordEditing(
       node.dataset.sourceWordIndex = String(index);
       node.style.setProperty('pointer-events', 'auto', 'important');
       node.style.cursor = 'pointer';
+      unsettleSourceTemplateWord(node);
       prepareSourceTemplateWordNode(node);
+      const wordStyle = caption.wordStyles?.[styleKey] || {};
       applySourceTemplateWordStyle(
         node,
-        caption.wordStyles?.[styleKey] || {},
+        wordStyle,
         renderScale,
         emphasisColor,
         hasCptWords,
       );
+      // A word animation picked in the floating word editor keeps previewing.
+      if (settleCaption && !(wordStyle.animation && wordStyle.animation !== 'none')) {
+        settleSourceTemplateWord(node);
+      }
       if (hasCptWords && isPlaying && index > currentIdx) {
         node.style.setProperty('opacity', '0', 'important');
       } else if (hasCptWords) {
+        node.style.setProperty('opacity', '1', 'important');
+      } else if (settleCaption) {
         node.style.setProperty('opacity', '1', 'important');
       } else {
         node.style.removeProperty('opacity');
@@ -734,20 +786,40 @@ export function wireSourceTemplateWordEditing(
   decorate();
   const frame = window.requestAnimationFrame(decorate);
 
+  // The pointer usually leaves a one-line caption within the first few pixels
+  // of a drag, so the gesture is followed on the document, not only the host.
+  const stopDocumentTracking = () => {
+    document.removeEventListener('pointermove', handlePointerMove, true);
+    document.removeEventListener('pointerup', handleDocumentPointerEnd, true);
+    document.removeEventListener('pointercancel', handleDocumentPointerEnd, true);
+  };
+
+  const handleDocumentPointerEnd = (event) => {
+    stopDocumentTracking();
+    // Releases over the caption are handled (as a click) by the host listener.
+    if (!host.contains(event.target)) pointerDownInfo = null;
+  };
+
   const handlePointerDown = (event) => {
     const wordNode = findSourceTemplateWordNode(event, host);
     if (!wordNode) return;
     pointerDownInfo = {
       node: wordNode,
+      pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
       dragStarted: false,
     };
     event.stopPropagation();
+    stopDocumentTracking();
+    document.addEventListener('pointermove', handlePointerMove, true);
+    document.addEventListener('pointerup', handleDocumentPointerEnd, true);
+    document.addEventListener('pointercancel', handleDocumentPointerEnd, true);
   };
 
   const handlePointerMove = (event) => {
     if (!pointerDownInfo || pointerDownInfo.dragStarted) return;
+    if (pointerDownInfo.pointerId != null && event.pointerId != null && event.pointerId !== pointerDownInfo.pointerId) return;
     const moved = Math.hypot(
       (event.clientX || 0) - pointerDownInfo.x,
       (event.clientY || 0) - pointerDownInfo.y,
@@ -759,6 +831,7 @@ export function wireSourceTemplateWordEditing(
     if (!wordNode || !Number.isFinite(wordIndex)) return;
 
     pointerDownInfo.dragStarted = true;
+    stopDocumentTracking();
     event.preventDefault();
     event.stopPropagation();
     onSourceWordPointerDown?.({
@@ -802,13 +875,12 @@ export function wireSourceTemplateWordEditing(
   };
 
   host.addEventListener('pointerdown', handlePointerDown, true);
-  host.addEventListener('pointermove', handlePointerMove, true);
   host.addEventListener('pointerup', handlePointerUp, true);
   host.addEventListener('click', handleClick, true);
   return () => {
     window.cancelAnimationFrame(frame);
+    stopDocumentTracking();
     host.removeEventListener('pointerdown', handlePointerDown, true);
-    host.removeEventListener('pointermove', handlePointerMove, true);
     host.removeEventListener('pointerup', handlePointerUp, true);
     host.removeEventListener('click', handleClick, true);
   };

@@ -13,10 +13,13 @@ import {
     getDoc
 } from '../lib/firebase'
 import { apiRequest } from '../lib/apiClient'
+import { toast } from '@/components/ui/use-toast'
 
 const AuthContext = createContext()
 const PENDING_CONSENT_KEY = 'lekha.pendingConsent'
 const RAZORPAY_REVIEW_MODE = import.meta.env.VITE_RAZORPAY_REVIEW_MODE === '1'
+// The API refuses to create accounts for temporary/disposable inboxes.
+const SIGNUP_REJECTED_CODE = 'signup_email_rejected'
 
 export function useAuth() {
     return useContext(AuthContext)
@@ -28,6 +31,7 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true)
     const [authError, setAuthError] = useState(null)
     const reviewSignInStartedRef = useRef(false)
+    const rejectedSignupUidRef = useRef('')
 
     const syncUserRecord = async (user, consentOverride = null) => {
         const idToken = await user.getIdToken()
@@ -39,19 +43,36 @@ export function AuthProvider({ children }) {
                 consent = null
             }
         }
-        const result = await apiRequest('/api/account-bootstrap', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
-            },
-            body: JSON.stringify({
-                id_token: idToken,
-                consent_granted: consent?.granted === true,
-                terms_version: consent?.termsVersion || '',
-                privacy_version: consent?.privacyVersion || '',
-            }),
-        })
+        let result
+        try {
+            result = await apiRequest('/api/account-bootstrap', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    id_token: idToken,
+                    consent_granted: consent?.granted === true,
+                    terms_version: consent?.termsVersion || '',
+                    privacy_version: consent?.privacyVersion || '',
+                }),
+            })
+        } catch (error) {
+            if (error?.data?.detail?.code !== SIGNUP_REJECTED_CODE) throw error
+            // No account was created: end the Firebase session so the editor
+            // never runs signed in without one, and say why once.
+            const rejection = new Error(error.data.detail.message || 'This email address cannot be used to sign up.')
+            rejection.signupRejected = true
+            if (rejectedSignupUidRef.current !== user.uid) {
+                rejectedSignupUidRef.current = user.uid
+                toast({ title: 'Sign-up blocked', description: rejection.message, variant: 'destructive' })
+            }
+            setAuthError(rejection)
+            if (typeof window !== 'undefined') window.localStorage.removeItem(PENDING_CONSENT_KEY)
+            await signOut(auth).catch(() => {})
+            throw rejection
+        }
         if (consent?.granted && typeof window !== 'undefined') {
             window.localStorage.removeItem(PENDING_CONSENT_KEY)
         }
@@ -76,6 +97,7 @@ export function AuthProvider({ children }) {
             try {
                 await syncUserRecord(result.user, consent)
             } catch (syncError) {
+                if (syncError?.signupRejected) throw syncError
                 console.warn('Signed in, but account setup is still pending:', syncError.message)
                 setUserData({
                     uid: result.user.uid,
@@ -144,6 +166,7 @@ export function AuthProvider({ children }) {
                     try {
                         await syncUserRecord(result.user)
                     } catch (syncError) {
+                        if (syncError?.signupRejected) return null
                         console.warn('Signed in after redirect, but account setup is still pending:', syncError.message)
                         setUserData({
                             uid: result.user.uid,
@@ -167,7 +190,8 @@ export function AuthProvider({ children }) {
 
         try {
             const unsubscribe = onAuthStateChanged(auth, (user) => {
-                if (!user && RAZORPAY_REVIEW_MODE) {
+                // A refused anonymous signup must not restart itself forever.
+                if (!user && RAZORPAY_REVIEW_MODE && !rejectedSignupUidRef.current) {
                     if (reviewSignInStartedRef.current) return
                     reviewSignInStartedRef.current = true
                     signInAnonymously(auth)
@@ -187,7 +211,7 @@ export function AuthProvider({ children }) {
                     // Only clear a previous error once a user actually signed in —
                     // clearing unconditionally wiped redirect sign-in failures
                     // before the Login page could display them.
-                    setAuthError(null)
+                    if (rejectedSignupUidRef.current !== user.uid) setAuthError(null)
                     // Account defaults and credits are initialized by the API;
                     // the browser is never allowed to write entitlement fields.
                     syncUserRecord(user)

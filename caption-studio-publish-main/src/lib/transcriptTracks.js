@@ -62,7 +62,7 @@ export const buildCaptionTracks = ({ sourceCaptions, sourceLanguage, translatedC
   if (!translatedCaptions) {
     return { tracks, activeTrackId: 'source', captions: sourceCaptions }
   }
-  const translatedTrackId = `translation-${String(targetLanguage).toLowerCase()}`
+  const translatedTrackId = translationTrackId(targetLanguage)
   tracks.push({
     id: translatedTrackId,
     language: targetLanguage,
@@ -83,4 +83,28 @@ export const applyTranslation = (sourceCaptions, translatedItems = []) => {
     words: [],
     wordStyles: {},
   }))
+}
+
+export const translationTrackId = (targetLanguage) => `translation-${String(targetLanguage).toLowerCase()}`
+
+// Adds (or refreshes) a translated track made from the editor's Translate
+// control. Free-text overlays are not transcript lines, so they stay as-is.
+export const upsertTranslationTrack = (tracks, { sourceCaptions, translatedItems, targetLanguage, label }) => {
+  const transcriptCaptions = sourceCaptions.filter((caption) => !caption.isTextElement)
+  const translated = applyTranslation(transcriptCaptions, translatedItems)
+  const translatedById = new Map(translated.map((caption) => [caption.id, caption]))
+  const captions = sourceCaptions.map((caption) => translatedById.get(caption.id) || caption)
+  const id = translationTrackId(targetLanguage)
+  const track = {
+    id,
+    language: targetLanguage,
+    label: `${label || targetLanguage} · translated`,
+    captions,
+  }
+  const exists = tracks.some((item) => item.id === id)
+  return {
+    tracks: exists ? tracks.map((item) => (item.id === id ? track : item)) : [...tracks, track],
+    activeTrackId: id,
+    captions,
+  }
 }

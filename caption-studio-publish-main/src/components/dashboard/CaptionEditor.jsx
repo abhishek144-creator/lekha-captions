@@ -11,7 +11,9 @@ import {
   Search,
   X,
   Copy,
-  MoreHorizontal
+  MoreHorizontal,
+  Languages,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,6 +22,7 @@ import {
   shiftCaptionTiming,
   splitCaptionAtBoundary,
 } from './captionEditingUtils';
+import { getCaptionLanguageLabel, globalLanguages, southAsianLanguages } from '@/lib/captionLanguages';
 import {
   Tooltip,
   TooltipContent,
@@ -43,6 +46,8 @@ function CaptionEditor({
   captionTracks = [],
   activeCaptionTrackId,
   onSelectTrack,
+  onTranslate,
+  isTranslating = false,
 }) {
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
@@ -81,6 +86,7 @@ function CaptionEditor({
   const [showBilingualPreview, setShowBilingualPreview] = useState(false);
   const [soundCue, setSoundCue] = useState('[music]');
   const [captionEditMessage, setCaptionEditMessage] = useState('');
+  const [translateTarget, setTranslateTarget] = useState('');
   const searchInputRef = useRef(null);
 
   const otherTrack = captionTracks.find((track) => track.id !== activeCaptionTrackId);
@@ -243,6 +249,7 @@ function CaptionEditor({
   const filteredCaptions = captions
     ?.filter(cap => cap && cap.id && !cap.isTextElement)
     ?.filter(cap => !query.trim() || (cap.text || '').toLowerCase().includes(query.toLowerCase()));
+  const transcriptCount = captions?.filter(cap => cap && !cap.isTextElement).length || 0;
 
   return (
     <div data-caption-editor="true" className="h-full flex flex-col relative z-10">
@@ -251,7 +258,7 @@ function CaptionEditor({
       <div className="relative z-10 flex items-center justify-between mb-5 pl-3">
         <div>
           <p className="lekha-micro-label text-white">Captions</p>
-          <p className="text-[10px] text-slate-500 mt-1">{captions?.filter(cap => cap && !cap.isTextElement).length || 0} transcript items</p>
+          <p className="text-[10px] text-slate-500 mt-1">{transcriptCount} transcript items</p>
         </div>
         <div className="flex items-center gap-1.5">
           <Button
@@ -274,6 +281,42 @@ function CaptionEditor({
           </Button>
         </div>
       </div>
+
+      {onTranslate && transcriptCount > 0 && (
+        <div className="relative z-10 mb-3 rounded-xl border border-white/10 bg-black/25 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="caption-translate-target" className="flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <Languages className="h-3.5 w-3.5" />
+              Translate to
+            </label>
+            <select
+              id="caption-translate-target"
+              value={translateTarget}
+              onChange={(event) => setTranslateTarget(event.target.value)}
+              disabled={isTranslating}
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#111] px-2 py-1.5 text-xs text-white disabled:opacity-50"
+            >
+              <option value="">Choose a language</option>
+              <optgroup label="South Asian languages">
+                {southAsianLanguages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
+              </optgroup>
+              <optgroup label="Global languages">
+                {globalLanguages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
+              </optgroup>
+            </select>
+            <button
+              type="button"
+              onClick={() => onTranslate(translateTarget, getCaptionLanguageLabel(translateTarget))}
+              disabled={!translateTarget || isTranslating}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300/40 bg-sky-300/10 px-2.5 py-1.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-300/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+              {isTranslating ? 'Translating…' : 'Translate'}
+            </button>
+          </div>
+          <p className="mt-2 text-[10px] leading-4 text-slate-500">Translates the original transcript into a new language track. Your original captions are kept; switch back any time.</p>
+        </div>
+      )}
 
       {captionTracks.length > 1 && (
         <div className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/25 p-3">
@@ -367,7 +410,13 @@ function CaptionEditor({
                       </span>
                       <span className="text-xs text-gray-500 flex items-center gap-1">
                         <TooltipProvider>
-                          <Tooltip open={index === 0 && showAutoTip ? true : undefined} delayDuration={300}>
+                          <Tooltip
+                            open={index === 0 && showAutoTip ? true : undefined}
+                            // The pinned tip must close on Escape; otherwise it
+                            // swallows Escape everywhere while it is shown.
+                            onOpenChange={index === 0 && showAutoTip ? (open) => { if (!open) setShowAutoTip(false); } : undefined}
+                            delayDuration={300}
+                          >
                             <TooltipTrigger asChild>
                               <div className="ml-1 inline-flex items-center">
                                 <Info className={`w-3 h-3 cursor-help ${index === 0 && showAutoTip ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`} />

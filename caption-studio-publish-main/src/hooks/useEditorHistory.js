@@ -27,7 +27,7 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
   const redoStackRef = useRef([])
   const [, setVersion] = useState(0)
   const changed = () => setVersion((version) => version + 1)
-  const lastCoalescedPushRef = useRef(0)
+  const lastCoalescedPushRef = useRef({ key: '', at: 0 })
   const latestRef = useRef({ captions, captionStyle })
   latestRef.current = { captions, captionStyle }
 
@@ -36,9 +36,12 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
   // entries and flushed the entire useful undo history.
   const pushHistory = useCallback((newCaptions, newStyle, options = {}) => {
     const now = Date.now()
-    const coalesce = options.coalesce === true
-    const withinBurst = coalesce && (now - lastCoalescedPushRef.current < COALESCE_WINDOW_MS)
-    lastCoalescedPushRef.current = coalesce ? now : 0
+    const coalesceKey = options.coalesce === true ? 'text' : (options.coalesce || '')
+    const last = lastCoalescedPushRef.current
+    const withinBurst = Boolean(coalesceKey)
+      && last.key === coalesceKey
+      && (now - last.at < COALESCE_WINDOW_MS)
+    lastCoalescedPushRef.current = coalesceKey ? { key: coalesceKey, at: now } : { key: '', at: 0 }
     if (!withinBurst) {
       const { captions: currentCaptions, captionStyle: currentStyle } = latestRef.current
       const newHistory = [...historyRef.current.slice(0, historyIndexRef.current + 1), snapshotOf(currentCaptions, currentStyle)]
@@ -62,7 +65,7 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
     // holds pre-change snapshots, never the state after a change.
     redoStackRef.current = [...redoStackRef.current, snapshotOf(currentCaptions, currentStyle)]
     historyIndexRef.current = index - 1
-    lastCoalescedPushRef.current = 0
+    lastCoalescedPushRef.current = { key: '', at: 0 }
     changed()
     setCaptions(previous.captions)
     setCaptionStyle(previous.captionStyle)
@@ -77,7 +80,7 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
     // The state being replaced becomes the pre-change snapshot again.
     historyRef.current = [...historyRef.current.slice(0, historyIndexRef.current + 1), snapshotOf(currentCaptions, currentStyle)]
     historyIndexRef.current += 1
-    lastCoalescedPushRef.current = 0
+    lastCoalescedPushRef.current = { key: '', at: 0 }
     changed()
     setCaptions(next.captions)
     setCaptionStyle(next.captionStyle)
@@ -87,6 +90,7 @@ export function useEditorHistory({ captions, captionStyle, setCaptions, setCapti
     historyRef.current = []
     historyIndexRef.current = -1
     redoStackRef.current = []
+    lastCoalescedPushRef.current = { key: '', at: 0 }
     changed()
   }, [])
 

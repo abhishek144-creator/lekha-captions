@@ -55,6 +55,7 @@ import {
 
 import {
   captionHasCreativelyPositionedWords,
+  isCaptionCptDragActive,
   computeEffectCSS,
   computeWordEffectCSS,
   wordHasCreativePosition,
@@ -2834,6 +2835,8 @@ export function syncAdvancedTemplateBlockFrame(block, {
   startTime,
   endTime,
   isPlaying,
+  // A paused CPT caption shows its final frame, as the export does.
+  settled = false,
 } = {}) {
   if (!block) return;
   const blockType = getAdvancedRenderedBlockType(block, templateId, blockIndex);
@@ -2852,11 +2855,11 @@ export function syncAdvancedTemplateBlockFrame(block, {
     return;
   }
   if (String(blockType).startsWith('wbw-')) {
-    applyAdvancedWbwFrame(block, blockType, playbackElapsedMs, false);
+    applyAdvancedWbwFrame(block, blockType, playbackElapsedMs, settled);
   } else if (blockType === 'karaoke') {
     applyAdvancedKaraokeFrame(block, playbackElapsedMs, false);
   } else if (blockType === 'styled') {
-    syncAdvancedCssAnimations(block, playbackElapsedMs, false);
+    syncAdvancedCssAnimations(block, playbackElapsedMs, settled);
   }
 }
 
@@ -3305,6 +3308,9 @@ export function AppliedAdvancedTemplateCaption({
       startTime,
       endTime,
       isPlaying,
+      settled: !isPlaying && (
+        captionHasCreativelyPositionedWords(caption) || isCaptionCptDragActive(hostRef.current, caption)
+      ),
     });
     runnerRef.current?.syncCurrent?.();
     return cleanup;

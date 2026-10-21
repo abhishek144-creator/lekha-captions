@@ -17,6 +17,7 @@ import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/font
 import { recordRecentTemplate } from '@/components/dashboard/templateBrowserUtils';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
+import { toast } from '@/components/ui/use-toast';
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
 import { resolveApiResourceUrl } from '@/components/dashboard/exportPipelineUtils';
@@ -52,6 +53,7 @@ import {
   captionsFromTranscript,
   mergeCaptionPairs,
   parseWordsPerLine,
+  upsertTranslationTrack,
 } from '@/lib/transcriptTracks'
 import planCatalog from '../../shared/planCatalog.json';
 
@@ -172,6 +174,7 @@ export default function Dashboard() {
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
+  const exitFullscreenForWordEditor = useCallback(() => setIsVideoFullscreen(false), []);
   const [timelineHeight, setTimelineHeight] = useState(COLLAPSED_TIMELINE_HEIGHT);
   const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
   const collapseTimeline = () => {
@@ -338,6 +341,78 @@ export default function Dashboard() {
     setWordPopup(null)
     resetHistory()
   }, [captionTracks, resetHistory, setActiveCaptionTrackId, setCaptions])
+
+  // Translate after upload: always from the original transcript (never a
+  // translation of a translation) into its own language track.
+  const [isTranslatingCaptions, setIsTranslatingCaptions] = useState(false)
+  const handleTranslateCaptions = async (targetLanguage, targetLabel) => {
+    if (!targetLanguage || isTranslatingCaptions) return
+    if (!currentUser) {
+      navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`)
+      return
+    }
+    const sourceTrack = captionTracks.find((track) => track.id === 'source')
+    if (sourceTrack && getLanguageIdentity(sourceTrack.language) === getLanguageIdentity(targetLanguage)) {
+      selectCaptionTrack('source')
+      return
+    }
+    const sourceCaptions = activeCaptionTrackId === 'source' || !sourceTrack ? captions : sourceTrack.captions
+    const transcriptLines = (sourceCaptions || [])
+      .filter((caption) => caption && !caption.isTextElement)
+      .map((caption) => ({ id: caption.id, text: caption.text || '' }))
+    if (transcriptLines.length === 0) {
+      toast({ title: 'Nothing to translate', description: 'Add or generate captions first.' })
+      return
+    }
+    if (transcriptLines.length > 500) {
+      toast({ title: 'Too many captions', description: 'Translation supports up to 500 captions at a time.', variant: 'destructive' })
+      return
+    }
+    setIsTranslatingCaptions(true)
+    setTranslationNotice('')
+    try {
+      const translateToken = await getEffectiveAuthToken(currentUser)
+      const translateData = await apiRequest('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          captions: transcriptLines,
+          target_language: targetLanguage,
+          id_token: translateToken || '',
+        }),
+        dedupeKey: 'translate-captions',
+        cancelPrevious: true,
+      })
+      if (!translateData.success || !translateData.captions) {
+        throw new Error(translateData.error || `Translation to ${targetLabel || targetLanguage} failed`)
+      }
+      // A draft made before language tracks existed has no source track yet.
+      const baseTracks = sourceTrack ? captionTracks : [
+        { id: 'source', language: 'Original', label: 'Original', captions: sourceCaptions },
+        ...captionTracks,
+      ]
+      const trackState = upsertTranslationTrack(baseTracks, {
+        sourceCaptions,
+        translatedItems: translateData.captions,
+        targetLanguage,
+        label: getLanguageDisplayName(targetLanguage),
+      })
+      setCaptionTracks(trackState.tracks)
+      setActiveCaptionTrackId(trackState.activeTrackId)
+      setCaptions(JSON.parse(JSON.stringify(trackState.captions)))
+      setSelectedCaptionId(null)
+      setWordPopup(null)
+      resetHistory()
+      trackAnalytics('funnel.translate.success', getClientContext({ stage: 'editor_translate', targetLanguage }))
+      toast({ title: 'Captions translated', description: `Switched to ${targetLabel || targetLanguage}. The original stays in Language track.` })
+    } catch (error) {
+      if (error?.name === 'AbortError') return
+      trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'editor_translate', targetLanguage }))
+      notifyApiError(error, 'Translation failed')
+    } finally {
+      setIsTranslatingCaptions(false)
+    }
+  }
 
   useEffect(() => {
     if (!videoUrl) setWordPopup(null);
@@ -584,7 +659,7 @@ export default function Dashboard() {
         } catch (translateErr) {
           trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
           console.warn(`Translation to ${targetLang} failed; keeping the original language track.`, translateErr);
-          setTranslationNotice(`Original captions are ready. Translation to ${targetLang} failed; you can retry from Language tracks.`);
+          setTranslationNotice(`Original captions are ready. Translation to ${targetLang} failed; retry with Translate in the Captions tab.`);
         }
       }
 
@@ -805,18 +880,38 @@ export default function Dashboard() {
     refreshVideoPlaybackUrl(event);
   };
 
-  // Stable, so memoized panels do not re-render on every playback tick.
-  const updateCaptions = useCallback((newCaptions, options) => pushHistory(newCaptions, undefined, options), [pushHistory]);
-  const updateCaptionStyle = useCallback((newStyle) => pushHistory(undefined, newStyle), [pushHistory]);
-  const addToHistory = useCallback(() => pushHistory(undefined, undefined), [pushHistory]);
+  const updateCaptions = (newCaptions, options) => pushHistory(newCaptions, undefined, options);
+  // A native colour picker fires on every move of a drag; one burst of style
+  // changes is one undo step instead of dozens (and a flushed history).
+  const updateCaptionStyle = (newStyle) => pushHistory(undefined, newStyle, { coalesce: 'caption-style' });
+  const addToHistory = () => pushHistory(undefined, undefined);
 
-  // Every word popup edit is undoable. The change is applied with a functional
-  // update (so it never rewrites other words from a stale copy) and recorded
-  // as a coalesced history step: one control click that sets several fields,
-  // or one slider drag, is a single undo step.
+  // Word popup edits apply with the functional raw setter (building new
+  // captions from a render's closure corrupted other words), and record one
+  // undo snapshot per gesture: a click that sets several keys at once (colour +
+  // clearing its gradient) or a continuous drag of one control. Sliders record
+  // on pointer-down (onHistoryRecord) and pass skipHistory for their ticks.
+  const WORD_STYLE_BURST_MS = 600;
+  const wordStyleHistoryRef = useRef({ key: '', at: 0 });
+  const recordWordStyleGesture = () => {
+    addToHistory();
+    wordStyleHistoryRef.current = { key: '*', at: Date.now() };
+  };
+  // Slider ticks pass skipHistory because their pointer-down already recorded
+  // the drag ('*' gesture). A slider moved with the keyboard has no such
+  // gesture, so every change records once per burst here either way.
+  const recordWordStyleChange = (key) => {
+    const now = Date.now();
+    const last = wordStyleHistoryRef.current;
+    const sameGesture = now - last.at < 50
+      || (now - last.at < WORD_STYLE_BURST_MS && (last.key === key || last.key === '*'));
+    wordStyleHistoryRef.current = { key: sameGesture && last.key === '*' ? '*' : key, at: now };
+    if (!sameGesture) addToHistory();
+  };
   const handleWordStyleChange = (key, value) => {
     if (!wordPopup) return;
-    pushHistory(prev => updatePopupWordStyle(prev, wordPopup, (style) => applyWordStyleChange(style, key, value)), undefined, { coalesce: true });
+    recordWordStyleChange(key);
+    setCaptions(prev => updatePopupWordStyle(prev, wordPopup, (style) => applyWordStyleChange(style, key, value)));
     setWordPopup(prev => {
       if (!prev?.caption || prev.type === 'element') return prev;
       const styleKey = wordPopupStyleKey(prev);
@@ -945,6 +1040,8 @@ export default function Dashboard() {
             captionTracks={captionTracks}
             activeCaptionTrackId={activeCaptionTrackId}
             onSelectTrack={selectCaptionTrack}
+            onTranslate={handleTranslateCaptions}
+            isTranslating={isTranslatingCaptions}
             selectedCaptionId={selectedCaptionId}
             setSelectedCaptionId={setSelectedCaptionId}
             onSeek={handleSeek}
@@ -1029,6 +1126,38 @@ export default function Dashboard() {
     return null;
   };
 
+  // One word editor, docked where it cannot cover the preview: the inspector
+  // column (desktop), the dock sheet (tablet/phone) or beside the frame
+  // (fullscreen). If fullscreen leaves no room beside it, leave fullscreen.
+  const renderWordEditor = (placement) => (
+    <Suspense fallback={null}>
+      <WordClickPopup
+        key={wordPopup._openKey ?? wordPopupOpenCount}
+        placement={placement}
+        onCannotFloat={exitFullscreenForWordEditor}
+        wordKey={wordPopupStyleKey(wordPopup)}
+        inheritedFontSize={Math.round(Number(captionStyle?.font_size) || 18)}
+        inheritedColor={captionStyle?.text_color || '#ffffff'}
+        word={getPopupWordText(captions, wordPopup)}
+        position={wordPopup.position}
+        onStyleChange={handleWordStyleChange}
+        currentStyle={getPopupWordStyle(captions, wordPopup)}
+        onEdit={() => {
+          const targetId = wordPopupTargetId(wordPopup);
+          setActiveTab('captions');
+          setIsMobileSheetOpen(true);
+          if (targetId) setSelectedCaptionId(targetId);
+          // On tablet/phone the word editor holds the dock sheet; free it.
+          if (!isDesktopLayout) setWordPopup(null);
+        }}
+        onClose={() => setWordPopup(null)}
+        onResetPosition={handleResetWordPosition}
+        onResetFontSize={handleResetWordFontSize}
+        onHistoryRecord={recordWordStyleGesture}
+      />
+    </Suspense>
+  );
+
   const renderStylePanel = () => (
     <div data-style-panel="true" className="contents">
     <Suspense fallback={<PanelLoadingFallback label="Loading style tools" />}>
@@ -1038,7 +1167,6 @@ export default function Dashboard() {
         setCaptionStyleRaw={setCaptionStyle}
         addToHistory={addToHistory}
         selectedCaption={captions.find(c => c.id === selectedCaptionId)}
-        selectedWord={selectedWordForAnimation}
         captions={captions}
         setCaptions={updateCaptions}
         setCaptionsRaw={setCaptions}
@@ -1303,7 +1431,13 @@ export default function Dashboard() {
 
             {!isVideoFullscreen && isDesktopLayout && (
               <div className="hidden lg:block w-full overflow-hidden min-h-0">
-                {renderStylePanel()}
+                {/* The word editor takes the inspector column while open (the
+                    Styling panel stays mounted to keep its state), so it never
+                    covers the video preview. */}
+                <div className={wordPopup ? 'hidden' : 'contents'}>
+                  {renderStylePanel()}
+                </div>
+                {wordPopup && renderWordEditor('panel')}
               </div>
             )}
 
@@ -1327,6 +1461,7 @@ export default function Dashboard() {
                 onSelectCaption={setSelectedCaptionId}
                 onToggleFullscreen={() => setIsVideoFullscreen(true)}
                 getVideoElement={() => previewVideoElRef.current}
+                wordEditor={wordPopup ? renderWordEditor('sheet') : null}
               />
             )}
           </div>
@@ -1334,33 +1469,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Word Click Popup: fixed at Dashboard root, above EVERYTHING including navbar */}
-      {wordPopup && (
-        <>
-          <div
-            className="pointer-events-none fixed inset-0 z-[9998]"
-            onClick={() => setWordPopup(null)}
-          />
-          <Suspense fallback={null}>
-            <WordClickPopup
-              key={wordPopup._openKey ?? wordPopupOpenCount}
-              word={getPopupWordText(captions, wordPopup)}
-              position={wordPopup.position}
-              onStyleChange={handleWordStyleChange}
-              currentStyle={getPopupWordStyle(captions, wordPopup)}
-              onEdit={() => {
-                const targetId = wordPopupTargetId(wordPopup);
-                setActiveTab('captions');
-                setIsMobileSheetOpen(true);
-                if (targetId) setSelectedCaptionId(targetId);
-              }}
-              onClose={() => setWordPopup(null)}
-              onResetPosition={handleResetWordPosition}
-              onResetFontSize={handleResetWordFontSize}
-            />
-          </Suspense>
-        </>
-      )}
+      {/* Fullscreen has no editor columns: the word editor floats beside the frame. */}
+      {wordPopup && isVideoFullscreen && renderWordEditor('floating')}
 
       {/* Modals */}
       {isUploadModalOpen && (

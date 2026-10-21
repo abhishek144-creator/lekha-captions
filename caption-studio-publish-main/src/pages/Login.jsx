@@ -50,10 +50,12 @@ export default function Login() {
         : '/Dashboard';
 
     React.useEffect(() => {
-        if (user) {
+        // While a popup sign-in is in flight, handleGoogleAuth navigates once
+        // the account is set up, so a refused signup can stay here and explain why.
+        if (user && !isSubmitting) {
             navigate(returnTo);
         }
-    }, [user, navigate, returnTo]);
+    }, [user, isSubmitting, navigate, returnTo]);
 
     const handleGoogleAuth = async () => {
         if (!consentAccepted) {

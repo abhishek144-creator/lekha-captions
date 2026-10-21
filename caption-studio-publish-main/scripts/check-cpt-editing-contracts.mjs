@@ -93,6 +93,46 @@ const rect = (left, top, width, height) => ({
   );
 }
 
+{
+  const frame = rect(0, 0, 360, 640);
+  const result = resolveCptWordSnap({
+    draggedRect: rect(100, 300, 40, 20),
+    siblingRects: [],
+    frameRect: frame,
+    deltaX: 57,
+    deltaY: 8,
+  });
+  assert.equal(result.rect.left + result.rect.width / 2, 180, 'a word near the frame centre should snap to the vertical centre line');
+  assert.equal(result.rect.top + result.rect.height / 2, 320, 'a word near the frame middle should snap to the horizontal centre line');
+  const vertical = result.guides.find((guide) => guide.type === 'vertical');
+  assert.ok(vertical && vertical.x === 180 && vertical.y1 === 0 && vertical.y2 === 640, 'the frame centre guide should span the whole frame');
+}
+
+{
+  // Aligning onto a sibling it would overlap: the collision pass pushes the
+  // word away, so no alignment guide may be left on a position it never took.
+  const sibling = rect(40, 10, 30, 16);
+  const result = resolveCptWordSnap({
+    draggedRect: rect(0, 40, 30, 16),
+    siblingRects: [sibling],
+    deltaX: 41,
+    deltaY: -29,
+    minGap: 6,
+  });
+  result.guides
+    .filter((guide) => guide.type === 'vertical')
+    .forEach((guide) => {
+      const edges = [result.rect.left, result.rect.right, result.rect.left + result.rect.width / 2];
+      assert.ok(edges.some((value) => Math.abs(value - guide.x) <= 0.75), `vertical guide at ${guide.x} must touch the placed word`);
+    });
+  result.guides
+    .filter((guide) => guide.type === 'horizontal')
+    .forEach((guide) => {
+      const edges = [result.rect.top, result.rect.bottom, result.rect.top + result.rect.height / 2];
+      assert.ok(edges.some((value) => Math.abs(value - guide.y) <= 0.75), `horizontal guide at ${guide.y} must touch the placed word`);
+    });
+}
+
 assert.equal(
   getCaptionWordStartTime({
     start_time: 2,

@@ -56,6 +56,35 @@ describe('useEditorHistory', () => {
     expect(result.current.canUndo).toBe(false)
   })
 
+  it('records one undo step per colour-picker drag, separate from typing', () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(useEditor)
+    const color = (value) => act(() => {
+      result.current.pushHistory(undefined, { text_color: value }, { coalesce: 'caption-style' })
+    })
+    edit(result, 'typed', { coalesce: true })
+    ;['#111111', '#222222', '#333333'].forEach(color)
+    expect(result.current.captionStyle.text_color).toBe('#333333')
+    act(() => result.current.undo())
+    expect(result.current.captionStyle.text_color).toBe('#fff')
+    expect(text(result)).toBe('typed')
+    act(() => result.current.undo())
+    expect(text(result)).toBe('first')
+  })
+
+  it('starts a new undo step for the first change after an undo', () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(useEditor)
+    const color = (value) => act(() => {
+      result.current.pushHistory(undefined, { text_color: value }, { coalesce: 'caption-style' })
+    })
+    color('#111111')
+    act(() => result.current.undo())
+    color('#222222')
+    act(() => result.current.undo())
+    expect(result.current.captionStyle.text_color).toBe('#fff')
+  })
+
   it('keeps at most 50 undo steps', () => {
     const { result } = renderHook(useEditor)
     for (let index = 0; index < 60; index += 1) edit(result, `edit ${index}`)

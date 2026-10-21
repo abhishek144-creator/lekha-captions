@@ -14,7 +14,6 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FixedSizeList as List } from 'react-window';
 import { detectScript, scriptFontMap, loadGoogleFont } from './fontUtils';
-import AnimateTab from './AnimateTab';
 import AdvancedTemplateLibrary from './AdvancedTemplateLibrary';
 import { apiRequest } from '@/lib/apiClient';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
@@ -110,7 +109,6 @@ function StyleControls({
   setCaptionStyleRaw,
   addToHistory,
   selectedCaption,
-  selectedWord,
   captions,
   setCaptions,
   setCaptionsRaw,
@@ -195,7 +193,30 @@ function StyleControls({
     activeMobileStyleSection === id ? 'max-lg:!border-t-0 max-lg:!pt-0' : 'max-lg:hidden'
   )
 
+  // Slider drags record history once on pointer-down. A slider moved with the
+  // keyboard has no pointer-down, so record one step per keyboard burst here,
+  // or arrow-key edits could not be undone.
+  const pointerGestureRef = React.useRef(false)
+  const keyboardHistoryRef = React.useRef({ key: '', at: 0 })
+  React.useEffect(() => {
+    const endGesture = () => { pointerGestureRef.current = false }
+    window.addEventListener('pointerup', endGesture)
+    window.addEventListener('pointercancel', endGesture)
+    return () => {
+      window.removeEventListener('pointerup', endGesture)
+      window.removeEventListener('pointercancel', endGesture)
+    }
+  }, [])
+  const recordKeyboardSliderHistory = (key) => {
+    const now = Date.now()
+    const last = keyboardHistoryRef.current
+    keyboardHistoryRef.current = { key, at: now }
+    if (last.key === key && now - last.at < 1200) return
+    addToHistory?.()
+  }
+
   const updateStyle = (key, value, skipHistory = false) => {
+    if (skipHistory && !pointerGestureRef.current) recordKeyboardSliderHistory(key)
     // Slider ticks (skipHistory=true) must use the RAW caption setter — the
     // history-pushing one records an entry per tick, flooding the undo cap.
     // History for drags is snapshotted once via onPointerDown -> addToHistory.
@@ -418,7 +439,6 @@ function StyleControls({
   const panelTabs = [
     { id: 'style', label: 'Style' },
     { id: 'templates', label: 'Templates' },
-    { id: 'animate', label: 'Animate' },
   ];
 
   const styleTabSliderProps = {
@@ -428,7 +448,10 @@ function StyleControls({
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden rounded-[18px] lekha-panel lekha-inspector">
+    <div
+      className="h-full flex flex-col overflow-hidden rounded-[18px] lekha-panel lekha-inspector"
+      onPointerDownCapture={() => { pointerGestureRef.current = true }}
+    >
       <div className="shrink-0 border-b border-white/10 px-4 pt-2 lg:pt-4">
         {/* The mobile sheet already titles this panel. */}
         <p className="lekha-micro-label text-slate-300 max-lg:hidden">Styling</p>
@@ -457,16 +480,6 @@ function StyleControls({
             onApplyTemplate={onApplyTemplate}
             showHeader={false}
             showBackButton={false}
-          />
-        </div>
-      ) : activePanelTab === 'animate' ? (
-        <div className="flex-1 min-h-0 p-4">
-          <AnimateTab
-            selectedWord={selectedWord}
-            selectedCaption={selectedCaption}
-            captions={captions}
-            setCaptions={setCaptions}
-            basicOnly
           />
         </div>
       ) : (

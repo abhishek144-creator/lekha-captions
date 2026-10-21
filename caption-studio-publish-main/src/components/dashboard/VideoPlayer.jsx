@@ -14,6 +14,7 @@ import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import VideoPlayerKeyframes from './VideoPlayerKeyframes';
 import { resolveScriptFont, loadGoogleFont } from './fontUtils';
 import { buildEmotionalCaptionPlan } from './emotionalTemplateUtils';
+import { getWordBackgroundFill, getWordPaintStyle } from '@/lib/wordPaint';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   ADVANCED_TEMPLATE_EMPHASIS_COLORS,
@@ -1268,8 +1269,8 @@ export default function VideoPlayer({
               width: `${ws.boxWidth * previewRenderScale}px`,
               textAlign: 'center',
             } : {}),
-            ...(ws.backgroundColor || ws.highlightGradient ? {
-              background: ws.highlightGradient || `rgba(${parseInt(ws.backgroundColor.slice(1,3),16)}, ${parseInt(ws.backgroundColor.slice(3,5),16)}, ${parseInt(ws.backgroundColor.slice(5,7),16)}, ${ws.backgroundOpacity ?? 0.6})`,
+            ...(getWordBackgroundFill(ws) ? {
+              background: getWordBackgroundFill(ws),
               borderRadius: '3px',
               padding: `${(ws.backgroundPadding || 2) * previewRenderScale}px ${4 * previewRenderScale}px`,
             } : {}),
@@ -1523,8 +1524,8 @@ export default function VideoPlayer({
           width: selectedWordBoxWidth
             ? `${selectedWordBoxWidth * previewRenderScale * selectedDetachedWordViewport.scale}px`
             : 'auto',
-          ...(!selectedWordIsPending && (selectedWordStyle.backgroundColor || selectedWordStyle.highlightGradient) ? {
-            background: selectedWordStyle.highlightGradient || `rgba(${parseInt(selectedWordStyle.backgroundColor.slice(1,3),16)}, ${parseInt(selectedWordStyle.backgroundColor.slice(3,5),16)}, ${parseInt(selectedWordStyle.backgroundColor.slice(5,7),16)}, ${selectedWordStyle.backgroundOpacity ?? 0.6})`,
+          ...(!selectedWordIsPending && getWordBackgroundFill(selectedWordStyle) ? {
+            background: getWordBackgroundFill(selectedWordStyle),
             borderRadius: '3px',
             padding: `${(selectedWordStyle.backgroundPadding || 2) * previewRenderScale * selectedDetachedWordViewport.scale}px ${4 * previewRenderScale * selectedDetachedWordViewport.scale}px`,
           } : {}),
@@ -1583,19 +1584,22 @@ export default function VideoPlayer({
         >
           {renderWordTextContent(selectedDetachedWord.word, selectedWordStyle, captionStyle?.text_color || '#ffffff')}
         </span>
+        {/* On a short word the hit areas overlap. Corner (font size) handles sit
+            above the side (box width) handles so their visible dots resize the
+            word instead of stretching its box. */}
         {[
-          { classes: '-top-4 -left-4 cursor-nwse-resize', axis: 'corner', sideX: 'left', sideY: 'top' },
-          { classes: '-top-4 -right-4 cursor-nesw-resize', axis: 'corner', sideX: 'right', sideY: 'top' },
-          { classes: '-bottom-4 -left-4 cursor-nesw-resize', axis: 'corner', sideX: 'left', sideY: 'bottom' },
-          { classes: '-bottom-4 -right-4 cursor-nwse-resize', axis: 'corner', sideX: 'right', sideY: 'bottom' },
-          { classes: 'top-1/2 -left-4 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'left' },
-          { classes: 'top-1/2 -right-4 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'right' },
+          { classes: '-top-3 -left-3 z-[96] h-6 w-6 cursor-nwse-resize', axis: 'corner', sideX: 'left', sideY: 'top' },
+          { classes: '-top-3 -right-3 z-[96] h-6 w-6 cursor-nesw-resize', axis: 'corner', sideX: 'right', sideY: 'top' },
+          { classes: '-bottom-3 -left-3 z-[96] h-6 w-6 cursor-nesw-resize', axis: 'corner', sideX: 'left', sideY: 'bottom' },
+          { classes: '-bottom-3 -right-3 z-[96] h-6 w-6 cursor-nwse-resize', axis: 'corner', sideX: 'right', sideY: 'bottom' },
+          { classes: 'top-1/2 -left-3 z-[95] h-4 w-6 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'left' },
+          { classes: 'top-1/2 -right-3 z-[95] h-4 w-6 -translate-y-1/2 cursor-ew-resize', axis: 'horizontal', sideX: 'right' },
         ].map((handle) => (
           <span
             key={handle.classes}
             onPointerDown={handleDetachedWordResizeStart}
             onDragStart={(e) => e.preventDefault()}
-            className={`word-resize-handle absolute z-[95] flex h-8 w-8 items-center justify-center rounded-full bg-transparent ${handle.classes}`}
+            className={`word-resize-handle absolute flex items-center justify-center rounded-full bg-transparent ${handle.classes}`}
             title="Resize word"
             data-resize-axis={handle.axis}
             data-resize-side={handle.sideX}
@@ -1630,6 +1634,7 @@ export default function VideoPlayer({
                   stopPropagation: () => e.stopPropagation(),
                   clientX: e.clientX,
                   clientY: e.clientY,
+                  pointerId: e.pointerId,
                   currentTarget: selectionBox,
                 }, selectedDetachedWord.caption, selectedDetachedWord.wordIndex, false, true, 'action-move');
               }}
@@ -2681,24 +2686,15 @@ export default function VideoPlayer({
                                 textTransform: ws.textTransform || undefined,
                                 color: ws.color || sidebarWordStyle.color || 'inherit',
                                 ...(sidebarTemplateActive ? sidebarWordStyle : {}),
-                                ...(ws.backgroundColor ? {
-                                  backgroundColor: `rgba(${parseInt(ws.backgroundColor.slice(1,3),16)}, ${parseInt(ws.backgroundColor.slice(3,5),16)}, ${parseInt(ws.backgroundColor.slice(5,7),16)}, ${ws.backgroundOpacity ?? 0.6})`,
+                                ...(getWordBackgroundFill(ws) ? {
                                   borderRadius: '3px',
                                   padding: `${(ws.backgroundPadding || 2) * previewRenderScale}px ${4 * previewRenderScale}px`,
                                 } : {}),
                                 ...computeWordEffectCSS(ws),
                                 ...emphasisStyle,
-                                ...(ws.textGradient ? {
-                                  background: ws.textGradient,
-                                  backgroundImage: ws.textGradient,
-                                  backgroundSize: '100% 100%',
-                                  backgroundRepeat: 'no-repeat',
-                                  backgroundPosition: 'center',
-                                  WebkitBackgroundClip: 'text',
-                                  backgroundClip: 'text',
-                                  WebkitTextFillColor: 'transparent',
-                                  color: 'transparent',
-                                } : {}),
+                                // Background, highlight gradient and text gradient
+                                // combine exactly as the export renders them.
+                                ...getWordPaintStyle(ws),
                               }}
                             >
                               <span style={{ display: 'inline-block', ...resolvedWordMotionStyle }}>{word}</span>

@@ -134,8 +134,8 @@ export default function TextElementLayer({
                       ['top-right', 'right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize w-3 h-3 rounded-full'],
                       ['bottom-left', 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize w-3 h-3 rounded-full'],
                       ['bottom-right', 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize w-3 h-3 rounded-full'],
-                      ['left', 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize w-2 h-4.5 rounded-full'],
-                      ['right', 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize w-2 h-4.5 rounded-full'],
+                      ['left', 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize w-2 h-[18px] rounded-full'],
+                      ['right', 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize w-2 h-[18px] rounded-full'],
                     ].map(([edge, positionAndShapeClass]) => (
                       <div
                         key={edge}

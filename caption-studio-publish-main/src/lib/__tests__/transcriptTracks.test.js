@@ -5,6 +5,7 @@ import {
   captionsFromTranscript,
   mergeCaptionPairs,
   parseWordsPerLine,
+  upsertTranslationTrack,
 } from '../transcriptTracks'
 
 describe('parseWordsPerLine', () => {
@@ -63,5 +64,38 @@ describe('caption tracks', () => {
 
   it('keeps the original text for lines the translation omitted', () => {
     expect(applyTranslation(source, [])[0].text).toBe('hello')
+  })
+})
+
+describe('upsertTranslationTrack', () => {
+  const source = { id: 'source', language: 'English', label: 'Original · English', captions: [] }
+  const sourceCaptions = [
+    { id: '1-0', text: 'hello', start_time: 0, end_time: 1, words: [{ word: 'hello' }], wordStyles: { 0: { color: 'red' } } },
+    { id: 'text-1', text: 'Subscribe', isTextElement: true, start_time: 0, end_time: 5 },
+  ]
+
+  it('adds an active translated track and leaves text overlays untouched', () => {
+    const result = upsertTranslationTrack([source], {
+      sourceCaptions,
+      translatedItems: [{ id: '1-0', text: 'नमस्ते' }],
+      targetLanguage: 'hindi',
+      label: 'Hindi',
+    })
+    expect(result.activeTrackId).toBe('translation-hindi')
+    expect(result.tracks.map((track) => track.id)).toEqual(['source', 'translation-hindi'])
+    expect(result.tracks[1].label).toBe('Hindi · translated')
+    expect(result.captions[0]).toMatchObject({ id: '1-0', text: 'नमस्ते', words: [], wordStyles: {} })
+    expect(result.captions[1]).toBe(sourceCaptions[1])
+  })
+
+  it('replaces an existing track for the same language instead of duplicating it', () => {
+    const first = upsertTranslationTrack([source], {
+      sourceCaptions, translatedItems: [{ id: '1-0', text: 'hola' }], targetLanguage: 'spanish',
+    })
+    const second = upsertTranslationTrack(first.tracks, {
+      sourceCaptions, translatedItems: [{ id: '1-0', text: 'buenas' }], targetLanguage: 'spanish',
+    })
+    expect(second.tracks).toHaveLength(2)
+    expect(second.captions[0].text).toBe('buenas')
   })
 })
