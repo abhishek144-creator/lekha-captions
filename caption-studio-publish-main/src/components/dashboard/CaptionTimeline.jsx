@@ -24,6 +24,7 @@ const MIN_CLIP_SECONDS = 0.1
 const SNAP_PX = 8
 const DRAG_START_PX = 3
 const MAX_PPS = 400
+const DEFAULT_VISIBLE_SECONDS = 5
 const TICK_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
@@ -110,7 +111,7 @@ export default function CaptionTimeline({
   const viewportRef = useRef(null)
   const contentRef = useRef(null)
   const [viewport, setViewport] = useState({ width: 0, scrollLeft: 0 })
-  const [zoomPps, setZoomPps] = useState(null) // null = fit the whole video
+  const [zoomPps, setZoomPps] = useState(null) // null = default view, 'fit' = whole video, number = custom
   const [snapEnabled, setSnapEnabled] = useState(true)
   const [snapGuide, setSnapGuide] = useState(null)
   const [scrubTime, setScrubTime] = useState(null)
@@ -126,7 +127,10 @@ export default function CaptionTimeline({
   const fitPps = totalDuration && viewport.width
     ? Math.max(2, (viewport.width - PAD_X * 2) / totalDuration)
     : 40
-  const pps = clamp(zoomPps ?? fitPps, fitPps, Math.max(fitPps, MAX_PPS))
+  // Default view: about DEFAULT_VISIBLE_SECONDS across the timeline (ruler
+  // every 0.5 s), close enough to edit words; shorter videos simply fit.
+  const defaultPps = viewport.width ? Math.max(fitPps, (viewport.width - PAD_X * 2) / DEFAULT_VISIBLE_SECONDS) : fitPps
+  const pps = clamp(zoomPps === 'fit' ? fitPps : (zoomPps ?? defaultPps), fitPps, Math.max(fitPps, MAX_PPS))
   const contentWidth = Math.max(viewport.width, PAD_X * 2 + totalDuration * pps)
   const xOf = useCallback((time) => PAD_X + time * pps, [pps])
   const displayTime = scrubTime ?? currentTime ?? 0
@@ -173,7 +177,7 @@ export default function CaptionTimeline({
     const rect = node.getBoundingClientRect()
     const anchorViewportX = anchorClientX === null ? xOf(displayTime) - node.scrollLeft : anchorClientX - rect.left
     const anchorTime = (node.scrollLeft + anchorViewportX - PAD_X) / pps
-    setZoomPps(bounded <= fitPps + 0.001 ? null : bounded)
+    setZoomPps(bounded <= fitPps + 0.001 ? 'fit' : bounded)
     requestAnimationFrame(() => scrollToX(PAD_X + anchorTime * bounded - anchorViewportX))
   }
 
@@ -532,8 +536,15 @@ export default function CaptionTimeline({
       onKeyDown={handleKeyDown}
       className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 shadow-[0_12px_32px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] outline-none focus-visible:border-sky-300/40"
     >
-      {/* Toolbar */}
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-white/[0.06] px-2">
+      {/* Toolbar: a click anywhere on the bar (outside its controls) collapses it */}
+      <div
+        className={`flex h-9 shrink-0 items-center gap-1 border-b border-white/[0.06] px-2 ${onToggleCollapsed ? 'cursor-pointer' : ''}`}
+        title={onToggleCollapsed ? 'Collapse timeline' : undefined}
+        onClick={(event) => {
+          if (!onToggleCollapsed || event.target.closest('button, input, a, [role="slider"]')) return
+          onToggleCollapsed()
+        }}
+      >
         {onToggleCollapsed && (
           <button type="button" onClick={onToggleCollapsed} className={`${toolButton} gap-1.5 pr-2`} title="Collapse timeline">
             <span className="text-xs leading-none text-slate-400">v</span>
