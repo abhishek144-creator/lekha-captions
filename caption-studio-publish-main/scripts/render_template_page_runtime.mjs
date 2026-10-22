@@ -2506,7 +2506,8 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     const buildPlainCaptionMarkup = (caption, globalStyle, time) => {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
-      const showInactive = globalStyle?.show_inactive !== false;
+      // Word by word for the whole video (Display Mode) or this caption's look.
+      const showInactive = globalStyle?.show_inactive !== false && caption?.reveal_mode !== 'word';
       // Words are inline-block spans joined without whitespace, so this margin
       // is the whole inter-word gap. Mirrors the editor preview in
       // VideoPlayer.jsx: 0.18 x base font size + word_spacing x 2.

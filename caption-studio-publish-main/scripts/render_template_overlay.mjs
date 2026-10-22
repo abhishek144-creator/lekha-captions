@@ -2501,11 +2501,13 @@ async function main() {
           if (Number.isFinite(wordEnd)) points.add(wordEnd);
         }
       }
-      // CPTs and the explicit word-by-word delivery mode both change visibility
-      // at word boundaries, so the compositor needs a segment for every step.
+      // CPTs and the explicit word-by-word delivery mode (whole video, or this
+      // caption's reveal_mode) change visibility at word boundaries, so the
+      // compositor needs a segment for every step.
       const revealsWordByWord = (
         captionHasCptWordStyles(caption)
         || payload.style?.show_inactive === false
+        || caption?.reveal_mode === 'word'
       );
       if (revealsWordByWord && !caption?.is_text_element) {
         const revealWordCount = Math.max(

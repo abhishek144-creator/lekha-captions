@@ -848,6 +848,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             __templateIndex: exportTemplateIndex,
             animation: cap.animation || 'none',
             animation_speed: cap.animationSpeed ?? 1,
+            // A caption's own word-by-word reveal (layout director / Motion: Words).
+            reveal_mode: !isText && cap.revealMode === 'word' ? 'word' : '',
             is_text_element: !!isText,
             template_id: capTemplateId,
             template_20_id: !isText ? activeTemplateValue(cap, 'template_20_id') : '',

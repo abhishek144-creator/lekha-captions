@@ -4,6 +4,7 @@ import {
   autoLayoutCaptions,
   buildCptComposition,
   getCaptionLayoutMode,
+  getCaptionLayoutMotion,
   planCaptionLayouts,
   setCaptionLayout,
 } from '../captionLayoutDirector'
@@ -30,7 +31,8 @@ describe('planCaptionLayouts', () => {
     const plans = planCaptionLayouts(story(), { waveformData: quietWithPeak(12, 14.5), duration: 60 })
     const byId = Object.fromEntries(plans.map((plan) => [plan.captionId, plan]))
     expect(byId.c.mode).toBe('cpt')
-    expect(byId.c.motion).toBe(true)
+    expect(byId.c.motion).toBe('word')
+    plans.forEach((plan) => expect(['none', 'line', 'word']).toContain(plan.motion))
     // The number is the strongest word of the peak line.
     expect(byId.c.heroIndex).toBe(2)
     expect(byId.d.mode).not.toBe('cpt')
@@ -125,7 +127,32 @@ describe('applyCaptionLayout', () => {
     const next = applyCaptionLayout(caption('a', 'this changed everything', 0, 2), { mode: 'keywords', motion: true, plan: { keywordIndices: [2], animation: 'rise' } })
     expect(next.wordStyles['a-2'].isEmphasis).toBe(true)
     expect(next.animation).toBe('rise')
-    expect(next.layoutMotion).toBe(true)
+    expect(next.layoutMotion).toBe('line')
+    expect(next.revealMode).toBeUndefined()
+  })
+
+  it('word-by-word builds the caption as spoken, for sentence and keywords, and Still removes it', () => {
+    const base = caption('a', 'this changed everything', 0, 2)
+    const words = applyCaptionLayout(base, { mode: 'sentence', motion: 'word' })
+    expect(words.revealMode).toBe('word')
+    expect(words.animation).toBe('none')
+    expect(getCaptionLayoutMotion(words)).toBe('word')
+    const keywordWords = applyCaptionLayout(words, { mode: 'keywords', motion: 'word', plan: { keywordIndices: [2] } })
+    expect(keywordWords.revealMode).toBe('word')
+    expect(keywordWords.wordStyles['a-2'].isEmphasis).toBe(true)
+    const still = applyCaptionLayout(keywordWords, { mode: 'keywords', motion: 'none', plan: { keywordIndices: [2] } })
+    expect(still.revealMode).toBeUndefined()
+    expect(getCaptionLayoutMotion(still)).toBe('none')
+    // A CPT reveals as spoken by itself; it needs no caption-level reveal flag.
+    const cpt = applyCaptionLayout(words, { mode: 'cpt', motion: 'none', plan: { heroIndex: 1 }, frame, measure })
+    expect(cpt.revealMode).toBeUndefined()
+    expect(getCaptionLayoutMotion(cpt)).toBe('word')
+  })
+
+  it('reads older boolean motion as line motion', () => {
+    expect(getCaptionLayoutMotion({ layoutMode: 'sentence', layoutMotion: true })).toBe('line')
+    expect(getCaptionLayoutMotion({ layoutMode: 'keywords', layoutMotion: false })).toBe('none')
+    expect(getCaptionLayoutMotion({ text: 'x', revealMode: 'word' })).toBe('word')
   })
 
   it('maps looks onto a template caption\'s own phases and keywords', () => {
@@ -140,6 +167,11 @@ describe('applyCaptionLayout', () => {
     expect(plain.imp_word_indices).toEqual([])
     const animatedKeywords = applyCaptionLayout(templated, { mode: 'keywords', motion: true, plan: { keywordIndices: [3], captionIndex: 0 } })
     expect(animatedKeywords.emotional_mode).toBe('normal')
+    // Word by word on a template is its own word-by-word phase, not a caption flag.
+    const wordByWord = applyCaptionLayout(templated, { mode: 'sentence', motion: 'word', plan: { captionIndex: 2 } })
+    expect(wordByWord.emotional_mode).toBe('normal')
+    expect(wordByWord.template_phase_index).toBe(1)
+    expect(wordByWord.revealMode).toBeUndefined()
     expect(animatedKeywords.imp_word_indices).toEqual([3])
 
     // The live template plan keeps the chosen keywords instead of its audio guess.

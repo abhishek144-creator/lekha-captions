@@ -86,6 +86,7 @@ class TemplateOverlayMixin:
                 caption.get('is_text_element')
                 or str(caption.get('animation') or 'none') != 'none'
                 or bool(caption.get('word_styles'))
+                or caption.get('reveal_mode') == 'word'
             )
             for caption in captions or []
         ):

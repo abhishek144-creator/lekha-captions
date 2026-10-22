@@ -92,6 +92,22 @@ class PreviewExportParityTests(unittest.TestCase):
         self.assertEqual(processor._get_output_dimensions(1920, 1080, "1080p", "16:9"), (1920, 1080))
         self.assertEqual(processor._get_output_dimensions(1080, 1920, "4k", "1:1"), (2160, 2160))
 
+    def test_per_caption_word_reveal_survives_the_model_and_uses_dom(self):
+        # A caption set to build word by word (layout director / Motion: Words)
+        # must keep the field through the API model and leave the ASS path,
+        # which cannot reveal one caption word by word.
+        request = ExportRequest(
+            file_id="00000000-0000-4000-8000-000000000001",
+            captions=[{"id": "c1", "text": "this changed everything", "start_time": 0, "end_time": 2, "reveal_mode": "word"}],
+            style={},
+        )
+        caption = request.captions[0].model_dump(by_alias=True)
+        self.assertEqual(caption["reveal_mode"], "word")
+        self.assertTrue(processor._should_use_dom_template_renderer({}, [caption]))
+        self.assertFalse(processor._should_use_dom_template_renderer({}, [
+            {"id": "c2", "text": "plain", "start_time": 0, "end_time": 1, "reveal_mode": ""}
+        ]))
+
     def test_rich_editor_features_select_dom_renderer(self):
         self.assertTrue(processor._should_use_dom_template_renderer({}, [
             {"id": "text-1", "is_text_element": True, "text": "Headline"}

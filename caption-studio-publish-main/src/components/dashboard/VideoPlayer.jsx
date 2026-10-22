@@ -856,10 +856,12 @@ export default function VideoPlayer({
   // Deriving it from captionHasDetachedWords() meant one drag silently switched
   // the whole caption to word-by-word, so the dragged word vanished until its
   // spoken moment and could no longer be clicked to reopen the word editor.
+  // Word by word: the whole video (Display Mode) or one caption (its look,
+  // revealMode 'word' from the layout director or the caption's Motion choice).
   const shouldRevealSequentially = (caption) => (
     !isCaptionWordEditingActive(caption)
     && isPlaying
-    && captionStyle?.show_inactive === false
+    && (captionStyle?.show_inactive === false || caption?.revealMode === 'word')
   );
 
   // A displaced word authors a CPT. Editing stays fully visible; playback and

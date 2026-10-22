@@ -1,14 +1,17 @@
 // Smart layout director (rules only, no AI): suggests a look for each caption
 // from its timing, pauses, loudness and wording, and applies it.
 //
-// Looks: a layout (sentence | keywords | cpt) plus motion on/off, which gives
-// five looks: plain sentence, sentence + motion, sentence + keywords,
-// keywords + motion, and CPT (creatively placed words, always animated).
+// Looks: a layout (sentence | keywords | cpt) plus motion, which is one of
+// 'none' (still), 'line' (the whole caption animates in) or 'word' (the
+// sentence builds up word by word as it is spoken). That gives seven looks:
+// sentence still / line / word, keywords still / line / word, and CPT
+// (creatively placed words, always revealed as spoken).
 //
-// Plain captions get word styles (emphasis, CPT positions) and a caption
-// animation. Template captions pick the template's own authored phase of the
-// matching type (plain / normal word-by-word / styled layout) and its keyword
-// indices, so every existing template follows the same decision.
+// Plain captions get word styles (emphasis, CPT positions), a caption
+// animation (line) or a per-caption word reveal (revealMode 'word'). Template
+// captions pick the template's own authored phase of the matching type (plain /
+// normal word-by-word / styled layout) and its keyword indices, so every
+// existing template follows the same decision.
 //
 // A caption the user set (layoutSource 'user'), or hand-styled without the
 // director, is never changed by Auto layout.
@@ -103,9 +106,19 @@ export function getCaptionLayoutMode(caption) {
   return 'sentence'
 }
 
+export const CAPTION_LAYOUT_MOTIONS = ['none', 'line', 'word']
+
+// Older looks stored motion as a boolean (true = the caption animates in).
+export function normalizeLayoutMotion(motion) {
+  if (CAPTION_LAYOUT_MOTIONS.includes(motion)) return motion
+  return motion === true ? 'line' : 'none'
+}
+
 export function getCaptionLayoutMotion(caption) {
-  if (typeof caption?.layoutMotion === 'boolean') return caption.layoutMotion
-  return Boolean(caption?.animation && caption.animation !== 'none') || getCaptionLayoutMode(caption) === 'cpt'
+  if (getCaptionLayoutMode(caption) === 'cpt') return 'word'
+  if (caption?.layoutMotion !== undefined) return normalizeLayoutMotion(caption.layoutMotion)
+  if (caption?.revealMode === 'word') return 'word'
+  return caption?.animation && caption.animation !== 'none' ? 'line' : 'none'
 }
 
 // Hand-made work the director must not overwrite on Auto layout.
@@ -200,7 +213,14 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
     else if (cptIds.has(item.caption.id)) mode = 'cpt'
     else if (item.wordCount >= 3 && item.keywordIndices.length && (item.intensity >= keywordThreshold || item.topScore >= 3.2)) mode = 'keywords'
     else mode = 'sentence'
-    const motion = locked ? getCaptionLayoutMotion(item.caption) : (mode === 'cpt' || item.intensity >= motionThreshold)
+    // Motion: calm lines stay still; energetic, wordy lines build word by word
+    // as spoken; other moving lines animate in as a whole.
+    let motion = 'none'
+    if (locked) motion = getCaptionLayoutMotion(item.caption)
+    else if (mode === 'cpt') motion = 'word'
+    else if (item.intensity >= motionThreshold) {
+      motion = item.wordCount >= 4 && item.seconds >= 1.6 && item.rate >= rateMid ? 'word' : 'line'
+    }
     // Calm lines fade in, ordinary ones rise, peaks pop.
     const animation = item.intensity >= cptThreshold ? 'pop' : item.intensity >= motionThreshold ? 'rise' : 'fade'
     return {
@@ -339,7 +359,7 @@ function pickTemplatePhase(phaseTypes, wantedTypes, captionIndex) {
 /**
  * Apply a look to one caption and return the new caption.
  * @param {object} caption
- * @param {{ mode: string, motion: boolean, plan?: object, source?: 'auto'|'user', captionStyle?: object,
+ * @param {{ mode: string, motion: 'none'|'line'|'word'|boolean, plan?: object, source?: 'auto'|'user', captionStyle?: object,
  *   frame?: {width:number, height:number}, align?: string, measure?: Function }} options
  */
 export function applyCaptionLayout(caption, {
@@ -362,14 +382,20 @@ export function applyCaptionLayout(caption, {
     if (Object.keys(next).length) wordStyles[key] = next
   })
   const keyOf = (index) => `${caption.id}-${index}`
-  const next = { ...caption, layoutMode: mode, layoutMotion: Boolean(motion || mode === 'cpt'), layoutSource: source }
+  const motionKind = mode === 'cpt' ? 'word' : normalizeLayoutMotion(motion)
+  const next = { ...caption, layoutMode: mode, layoutMotion: motionKind, layoutSource: source }
+  // A per-caption word-by-word reveal (sentence/keywords); CPT reveals as spoken anyway.
+  if (motionKind === 'word' && mode !== 'cpt') next.revealMode = 'word'
+  else delete next.revealMode
 
   const phaseTypes = templateMarkupOf(caption) ? getTemplatePhaseTypes(templateMarkupOf(caption)) : []
   if (new Set(phaseTypes).size > 1) {
-    // Template caption: the template draws the look from its own phase.
+    // Template caption: the template draws the look from its own phase
+    // (plain = still, normal = word-by-word animated, styled = its own layout).
+    delete next.revealMode
     const wanted = mode === 'cpt'
       ? ['styled', 'normal']
-      : motion ? ['normal', 'styled', 'plain'] : ['plain', 'normal']
+      : motionKind === 'none' ? ['plain', 'normal'] : ['normal', 'styled', 'plain']
     const { phaseIndex, type } = pickTemplatePhase(phaseTypes, wanted, Number(plan.captionIndex) || 0)
     const emphasis = mode === 'sentence' ? [] : (mode === 'cpt' ? [heroIndex] : keywordIndices)
     return {
@@ -382,7 +408,7 @@ export function applyCaptionLayout(caption, {
     }
   }
 
-  next.animation = motion && mode !== 'cpt' ? (plan.animation || 'rise') : 'none'
+  next.animation = motionKind === 'line' && mode !== 'cpt' ? (plan.animation || 'rise') : 'none'
   if (mode === 'keywords') {
     keywordIndices.forEach((index) => {
       wordStyles[keyOf(index)] = { ...(wordStyles[keyOf(index)] || {}), isEmphasis: true }
@@ -432,7 +458,7 @@ export function applyCaptionLayout(caption, {
  */
 export function autoLayoutCaptions(captions = [], { waveformData, duration, captionStyle, frame, measure } = {}) {
   const plans = new Map(planCaptionLayouts(captions, { waveformData, duration }).map((plan) => [plan.captionId, plan]))
-  const counts = { sentence: 0, motion: 0, keywords: 0, cpt: 0, kept: 0 }
+  const counts = { sentence: 0, keywords: 0, cpt: 0, line: 0, word: 0, kept: 0 }
   let cptOrder = 0
   const next = captions.map((caption) => {
     const plan = plans.get(caption?.id)
@@ -442,7 +468,7 @@ export function autoLayoutCaptions(captions = [], { waveformData, duration, capt
       return caption
     }
     counts[plan.mode] += 1
-    if (plan.motion && plan.mode !== 'cpt') counts.motion += 1
+    if (plan.mode !== 'cpt' && plan.motion !== 'none') counts[plan.motion] += 1
     const align = plan.mode === 'cpt' ? (cptOrder++ % 2 ? 'left' : 'center') : 'center'
     return applyCaptionLayout(caption, { mode: plan.mode, motion: plan.motion, plan, source: 'auto', captionStyle, frame, align, measure })
   })

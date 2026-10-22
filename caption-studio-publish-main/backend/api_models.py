@@ -27,6 +27,8 @@ class CaptionItem(BaseModel):
     end_time: float
     animation: str = Field(default="none", max_length=50)
     animation_speed: float = Field(default=1, ge=0.1, le=4)
+    # "word": this caption builds up word by word as spoken (DOM renderer).
+    reveal_mode: str = Field(default="", max_length=20)
     is_text_element: bool = False
     custom_style: Optional[Dict[str, Any]] = Field(default=None, max_length=200)
     template_id: str = Field(default="", max_length=100)

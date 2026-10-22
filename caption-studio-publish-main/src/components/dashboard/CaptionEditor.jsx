@@ -15,7 +15,8 @@ import {
   Languages,
   Loader2,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  AudioLines
 } from 'lucide-react';
 import {
   autoLayoutCaptions,
@@ -263,7 +264,8 @@ function CaptionEditor({
       counts.keywords && `${counts.keywords} with keywords`,
       counts.sentence && `${counts.sentence} sentences`,
     ].filter(Boolean);
-    setCaptionEditMessage(`Auto layout: ${parts.join(', ') || 'no changes'}${counts.motion ? ` (${counts.motion} with motion)` : ''}${counts.kept ? `. Kept ${counts.kept} you styled.` : '.'} Undo to revert.`);
+    const motion = [counts.line && `${counts.line} animated in`, counts.word && `${counts.word} word by word`].filter(Boolean);
+    setCaptionEditMessage(`Auto layout: ${parts.join(', ') || 'no changes'}${motion.length ? ` (${motion.join(', ')})` : ''}${counts.kept ? `. Kept ${counts.kept} you styled.` : '.'} Undo to revert.`);
   };
 
   const chooseCaptionLayout = (caption, look) => {
@@ -459,11 +461,13 @@ function CaptionEditor({
                       {caption.layoutSource && (
                         <span
                           data-caption-layout-badge={getCaptionLayoutMode(caption)}
-                          title={`${caption.layoutSource === 'auto' ? 'Suggested by Auto layout' : 'Set by you'}${getCaptionLayoutMotion(caption) ? ', with motion' : ''}`}
+                          data-caption-layout-motion={getCaptionLayoutMotion(caption)}
+                          title={`${caption.layoutSource === 'auto' ? 'Suggested by Auto layout' : 'Set by you'}${({ line: ', animates in', word: ', word by word' })[getCaptionLayoutMotion(caption)] || ''}`}
                           className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded border border-[#F5A623]/25 bg-[#F5A623]/[0.06] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#F5A623]/90"
                         >
                           {({ sentence: 'Text', keywords: 'Key', cpt: 'CPT' })[getCaptionLayoutMode(caption)]}
-                          {getCaptionLayoutMode(caption) !== 'cpt' && getCaptionLayoutMotion(caption) && <Sparkles className="h-2.5 w-2.5" aria-label="with motion" />}
+                          {getCaptionLayoutMode(caption) !== 'cpt' && getCaptionLayoutMotion(caption) === 'line' && <Sparkles className="h-2.5 w-2.5" aria-label="animates in" />}
+                          {getCaptionLayoutMode(caption) !== 'cpt' && getCaptionLayoutMotion(caption) === 'word' && <AudioLines className="h-2.5 w-2.5" aria-label="word by word" />}
                         </span>
                       )}
                       <span className="text-xs text-gray-500 flex items-center gap-1">
@@ -665,30 +669,41 @@ function CaptionEditor({
                           const layoutMode = getCaptionLayoutMode(caption);
                           const layoutMotion = getCaptionLayoutMotion(caption);
                           return (
-                            <div className="mt-3 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <div className="mt-3 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                               <div role="group" aria-label="Caption look" className="inline-flex rounded-md border border-white/10 bg-black/30 p-0.5">
                                 {[['sentence', 'Sentence'], ['keywords', 'Keywords'], ['cpt', 'CPT']].map(([mode, label]) => (
                                   <button
                                     key={mode}
                                     type="button"
                                     aria-pressed={layoutMode === mode}
-                                    onClick={() => chooseCaptionLayout(caption, { mode, motion: mode === 'cpt' ? true : layoutMotion })}
+                                    onClick={() => chooseCaptionLayout(caption, { mode, motion: mode === 'cpt' || layoutMode === 'cpt' ? (mode === 'cpt' ? 'word' : 'none') : layoutMotion })}
                                     className={`rounded px-2 py-1 text-[10px] font-semibold transition-colors ${layoutMode === mode ? 'bg-white text-black' : 'text-slate-400 hover:text-white'}`}
                                   >
                                     {label}
                                   </button>
                                 ))}
                               </div>
-                              <button
-                                type="button"
-                                aria-pressed={layoutMotion}
-                                disabled={layoutMode === 'cpt'}
-                                title={layoutMode === 'cpt' ? 'CPT words always animate in as they are spoken' : 'Animate this caption in'}
-                                onClick={() => chooseCaptionLayout(caption, { mode: layoutMode, motion: !layoutMotion })}
-                                className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${layoutMotion ? 'border-[#F5A623]/50 bg-[#F5A623]/10 text-[#F5A623]' : 'border-white/10 text-slate-400 hover:text-white'}`}
+                              {/* Motion: still, the whole caption animates in, or it builds word by word as spoken. */}
+                              <div
+                                role="group"
+                                aria-label="Caption motion"
+                                title={layoutMode === 'cpt' ? 'CPT words always appear as they are spoken' : undefined}
+                                className={`inline-flex rounded-md border border-white/10 bg-black/30 p-0.5 ${layoutMode === 'cpt' ? 'opacity-50' : ''}`}
                               >
-                                Motion
-                              </button>
+                                {[['none', 'Still', 'No motion'], ['line', 'Line', 'The whole caption animates in'], ['word', 'Words', 'Builds word by word as spoken']].map(([motion, label, hint]) => (
+                                  <button
+                                    key={motion}
+                                    type="button"
+                                    aria-pressed={layoutMotion === motion}
+                                    disabled={layoutMode === 'cpt'}
+                                    title={hint}
+                                    onClick={() => chooseCaptionLayout(caption, { mode: layoutMode, motion })}
+                                    className={`rounded px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed ${layoutMotion === motion ? 'bg-[#F5A623] text-black' : 'text-slate-400 hover:text-white'}`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           );
                         })()}
