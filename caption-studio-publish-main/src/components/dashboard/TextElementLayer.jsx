@@ -334,8 +334,10 @@ export default function TextElementLayer({
                                   whiteSpace: 'pre',
                                   ...(style.hasStroke ? { WebkitTextStroke: `${style.strokeWidth || 1}px ${style.strokeColor || '#000000'}` } : {}),
                                   ...(style.hasShadow ? { textShadow: `${style.shadowOffsetX ?? 0}px ${style.shadowOffsetY ?? 2}px ${style.shadowBlur ?? 4}px ${style.shadowColor || 'rgba(0,0,0,0.8)'}` } : {}),
+                                  // Longhands only: a `background` shorthand re-applied alone on
+                                  // update resets the text clip and paints the whole box.
                                   ...(restWordStyle.textGradient ? {
-                                    background: restWordStyle.textGradient,
+                                    backgroundColor: 'transparent',
                                     backgroundImage: restWordStyle.textGradient,
                                     backgroundSize: '100% 100%',
                                     backgroundRepeat: 'no-repeat',

@@ -3561,8 +3561,11 @@ export const renderWordTextContent = (word, wordStyle = {}, fallbackColor = 'inh
         transformOrigin: 'center center',
         ...(showLineThrough ? { textDecoration: 'line-through' } : { textDecoration: 'none' }),
         ...computeWordEffectCSS(wordStyle),
+        // Longhands only: on re-render React re-applies just the changed
+        // properties, and a `background` shorthand would reset the clip to
+        // border-box (the gradient then fills the whole word box).
         ...(hasGradient ? {
-          background: textGradient,
+          backgroundColor: 'transparent',
           backgroundImage: textGradient,
           backgroundSize: '100% 100%',
           backgroundRepeat: 'no-repeat',

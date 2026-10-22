@@ -375,4 +375,24 @@ assert.doesNotMatch(
   'export payloads must not serialize obsolete CPT animation metadata',
 );
 
+// A React style that clips a text gradient must not also set the `background`
+// shorthand: when only the gradient changes, React re-applies the shorthand
+// alone, which resets the clip and paints the whole word box.
+for (const relativePath of [
+  '../src/components/dashboard/videoPlayerTemplateRendering.jsx',
+  '../src/components/dashboard/TextElementLayer.jsx',
+  '../src/components/dashboard/VideoPlayer.jsx',
+  '../src/lib/wordPaint.js',
+]) {
+  const lines = (await readFile(new URL(relativePath, import.meta.url), 'utf8')).split('\n');
+  lines.forEach((line, index) => {
+    if (!/(Webkit)?[Bb]ackgroundClip:\s*'text'/.test(line)) return;
+    const nearby = lines.slice(Math.max(0, index - 10), index + 3);
+    assert.ok(
+      !nearby.some((candidate) => /^\s*background:\s/.test(candidate)),
+      `${relativePath}:${index + 1} sets background-clip: text next to a background shorthand`,
+    );
+  });
+}
+
 console.log('CPT editing contracts passed.');
