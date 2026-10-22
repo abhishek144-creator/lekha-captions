@@ -988,7 +988,8 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
 // moves on resize, zoom (an inline transform) and layout changes.
 function useFloatingEditorRect(active) {
   const [rect, setRect] = React.useState(null);
-  React.useEffect(() => {
+  // Layout effect: place the editor before its first paint, not at 0,0.
+  React.useLayoutEffect(() => {
     if (!active || typeof window === 'undefined') {
       setRect(null);
       return undefined;
@@ -997,12 +998,21 @@ function useFloatingEditorRect(active) {
     const measure = () => {
       frameId = 0;
       const frame = document.querySelector('.lekha-video-frame')?.getBoundingClientRect() || null;
-      const obstacles = [...document.querySelectorAll('[aria-label="Preview tools"]')]
+      const obstacles = [...document.querySelectorAll('[aria-label="Preview tools"], [data-word-editor-avoid="true"]')]
         .map((node) => node.getBoundingClientRect())
         .filter((box) => box.width && box.height);
+      // Desktop editor layout: float in the preview column, above the timeline
+      // bar, and only beside the frame (the caller docks it when there is no room).
+      const stage = document.querySelector('[data-word-editor-bounds="true"]')?.getBoundingClientRect();
+      const floor = document.querySelector('[data-word-editor-floor="true"]')?.getBoundingClientRect();
+      const bounds = stage?.height
+        ? { top: stage.top, bottom: floor?.height ? Math.min(stage.bottom, floor.top) : stage.bottom }
+        : null;
       const next = computeFloatingWordEditorRect({
         frame,
         obstacles,
+        bounds,
+        sidesOnly: Boolean(bounds),
         viewport: { width: window.innerWidth, height: window.innerHeight },
       });
       setRect((previous) => (

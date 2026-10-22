@@ -1,5 +1,6 @@
-// Where the floating word editor goes when it cannot dock into the editor
-// layout (fullscreen preview): beside the video frame, never over it.
+// Where the floating word editor goes: in the free space beside the video
+// frame (between the frame and the editor columns on desktop, or beside it
+// in fullscreen), never over it.
 
 const EDITOR_WIDTH = 300
 const MIN_WIDTH = 260
@@ -9,16 +10,23 @@ const MARGIN = 12
 /**
  * @param {{ frame: {left:number, top:number, right:number, bottom:number} | null,
  *   viewport: {width:number, height:number},
- *   obstacles?: Array<{left:number, top:number, right:number, bottom:number}> }} input
- *   obstacles: other controls beside the frame (the preview tool rail).
+ *   obstacles?: Array<{left:number, top:number, right:number, bottom:number}>,
+ *   bounds?: {top:number, bottom:number} | null,
+ *   sidesOnly?: boolean }} input
+ *   obstacles: other controls beside the frame (the preview tool rail, editor columns).
+ *   bounds: the vertical band the editor may use (default: the viewport).
+ *   sidesOnly: only beside the frame; otherwise report overlapsFrame so the
+ *   caller docks the editor instead (the desktop layout has no room above/below).
  * @returns {{ left:number, top:number, width:number, maxHeight:number, overlapsFrame:boolean }}
  */
-export function computeFloatingWordEditorRect({ frame, viewport, obstacles = [] }) {
+export function computeFloatingWordEditorRect({ frame, viewport, obstacles = [], bounds = null, sidesOnly = false }) {
   const vw = Math.max(0, viewport.width)
   const vh = Math.max(0, viewport.height)
-  const fullHeight = Math.max(MIN_HEIGHT, vh - MARGIN * 2)
+  const bandTop = Math.max(0, bounds?.top ?? 0)
+  const bandBottom = Math.min(vh, bounds?.bottom ?? vh)
+  const fullHeight = Math.max(MIN_HEIGHT, bandBottom - bandTop - MARGIN * 2)
   if (!frame) {
-    return { left: Math.max(MARGIN, vw - EDITOR_WIDTH - MARGIN), top: MARGIN, width: Math.min(EDITOR_WIDTH, vw - MARGIN * 2), maxHeight: fullHeight, overlapsFrame: false }
+    return { left: Math.max(MARGIN, vw - EDITOR_WIDTH - MARGIN), top: bandTop + MARGIN, width: Math.min(EDITOR_WIDTH, vw - MARGIN * 2), maxHeight: fullHeight, overlapsFrame: false }
   }
   const visible = {
     left: Math.max(0, frame.left),
@@ -35,13 +43,20 @@ export function computeFloatingWordEditorRect({ frame, viewport, obstacles = [] 
   const aboveSpace = visible.top - MARGIN * 2
 
   if (rightSpace >= MIN_WIDTH || leftSpace >= MIN_WIDTH) {
-    const useRight = rightSpace >= leftSpace
-    const width = Math.min(EDITOR_WIDTH, useRight ? rightSpace : leftSpace)
-    const left = useRight ? visible.right + MARGIN : visible.left - MARGIN - width
-    return { left, top: MARGIN, width, maxHeight: fullHeight, overlapsFrame: false }
+    // Prefer the right: on desktop that is the gap next to the Styling panel.
+    const useRight = rightSpace >= MIN_WIDTH
+    const space = useRight ? rightSpace : leftSpace
+    const width = Math.min(EDITOR_WIDTH, space)
+    // Centred in the free space between the frame and its neighbour.
+    const slack = (space - width) / 2
+    const left = useRight ? visible.right + MARGIN + slack : visible.left - MARGIN - width - slack
+    return { left, top: bandTop + MARGIN, width, maxHeight: fullHeight, overlapsFrame: false }
   }
   const width = Math.min(EDITOR_WIDTH * 1.4, vw - MARGIN * 2)
   const left = Math.max(MARGIN, (vw - width) / 2)
+  if (sidesOnly) {
+    return { left, top: bandTop + MARGIN, width, maxHeight: fullHeight, overlapsFrame: true }
+  }
   if (belowSpace >= MIN_HEIGHT || aboveSpace >= MIN_HEIGHT) {
     const useBelow = belowSpace >= aboveSpace
     return {

@@ -1,8 +1,8 @@
 import React from 'react'
 
 // Entrance keyframes referenced by caption, word and text-element animations
-// in the editor preview (word-* keep the inner span's translate(-50%,-50%)
-// centering; source-word-* are used by authored template markup).
+// in the editor preview (word-* animate the inner motion span of plain and
+// dragged words; source-word-* are used by authored template markup).
 const VIDEO_PLAYER_KEYFRAMES = `
 @keyframes rise {
   0% { transform: translateY(20px); opacity: 0; }
@@ -53,44 +53,45 @@ const VIDEO_PLAYER_KEYFRAMES = `
   0% { transform: rotate(-180deg) scale(0.5); opacity: 0; }
   100% { transform: rotate(0) scale(1); opacity: 1; }
 }
-/* Word-level keyframes — include translate(-50%,-50%) in every step
-   to preserve the inner span's centering transform */
+/* Word-level keyframes run on an inner motion span whose parent does the
+   centring, so they must not add translate(-50%,-50%) themselves (that
+   left finished words offset by half their size) */
 @keyframes word-rise {
-  0% { transform: translate(-50%, calc(-50% + 20px)); opacity: 0; }
-  100% { transform: translate(-50%, -50%); opacity: 1; }
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: none; opacity: 1; }
 }
 @keyframes word-pan {
-  0% { transform: translate(calc(-50% - 30px), -50%); opacity: 0; }
-  100% { transform: translate(-50%, -50%); opacity: 1; }
+  0% { transform: translateX(-30px); opacity: 0; }
+  100% { transform: none; opacity: 1; }
 }
 @keyframes word-pop {
-  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-  50% { transform: translate(-50%, -50%) scale(1.1); }
-  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
 }
 @keyframes word-succession {
-  0% { transform: translate(-50%, calc(-50% - 10px)); opacity: 0; }
-  100% { transform: translate(-50%, -50%); opacity: 1; }
+  0% { transform: translateY(-10px); opacity: 0; }
+  100% { transform: none; opacity: 1; }
 }
 @keyframes word-breathe {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-  50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.9; }
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.9; }
 }
 @keyframes word-baseline {
-  0% { transform: translate(-50%, calc(-50% + 5px)); opacity: 0; }
-  100% { transform: translate(-50%, -50%); opacity: 1; }
+  0% { transform: translateY(5px); opacity: 0; }
+  100% { transform: none; opacity: 1; }
 }
 @keyframes word-drift {
-  0% { transform: translate(calc(-50% - 10px), calc(-50% - 10px)); opacity: 0; }
-  100% { transform: translate(-50%, -50%); opacity: 1; }
+  0% { transform: translate(-10px, -10px); opacity: 0; }
+  100% { transform: none; opacity: 1; }
 }
 @keyframes word-tectonic {
-  0% { transform: translate(calc(-50% - 20px), -50%) rotate(-5deg); opacity: 0; }
-  100% { transform: translate(-50%, -50%) rotate(0); opacity: 1; }
+  0% { transform: translateX(-20px) rotate(-5deg); opacity: 0; }
+  100% { transform: rotate(0); opacity: 1; }
 }
 @keyframes word-tumble {
-  0% { transform: translate(-50%, -50%) rotate(-180deg) scale(0.5); opacity: 0; }
-  100% { transform: translate(-50%, -50%) rotate(0) scale(1); opacity: 1; }
+  0% { transform: rotate(-180deg) scale(0.5); opacity: 0; }
+  100% { transform: rotate(0) scale(1); opacity: 1; }
 }
 @keyframes source-word-rise {
   0% { transform: translateY(20px); opacity: 0; }

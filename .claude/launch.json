@@ -18,7 +18,7 @@
     {
       "name": "backend",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "cd caption-studio-publish-main\\backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"],
+      "runtimeArgs": ["/c", "cd caption-studio-publish-main && npm run dev:backend"],
       "port": 8000
     },
     {

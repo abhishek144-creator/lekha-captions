@@ -169,7 +169,13 @@ export default function Dashboard() {
 
   // Video canvas fullscreen & resizable timeline
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const exitFullscreenForWordEditor = useCallback(() => setIsVideoFullscreen(false), []);
+  // Desktop: the word editor floats beside the preview frame; when there is
+  // no room beside it (narrow window) it docks into the inspector column.
+  const [isWordEditorDocked, setIsWordEditorDocked] = useState(false);
+  const handleWordEditorCannotFloat = useCallback(() => {
+    if (isVideoFullscreen) setIsVideoFullscreen(false);
+    else setIsWordEditorDocked(true);
+  }, [isVideoFullscreen]);
   const [timelineHeight, setTimelineHeight] = useState(COLLAPSED_TIMELINE_HEIGHT);
   const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
   const collapseTimeline = () => {
@@ -240,6 +246,10 @@ export default function Dashboard() {
   // Floating Word Popup state
   const [wordPopup, setWordPopup] = useState(null);
   const [wordPopupOpenCount, setWordPopupOpenCount] = useState(0);
+  // Try floating again next time (the window may have been widened).
+  useEffect(() => {
+    if (!wordPopup) setIsWordEditorDocked(false);
+  }, [wordPopup]);
 
   // A word remains the current animation target while its floating editor is
   // open, including after it has been dragged to a custom canvas position.
@@ -1123,15 +1133,16 @@ export default function Dashboard() {
     return null;
   };
 
-  // One word editor, docked where it cannot cover the preview: the inspector
-  // column (desktop), the dock sheet (tablet/phone) or beside the frame
-  // (fullscreen). If fullscreen leaves no room beside it, leave fullscreen.
+  // One word editor, placed where it cannot cover the preview: floating
+  // beside the frame (desktop and fullscreen), the inspector column (desktop
+  // without room beside the frame) or the dock sheet (tablet/phone). If
+  // fullscreen leaves no room beside it, leave fullscreen.
   const renderWordEditor = (placement) => (
     <Suspense fallback={null}>
       <WordClickPopup
         key={wordPopup._openKey ?? wordPopupOpenCount}
         placement={placement}
-        onCannotFloat={exitFullscreenForWordEditor}
+        onCannotFloat={handleWordEditorCannotFloat}
         wordKey={wordPopupStyleKey(wordPopup)}
         inheritedFontSize={Math.round(Number(captionStyle?.font_size) || 18)}
         inheritedColor={captionStyle?.text_color || '#ffffff'}
@@ -1321,7 +1332,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Left Panel - Content based on active tab */}
-                <div data-editor-panel="true" className="hidden lg:block w-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden min-h-0">
+                <div data-editor-panel="true" data-word-editor-avoid="true" className="hidden lg:block w-full rounded-[18px] lekha-panel lekha-panel-corners p-3 overflow-hidden min-h-0">
                   {renderEditorPanel()}
                 </div>
               </>
@@ -1357,6 +1368,7 @@ export default function Dashboard() {
                   instead. On mobile the inner wrapper takes the full height so
                   the 9:16 frame fits it, with play controls in view. */}
               <div
+                data-word-editor-bounds={!isVideoFullscreen && isDesktopLayout ? 'true' : undefined}
                 className="relative z-10 flex-1 min-h-0 overflow-y-auto max-lg:overflow-y-hidden overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 style={{ paddingBottom: isVideoFullscreen || isTimelineCollapsed || !isDesktopLayout ? 0 : `${Math.max(72, timelineHeight - 24)}px` }}
               >
@@ -1421,6 +1433,7 @@ export default function Dashboard() {
                   }}
                 >
                   <div
+                    data-word-editor-floor="true"
                     style={{
                       position: isTimelineCollapsed ? 'relative' : 'absolute',
                       left: 0,
@@ -1438,14 +1451,14 @@ export default function Dashboard() {
             </div>
 
             {!isVideoFullscreen && isDesktopLayout && (
-              <div className="hidden lg:block w-full overflow-hidden min-h-0">
-                {/* The word editor takes the inspector column while open (the
-                    Styling panel stays mounted to keep its state), so it never
-                    covers the video preview. */}
-                <div className={wordPopup ? 'hidden' : 'contents'}>
+              <div data-word-editor-avoid="true" className="hidden lg:block w-full overflow-hidden min-h-0">
+                {/* Without room beside the frame, the word editor takes the
+                    inspector column (the Styling panel stays mounted to keep
+                    its state), so it never covers the video preview. */}
+                <div className={wordPopup && isWordEditorDocked ? 'hidden' : 'contents'}>
                   {renderStylePanel()}
                 </div>
-                {wordPopup && renderWordEditor('panel')}
+                {wordPopup && isWordEditorDocked && renderWordEditor('panel')}
               </div>
             )}
 
@@ -1477,8 +1490,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Fullscreen has no editor columns: the word editor floats beside the frame. */}
-      {wordPopup && isVideoFullscreen && renderWordEditor('floating')}
+      {/* The word editor floats beside the frame: in the free space between
+          the frame and the editor columns (desktop) or beside it (fullscreen). */}
+      {wordPopup && (isVideoFullscreen || (isDesktopLayout && !isWordEditorDocked)) && renderWordEditor('floating')}
 
       {/* Modals */}
       {isUploadModalOpen && (

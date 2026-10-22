@@ -28,6 +28,33 @@ describe('computeFloatingWordEditorRect', () => {
     expect(placed.top + placed.maxHeight).toBeLessThanOrEqual(900)
   })
 
+  it('floats in the desktop gap between the frame and the inspector, inside the preview band', () => {
+    // 1813px-wide editor (1360px screen at 75% zoom): captions | frame | inspector.
+    const frame = rect(780, 240, 1107, 793)
+    const captions = rect(80, 190, 395, 955)
+    const inspector = rect(1480, 190, 1795, 955)
+    const bounds = { top: 225, bottom: 885 }
+    const placed = computeFloatingWordEditorRect({ frame, obstacles: [captions, inspector], bounds, sidesOnly: true, viewport: { width: 1813, height: 1020 } })
+    expect(placed.overlapsFrame).toBe(false)
+    expect(overlaps(placed, frame)).toBe(false)
+    expect(overlaps(placed, inspector)).toBe(false)
+    expect(placed.left).toBeGreaterThan(frame.right)
+    expect(placed.top).toBeGreaterThanOrEqual(bounds.top)
+    expect(placed.top + placed.maxHeight).toBeLessThanOrEqual(bounds.bottom)
+  })
+
+  it('asks to dock on desktop when the gap beside the frame is too narrow', () => {
+    const frame = rect(580, 130, 870, 640)
+    const placed = computeFloatingWordEditorRect({
+      frame,
+      obstacles: [rect(80, 70, 360, 780), rect(1088, 70, 1388, 780)],
+      bounds: { top: 120, bottom: 700 },
+      sidesOnly: true,
+      viewport: { width: 1400, height: 800 },
+    })
+    expect(placed.overlapsFrame).toBe(true)
+  })
+
   it('reports when the frame fills the screen so the caller can dock instead', () => {
     const frame = rect(0, 0, 375, 812)
     const placed = computeFloatingWordEditorRect({ frame, viewport: { width: 375, height: 812 } })
