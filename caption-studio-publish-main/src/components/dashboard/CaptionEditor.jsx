@@ -14,8 +14,15 @@ import {
   MoreHorizontal,
   Languages,
   Loader2,
-  ChevronDown
+  ChevronDown,
+  Sparkles
 } from 'lucide-react';
+import {
+  autoLayoutCaptions,
+  getCaptionLayoutMode,
+  getCaptionLayoutMotion,
+  setCaptionLayout,
+} from './captionLayoutDirector';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   placeDuplicateCaption,
@@ -49,6 +56,8 @@ function CaptionEditor({
   onSelectTrack,
   onTranslate,
   isTranslating = false,
+  captionStyle,
+  waveformData,
 }) {
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
@@ -239,6 +248,28 @@ function CaptionEditor({
     setSelectedCaptionId(newCaptions[newCaptions.length - 1].id);
   };
 
+  // Smart layout director: the frame shape decides how a CPT composition fits.
+  const directorOptions = () => {
+    const frame = typeof document !== 'undefined' ? document.querySelector('.lekha-video-frame')?.getBoundingClientRect() : null;
+    const height = frame?.width ? (360 * frame.height) / frame.width : 640;
+    return { waveformData, duration, captionStyle: captionStyle || {}, frame: { width: 360, height } };
+  };
+
+  const runAutoLayout = () => {
+    const { captions: next, counts } = autoLayoutCaptions(captions || [], directorOptions());
+    setCaptions(next);
+    const parts = [
+      counts.cpt && `${counts.cpt} CPT`,
+      counts.keywords && `${counts.keywords} with keywords`,
+      counts.sentence && `${counts.sentence} sentences`,
+    ].filter(Boolean);
+    setCaptionEditMessage(`Auto layout: ${parts.join(', ') || 'no changes'}${counts.motion ? ` (${counts.motion} with motion)` : ''}${counts.kept ? `. Kept ${counts.kept} you styled.` : '.'} Undo to revert.`);
+  };
+
+  const chooseCaptionLayout = (caption, look) => {
+    setCaptions(setCaptionLayout(captions || [], caption.id, look, directorOptions()));
+  };
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = (seconds % 60).toFixed(1);
@@ -366,9 +397,22 @@ function CaptionEditor({
       </div>
       {captionEditMessage && <p role="status" className="relative z-10 -mt-2 mb-3 text-[11px] text-amber-200">{captionEditMessage}</p>}
       <div className="relative z-10 mb-4">
-        <button type="button" onClick={() => setShowReplace((value) => !value)} className="text-[11px] font-semibold text-sky-200 hover:text-white">
-          {showReplace ? 'Close find and replace' : 'Find and replace'}
-        </button>
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" onClick={() => setShowReplace((value) => !value)} className="text-[11px] font-semibold text-sky-200 hover:text-white">
+            {showReplace ? 'Close find and replace' : 'Find and replace'}
+          </button>
+          {transcriptCount > 0 && (
+            <button
+              type="button"
+              onClick={runAutoLayout}
+              title="Suggest a look for each caption: sentence, keywords or CPT, with or without motion. Captions you styled are kept."
+              className="inline-flex items-center gap-1 rounded-md border border-[#F5A623]/40 bg-[#F5A623]/[0.06] px-2 py-1 text-[11px] font-semibold text-[#F5A623] hover:bg-[#F5A623]/15"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Auto layout
+            </button>
+          )}
+        </div>
         {showReplace && (
           <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/25 p-3">
             <input aria-label="Find text" value={findText} onChange={(event) => setFindText(event.target.value)} placeholder="Find" className="min-w-0 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white placeholder:text-slate-500" />
@@ -412,6 +456,16 @@ function CaptionEditor({
                       <span className="shrink-0 whitespace-nowrap text-[9px] font-mono text-sky-200/80 bg-white/[0.04] border border-white/10 px-1.5 py-0.5 rounded">
                         {Math.max(0.1, ((caption.end_time || 0) - (caption.start_time || 0))).toFixed(1)}s
                       </span>
+                      {caption.layoutSource && (
+                        <span
+                          data-caption-layout-badge={getCaptionLayoutMode(caption)}
+                          title={`${caption.layoutSource === 'auto' ? 'Suggested by Auto layout' : 'Set by you'}${getCaptionLayoutMotion(caption) ? ', with motion' : ''}`}
+                          className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded border border-[#F5A623]/25 bg-[#F5A623]/[0.06] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#F5A623]/90"
+                        >
+                          {({ sentence: 'Text', keywords: 'Key', cpt: 'CPT' })[getCaptionLayoutMode(caption)]}
+                          {getCaptionLayoutMode(caption) !== 'cpt' && getCaptionLayoutMotion(caption) && <Sparkles className="h-2.5 w-2.5" aria-label="with motion" />}
+                        </span>
+                      )}
                       <span className="text-xs text-gray-500 flex items-center gap-1">
                         <TooltipProvider>
                           <Tooltip
@@ -607,6 +661,37 @@ function CaptionEditor({
                     ) : (
                       <>
                         <p className="text-white text-[15px] font-semibold leading-snug line-clamp-3">{caption.text || ''}</p>
+                        {selectedCaptionId === caption.id && (() => {
+                          const layoutMode = getCaptionLayoutMode(caption);
+                          const layoutMotion = getCaptionLayoutMotion(caption);
+                          return (
+                            <div className="mt-3 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <div role="group" aria-label="Caption look" className="inline-flex rounded-md border border-white/10 bg-black/30 p-0.5">
+                                {[['sentence', 'Sentence'], ['keywords', 'Keywords'], ['cpt', 'CPT']].map(([mode, label]) => (
+                                  <button
+                                    key={mode}
+                                    type="button"
+                                    aria-pressed={layoutMode === mode}
+                                    onClick={() => chooseCaptionLayout(caption, { mode, motion: mode === 'cpt' ? true : layoutMotion })}
+                                    className={`rounded px-2 py-1 text-[10px] font-semibold transition-colors ${layoutMode === mode ? 'bg-white text-black' : 'text-slate-400 hover:text-white'}`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                aria-pressed={layoutMotion}
+                                disabled={layoutMode === 'cpt'}
+                                title={layoutMode === 'cpt' ? 'CPT words always animate in as they are spoken' : 'Animate this caption in'}
+                                onClick={() => chooseCaptionLayout(caption, { mode: layoutMode, motion: !layoutMotion })}
+                                className={`rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${layoutMotion ? 'border-[#F5A623]/50 bg-[#F5A623]/10 text-[#F5A623]' : 'border-white/10 text-slate-400 hover:text-white'}`}
+                              >
+                                Motion
+                              </button>
+                            </div>
+                          );
+                        })()}
                         {selectedCaptionId === caption.id && (
                           <div className="mt-3 flex items-center gap-3 text-slate-500">
                             <button

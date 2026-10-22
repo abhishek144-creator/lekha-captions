@@ -15,10 +15,18 @@ export function getWordBackgroundFill(wordStyle = {}) {
 // A text gradient is painted with background-clip: text. A background on the
 // same element would be clipped to the text too (or reset the clip), so both
 // are stacked as layers with their own clip: gradient -> text, fill -> box.
+// Longhands only: React re-applies just the changed style keys, so a
+// `background` shorthand next to (or swapped for) longhands across renders
+// resets the clip/fill and paints the wrong box.
 export function getWordPaintStyle(wordStyle = {}) {
   const textGradient = String(wordStyle.textGradient || '').trim()
   const fill = getWordBackgroundFill(wordStyle)
-  if (!textGradient) return fill ? { background: fill } : {}
+  if (!textGradient) {
+    if (!fill) return {}
+    return /gradient\(/i.test(fill)
+      ? { backgroundColor: 'transparent', backgroundImage: fill }
+      : { backgroundColor: fill, backgroundImage: 'none' }
+  }
   const fillLayer = fill && (/gradient\(/i.test(fill) ? fill : `linear-gradient(${fill}, ${fill})`)
   const clip = fillLayer ? 'text, padding-box' : 'text'
   return {

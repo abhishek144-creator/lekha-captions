@@ -1056,6 +1056,8 @@ export default function Dashboard() {
             onOpenWordPopup={openCaptionWordPopup}
             wordPopup={wordPopup}
             user={currentUser}
+            captionStyle={captionStyle}
+            waveformData={waveformData}
           />
         </Suspense>
       );

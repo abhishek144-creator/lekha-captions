@@ -3,7 +3,7 @@ import { getWordBackgroundFill, getWordPaintStyle } from '../wordPaint'
 
 describe('word paint', () => {
   it('paints a solid background box', () => {
-    expect(getWordPaintStyle({ backgroundColor: '#000000', backgroundOpacity: 0.65 })).toEqual({ background: 'rgba(0, 0, 0, 0.65)' })
+    expect(getWordPaintStyle({ backgroundColor: '#000000', backgroundOpacity: 0.65 })).toEqual({ backgroundColor: 'rgba(0, 0, 0, 0.65)', backgroundImage: 'none' })
   })
 
   it('prefers a highlight gradient over a solid background', () => {
@@ -23,6 +23,6 @@ describe('word paint', () => {
   })
 
   it('never emits invalid colours for bad stored values', () => {
-    expect(getWordPaintStyle({ backgroundColor: 'oops' })).toEqual({ background: 'rgba(0, 0, 0, 0.6)' })
+    expect(getWordPaintStyle({ backgroundColor: 'oops' })).toEqual({ backgroundColor: 'rgba(0, 0, 0, 0.6)', backgroundImage: 'none' })
   })
 })

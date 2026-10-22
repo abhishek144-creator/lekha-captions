@@ -8,7 +8,7 @@ export const EMOTIONAL_TEMPLATE_TIMING = Object.freeze({
   supportDurationMs: 380,
 });
 
-const EMPHASIS_STOP_WORDS = new Set([
+export const EMPHASIS_STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'being', 'but', 'by',
   'do', 'does', 'for', 'from', 'had', 'has', 'have', 'he', 'her', 'here',
   'him', 'his', 'how', 'i', 'if', 'in', 'is', 'it', 'its', 'me', 'my',
@@ -25,14 +25,14 @@ const EMPHASIS_STOP_WORDS = new Set([
   'कल',
 ]);
 
-function normalizeEmphasisWord(word = '') {
+export function normalizeEmphasisWord(word = '') {
   return String(word)
     .normalize('NFKC')
     .toLocaleLowerCase()
     .replace(/^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu, '');
 }
 
-function countLettersAndNumbers(word = '') {
+export function countLettersAndNumbers(word = '') {
   return Array.from(word.matchAll(/[\p{L}\p{M}\p{N}]/gu)).length;
 }
 
@@ -95,7 +95,7 @@ function selectSemanticEmphasis(words = [], audioImpWordIndex = -1) {
   };
 }
 
-function quantile(values, amount) {
+export function quantile(values, amount) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const index = Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * amount)));
@@ -215,6 +215,20 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
     // metadata but must never collapse multiple captions onto the first phase.
     const phaseIndex = captionIndex % phaseTypes.length;
     const words = String(caption?.text || '').trim().split(/\s+/).filter(Boolean);
+    // A look chosen by the layout director or the user (captionLayoutDirector.js)
+    // fixes this caption's mode and keywords; the audio guess must not replace it.
+    if (caption?.layoutSource === 'auto' || caption?.layoutSource === 'user') {
+      const chosen = Array.isArray(caption.imp_word_indices) ? caption.imp_word_indices.map(Number).filter(Number.isFinite) : [];
+      return {
+        captionId: caption.id,
+        mode: caption.emotional_mode || mode,
+        phaseIndex,
+        impWordIndex: chosen[0] ?? -1,
+        impWordIndices: chosen,
+        emphasisColor: '',
+        audio: { rms: audio.rms, peak: audio.peak, silenceRatio: audio.silenceRatio, rising: audio.rising },
+      };
+    }
     const emphasis = selectSemanticEmphasis(words, audio.impWordIndex);
 
     return {
