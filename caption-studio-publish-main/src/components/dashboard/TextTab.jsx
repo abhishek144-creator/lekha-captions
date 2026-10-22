@@ -7,12 +7,14 @@ import { loadGoogleFont } from './fontUtils';
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 // A new text box lasts 3 s (or its caption's span) but never past the video.
-const textElementTiming = (activeSpeechCaption, currentTime, duration) => {
+// A new text box starts at the playhead and stays until the end of the video
+// (trim it on the timeline). Tying it to the caption under the playhead made
+// it vanish after a second or two of playback.
+const textElementTiming = (_activeSpeechCaption, currentTime, duration) => {
   const videoEnd = Number(duration) > 0 ? Number(duration) : Infinity;
-  const preferredStart = activeSpeechCaption ? activeSpeechCaption.start_time : (currentTime || 0);
-  const startTime = Math.max(0, Math.min(preferredStart, videoEnd - 0.5));
-  const preferredEnd = activeSpeechCaption ? activeSpeechCaption.end_time : (startTime + 3);
-  return { startTime, endTime: Math.max(startTime + 0.1, Math.min(preferredEnd, videoEnd)) };
+  const startTime = Math.max(0, Math.min(Number(currentTime) || 0, videoEnd - 0.5));
+  const endTime = Number.isFinite(videoEnd) ? videoEnd : startTime + 5;
+  return { startTime, endTime: Math.max(startTime + 0.1, endTime) };
 };
 
 const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, captionStyle, duration }) => {

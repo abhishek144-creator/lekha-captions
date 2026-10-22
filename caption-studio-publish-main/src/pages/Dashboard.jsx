@@ -266,6 +266,8 @@ export default function Dashboard() {
   const lastMediaRefreshRef = useRef({ fileId: null, at: 0, reported: false });
   // The preview <video>, for the mobile dock's live scrubbing.
   const previewVideoElRef = useRef(null);
+  // Stable: the timeline builds its live scrubber once per getter.
+  const getPreviewVideoElement = useCallback(() => previewVideoElRef.current, []);
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
@@ -1203,6 +1205,7 @@ export default function Dashboard() {
         waveformData={waveformData}
         isPlaying={isPlaying}
         setIsPlaying={setIsPlaying}
+        getVideoElement={getPreviewVideoElement}
         collapsed={inDock ? false : isTimelineCollapsed}
         onToggleCollapsed={inDock ? undefined : () => {
           setIsTimelineCollapsed(prev => {

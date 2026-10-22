@@ -85,6 +85,34 @@ try {
     report('trimming the end handle shortens the caption', s3.end_time < s0.end_time - 0.1 && Math.abs(s3.start_time - s0.start_time) < 0.01, `${s0.start_time}-${s0.end_time} -> ${s3.start_time}-${s3.end_time}`)
     await ctrl(page, 'z')
     report('undo reverts the trim', Math.abs((await state(page)).captions[0].end_time - s0.end_time) < 0.01, `${(await state(page)).captions[0].end_time}`)
+
+    // Split at the playhead (ruler click puts it inside the first caption).
+    const countBefore = (await state(page)).captions.filter((c) => !c.isTextElement).length
+    const rulerPoint = await page.evaluate((midTime) => {
+      const content = document.querySelector('[data-caption-block="true"]').parentElement
+      const rect = content.getBoundingClientRect()
+      const duration = document.querySelector('.lekha-video-frame video').duration
+      return { x: rect.left + 12 + midTime * ((rect.width - 24) / duration), y: rect.top + 8 }
+    }, (s0.start_time + s0.end_time) / 2)
+    await page.mouse.click(rulerPoint.x, rulerPoint.y); await sleep(500)
+    await page.click('[aria-label="Split at playhead"]'); await sleep(700)
+    const afterSplit = (await state(page)).captions.filter((c) => !c.isTextElement)
+    report('split at playhead makes two captions', afterSplit.length === countBefore + 1 && afterSplit[0].end_time < s0.end_time - 0.1 && Math.abs(afterSplit[1].end_time - s0.end_time) < 0.01, `${countBefore} -> ${afterSplit.length}: ${afterSplit.slice(0, 2).map((c) => `${c.start_time.toFixed(2)}-${c.end_time.toFixed(2)} "${c.text}"`).join(' | ')}`)
+    await ctrl(page, 'z')
+    report('undo reverts the split', (await state(page)).captions.filter((c) => !c.isTextElement).length === countBefore, '')
+
+    // Keyboard: select the first clip, nudge it, then delete it (each undoable).
+    await page.click('[data-caption-block="true"]'); await sleep(400)
+    await page.keyboard.press('ArrowRight'); await sleep(1500)
+    const nudged = (await state(page)).captions.filter((c) => !c.isTextElement)[0]
+    report('arrow key nudges the selected clip', Math.abs(nudged.start_time - (s0.start_time + 0.1)) < 0.02, `${s0.start_time} -> ${nudged.start_time}`)
+    await page.keyboard.press('Delete'); await sleep(600)
+    report('Delete removes the selected clip', (await state(page)).captions.filter((c) => !c.isTextElement).length === countBefore - 1, '')
+    await ctrl(page, 'z')
+    report('undo restores the deleted clip', (await state(page)).captions.filter((c) => !c.isTextElement).length === countBefore, '')
+    // Undo the nudge too, so the later steps start from the original caption.
+    await ctrl(page, 'z'); await sleep(800)
+    report('undo reverts the nudge', Math.abs((await state(page)).captions.filter((c) => !c.isTextElement)[0].start_time - s0.start_time) < 0.01, '')
   }
   // template apply + undo + reload persistence
   for (let attempt = 0; attempt < 10 && !(await page.$('[data-template-card-id][data-template-kind="basic"]')); attempt += 1) {

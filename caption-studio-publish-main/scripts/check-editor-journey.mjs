@@ -285,6 +285,26 @@ try {
   await page.click('button[title="Undo"]')
   await page.waitForSelector('[data-text-element-layer="true"]')
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.isTextElement))
+  // A new text box lasts to the end of the video, and text typed into it is
+  // kept when playback starts while the box is still being edited (it used to
+  // be lost: the edit only saved on blur, and the box left the screen).
+  {
+    const stored = JSON.parse(await page.evaluate(() => localStorage.getItem('captionEditorState')))
+    const box = stored.captions.find((item) => item.isTextElement)
+    const videoDuration = await page.evaluate(() => document.querySelector('.lekha-video-frame video')?.duration || 0)
+    if (videoDuration > 0) assert.ok(Math.abs(box.end_time - videoDuration) < 0.05, `a new text box should run to the end of the video (${box.end_time} vs ${videoDuration})`)
+    await page.$eval('[data-text-element-layer="true"]', (element) => element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+    await page.waitForSelector('[data-text-element-layer="true"] [contenteditable="true"]')
+    await page.$eval('[data-text-element-layer="true"] [contenteditable="true"]', (editable) => {
+      editable.focus()
+      document.execCommand('selectAll', false)
+      document.execCommand('insertText', false, 'Journey headline')
+    })
+    // Press play without moving focus out of the box (a focus-keeping control or Space).
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((button) => /^play$/i.test(button.getAttribute('aria-label') || '') && button.offsetParent)?.click())
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.isTextElement && item.text === 'Journey headline'), { timeout: 8000 })
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((button) => /^pause$/i.test(button.getAttribute('aria-label') || '') && button.offsetParent)?.click())
+  }
   await page.evaluate(() => window.switchTestAccount('editor-test-b'))
   await page.waitForFunction(() => !document.querySelector('[data-caption-editor="true"]'))
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').ownerUid === 'editor-test-b' && JSON.parse(localStorage.getItem('captionEditorState')).captions?.length > 0), false, 'account changes cannot acquire another account’s draft')

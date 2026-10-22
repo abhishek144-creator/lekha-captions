@@ -139,6 +139,8 @@ export default function VideoPlayer({
   const lastDragDropTime = useRef(0);
   const wordResizeActiveRef = useRef(false);
   const inputRef = useRef(null);
+  // Saves an open canvas text edit; set once the editing hook exists (below).
+  const commitOpenEditRef = useRef(null);
   // Scrubber drags seek live (one seek in flight at a time) so the frame and
   // captions follow the thumb; playback pauses during the drag.
   const liveScrubRef = useRef(null);
@@ -599,6 +601,9 @@ export default function VideoPlayer({
   }, [setDuration]);
 
   const handleVideoSurfaceToggle = useCallback(() => {
+    // Save an open text edit before playback can move its box off screen
+    // (also when the source is unavailable and nothing will play).
+    if (!videoRef.current || videoRef.current.paused) commitOpenEditRef.current?.();
     if (!videoRef.current) return;
 
     if (videoRef.current.paused) {
@@ -691,15 +696,19 @@ export default function VideoPlayer({
     );
   };
 
-  const getActiveTextElements = () => {
+  // A text box being edited stays on screen even outside its time: removing a
+  // focused editable never fires blur, so the typed text was silently lost.
+  const getActiveTextElements = (editingId = null) => {
     if (!captions || captions.length === 0) return [];
     return captions.filter(cap =>
       cap &&
       cap.isTextElement &&
-      typeof cap.start_time === 'number' &&
-      typeof cap.end_time === 'number' &&
-      currentTime >= cap.start_time &&
-      currentTime < cap.end_time
+      (cap.id === editingId || (
+        typeof cap.start_time === 'number' &&
+        typeof cap.end_time === 'number' &&
+        currentTime >= cap.start_time &&
+        currentTime < cap.end_time
+      ))
     );
   };
 
@@ -834,7 +843,7 @@ export default function VideoPlayer({
   }, [setSelectedCaptionId]);
 
   const activeCaptions = getActiveCaptions();
-  const activeTextElements = getActiveTextElements();
+
 
   const captionHasDetachedWords = (caption) => (
     Object.values(caption.wordStyles || {}).some(isWordDetached)
@@ -1343,6 +1352,16 @@ export default function VideoPlayer({
     setCaptions,
     inputRef,
   })
+
+  // Starting playback saves an open text edit (caption or text box). The edit
+  // otherwise only saved on blur, which a play button that keeps focus, the
+  // Space shortcut or the box leaving its time never fired.
+  commitOpenEditRef.current = () => {
+    if (isEditing) handleEditComplete(isEditing)
+  }
+  useEffect(() => {
+    if (isPlaying && isEditing) commitOpenEditRef.current()
+  }, [isPlaying, isEditing])
 
   const getPositionStyle = () => {
     const posY = captionStyle?.position_y ?? DEFAULT_CAPTION_POSITION_Y;
@@ -2728,7 +2747,7 @@ export default function VideoPlayer({
           {/* Text Elements (render above captions) */}
 
           <TextElementLayer
-            activeTextElements={activeTextElements}
+            activeTextElements={getActiveTextElements(isEditing)}
             isEditing={isEditing}
             setCaptions={setCaptions}
             selectedCaptionId={selectedCaptionId}

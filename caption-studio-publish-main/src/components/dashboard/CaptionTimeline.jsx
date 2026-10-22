@@ -1,36 +1,93 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Play, Pause, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
-import { invalidateWordTimingOutsideCaption } from './captionEditingUtils';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Magnet, Maximize2, Pause, Play, Scissors, Trash2, ZoomIn, ZoomOut } from 'lucide-react'
+import {
+  invalidateWordTimingOutsideCaption,
+  shiftCaptionTiming,
+  splitCaptionAtBoundary,
+} from './captionEditingUtils'
+import { createLiveScrubber } from './liveScrub'
 
-// RESTORED COMPACT DIMENSIONS
-const TEXT_ROW_HEIGHT = 28;      // Increased from 22 for better visibility
-const TEXT_ROWS = 6;             // Keeps your 6 text layers
-const SPEECH_HEIGHT = 38;
-const WAVEFORM_HEIGHT = 86;
-const HEADER_HEIGHT = 24;
-const TEXT_TRACK_TOP = HEADER_HEIGHT + 12;
-const SPEECH_TRACK_TOP = TEXT_TRACK_TOP + (TEXT_ROWS * TEXT_ROW_HEIGHT) + 20;
-const AUDIO_TRACK_TOP = SPEECH_TRACK_TOP + SPEECH_HEIGHT + 18;
-const TIMELINE_CANVAS_HEIGHT = AUDIO_TRACK_TOP + WAVEFORM_HEIGHT + 8;
-const TRACK_LEFT = 48;
-const TRACK_RIGHT = 4;
-// A press becomes a drag only after this much movement, so a click that
-// selects a block never records an undo step or snaps the block.
-const DRAG_START_THRESHOLD_PX = 3;
+// Timeline editor: a real time scale (pixels per second) that scrolls
+// natively, a ruler with round ticks, a draggable playhead, text-box lanes,
+// the caption track and the audio waveform. Clips move and trim with snapping
+// (playhead, clip edges, start/end; Alt turns it off); every gesture is one
+// undo step. Captions never overlap each other; text boxes are free.
 
-// Word timing as it was when the drag began, so a resize recomputes from it
+const RULER_HEIGHT = 24
+const LANE_HEIGHT = 26
+const CAPTION_HEIGHT = 34
+const AUDIO_HEIGHT = 44
+const TRACK_GAP = 6
+const LABEL_WIDTH = 64
+const PAD_X = 12
+const MIN_CLIP_SECONDS = 0.1
+const SNAP_PX = 8
+const DRAG_START_PX = 3
+const MAX_PPS = 400
+const TICK_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+
+const formatClock = (seconds = 0, tenths = false) => {
+  const safe = Math.max(0, Number(seconds) || 0)
+  const mins = Math.floor(safe / 60)
+  const secs = safe - mins * 60
+  return tenths
+    ? `${mins}:${secs.toFixed(1).padStart(4, '0')}`
+    : `${mins}:${String(Math.floor(secs)).padStart(2, '0')}`
+}
+
+// Word timing as it was when the drag began, so a trim recomputes from it
 // rather than from a frame that already discarded it.
 const withOriginalWordTiming = (caption, original) => (
   original && original.id === caption.id
-    ? {
-        ...caption,
-        words: original.words,
-        word_alignment_status: original.word_alignment_status,
-        word_alignment_note: original.word_alignment_note,
-      }
+    ? { ...caption, words: original.words, word_alignment_status: original.word_alignment_status, word_alignment_note: original.word_alignment_note }
     : caption
-);
+)
+
+// Text boxes stack into lanes so overlapping boxes never hide each other.
+function assignTextLanes(textElements) {
+  const laneEnds = []
+  const laneOf = new Map()
+  ;[...textElements]
+    .sort((a, b) => (a.start_time || 0) - (b.start_time || 0))
+    .forEach((element) => {
+      const start = Number(element.start_time) || 0
+      let lane = laneEnds.findIndex((end) => end <= start + 0.001)
+      if (lane < 0) {
+        lane = laneEnds.length
+        laneEnds.push(0)
+      }
+      laneEnds[lane] = Number(element.end_time) || start
+      laneOf.set(element.id, lane)
+    })
+  return { laneOf, laneCount: Math.max(1, laneEnds.length) }
+}
+
+// Character position between the words at `time`, for splitting a caption.
+function splitCursorAt(caption, time) {
+  const text = String(caption?.text || '')
+  const tokens = [...text.matchAll(/\S+/g)].map((match) => ({ start: match.index, end: match.index + match[0].length }))
+  if (tokens.length < 2) return -1
+  const start = Number(caption.start_time) || 0
+  const end = Math.max(start + 0.01, Number(caption.end_time) || start)
+  const words = Array.isArray(caption.words) && caption.words.length === tokens.length ? caption.words : null
+  let firstCount
+  if (words && words.every((word) => Number.isFinite(Number(word?.start)) && Number.isFinite(Number(word?.end)))) {
+    firstCount = words.filter((word) => (Number(word.start) + Number(word.end)) / 2 < time).length
+  } else {
+    const share = (time - start) / (end - start)
+    const total = tokens.reduce((sum, token) => sum + (token.end - token.start), 0)
+    let seen = 0
+    firstCount = tokens.findIndex((token) => {
+      seen += token.end - token.start
+      return seen / total > share
+    })
+    if (firstCount < 0) firstCount = tokens.length
+  }
+  firstCount = clamp(firstCount, 1, tokens.length - 1)
+  return tokens[firstCount - 1].end
+}
 
 export default function CaptionTimeline({
   captions,
@@ -41,545 +98,373 @@ export default function CaptionTimeline({
   onSeek,
   setCaptions,
   setCaptionsRaw,
-  addToHistory = () => { },
+  addToHistory = () => {},
   waveformData = null,
   isPlaying = false,
-  setIsPlaying = (_) => { },
+  setIsPlaying = () => {},
   collapsed = false,
-  onToggleCollapsed = () => {},
+  onToggleCollapsed,
+  getVideoElement,
 }) {
-  // Extract peak times from waveform for magnetic snapping
-  const getWaveformPeaks = React.useCallback(() => {
-    if (!waveformData || waveformData.length === 0 || !duration) return [];
+  const totalDuration = Number(duration) > 0 && Number.isFinite(Number(duration)) ? Number(duration) : 0
+  const viewportRef = useRef(null)
+  const contentRef = useRef(null)
+  const [viewport, setViewport] = useState({ width: 0, scrollLeft: 0 })
+  const [zoomPps, setZoomPps] = useState(null) // null = fit the whole video
+  const [snapEnabled, setSnapEnabled] = useState(true)
+  const [snapGuide, setSnapGuide] = useState(null)
+  const [scrubTime, setScrubTime] = useState(null)
+  const [dragState, setDragState] = useState(null)
+  const [dragPreview, setDragPreview] = useState(null) // the dragged clip's live times
+  const [notice, setNotice] = useState('')
+  const noticeTimerRef = useRef(0)
+  useEffect(() => () => window.clearTimeout(noticeTimerRef.current), [])
+  const lastUserScrollAt = useRef(0)
+  const programmaticScroll = useRef(false)
+  const liveScrubber = useMemo(() => (getVideoElement ? createLiveScrubber(getVideoElement) : null), [getVideoElement])
 
-    const peaks = [];
-    const threshold = 0.4; // Minimum amplitude to consider a peak
-    const minDistance = 5; // Minimum samples between peaks
+  const fitPps = totalDuration && viewport.width
+    ? Math.max(2, (viewport.width - PAD_X * 2) / totalDuration)
+    : 40
+  const pps = clamp(zoomPps ?? fitPps, fitPps, Math.max(fitPps, MAX_PPS))
+  const contentWidth = Math.max(viewport.width, PAD_X * 2 + totalDuration * pps)
+  const xOf = useCallback((time) => PAD_X + time * pps, [pps])
+  const displayTime = scrubTime ?? currentTime ?? 0
 
-    for (let i = 1; i < waveformData.length - 1; i++) {
-      const prev = waveformData[i - 1];
-      const curr = waveformData[i];
-      const next = waveformData[i + 1];
+  const textElements = useMemo(() => (captions || []).filter((item) => item && item.isTextElement), [captions])
+  const speechCaptions = useMemo(() => (captions || []).filter((item) => item && !item.isTextElement), [captions])
+  const { laneOf, laneCount } = useMemo(() => assignTextLanes(textElements), [textElements])
+  const textTop = RULER_HEIGHT + TRACK_GAP
+  const captionTop = textTop + laneCount * LANE_HEIGHT + TRACK_GAP
+  const audioTop = captionTop + CAPTION_HEIGHT + TRACK_GAP
+  const totalHeight = audioTop + AUDIO_HEIGHT + TRACK_GAP
 
-      // Local maximum above threshold
-      if (curr > prev && curr > next && curr > threshold) {
-        // Check minimum distance from last peak
-        if (peaks.length === 0 || i - peaks[peaks.length - 1].index >= minDistance) {
-          const time = (i / waveformData.length) * duration;
-          peaks.push({ index: i, time, amplitude: curr });
-        }
-      }
-    }
+  // Track the viewport size (fit zoom) and scroll position (visible ticks).
+  useLayoutEffect(() => {
+    const node = viewportRef.current
+    if (!node) return undefined
+    const measure = () => setViewport({ width: node.clientWidth, scrollLeft: node.scrollLeft })
+    measure()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    observer?.observe(node)
+    return () => observer?.disconnect()
+  }, [collapsed])
 
-    return peaks;
-  }, [waveformData, duration]);
+  const handleScroll = () => {
+    const node = viewportRef.current
+    if (!node) return
+    if (!programmaticScroll.current) lastUserScrollAt.current = Date.now()
+    programmaticScroll.current = false
+    setViewport((prev) => (prev.scrollLeft === node.scrollLeft ? prev : { ...prev, scrollLeft: node.scrollLeft }))
+  }
 
-  const waveformPeaks = React.useMemo(() => getWaveformPeaks(), [getWaveformPeaks]);
-  const [zoom, setZoom] = useState(3);
-  const timelineRef = useRef(null);
-  const scrollContainerRef = useRef(null);
-  const scrubBoundsRef = useRef(null);
-  const scrubRafRef = useRef(null);
-  const pendingScrubClientXRef = useRef(null);
+  const scrollToX = (left) => {
+    const node = viewportRef.current
+    if (!node) return
+    programmaticScroll.current = true
+    node.scrollLeft = Math.max(0, left)
+  }
 
-  // Custom High-Performance Timeline Scrubbing state
-  const isScrubbingRef = useRef(false);
-  const wasPlayingRef = useRef(false);
-  const [localScrubTime, setLocalScrubTime] = useState(null);
+  // Zoom keeping the time under `anchorClientX` (or the playhead) in place.
+  const zoomTo = (nextPps, anchorClientX = null) => {
+    const node = viewportRef.current
+    if (!node || !totalDuration) return
+    const bounded = clamp(nextPps, fitPps, Math.max(fitPps, MAX_PPS))
+    const rect = node.getBoundingClientRect()
+    const anchorViewportX = anchorClientX === null ? xOf(displayTime) - node.scrollLeft : anchorClientX - rect.left
+    const anchorTime = (node.scrollLeft + anchorViewportX - PAD_X) / pps
+    setZoomPps(bounded <= fitPps + 0.001 ? null : bounded)
+    requestAnimationFrame(() => scrollToX(PAD_X + anchorTime * bounded - anchorViewportX))
+  }
 
-  // Conditionally render the red playhead using either local Scrub or global Time
-  const displayTime = localScrubTime !== null ? localScrubTime : currentTime;
-
-  // Auto-pan offset (CSS transform based, does NOT touch scrollLeft/scrollbar)
-  const [panOffset, setPanOffset] = useState(0);
-  const panOffsetRef = useRef(0);
-  panOffsetRef.current = panOffset;
-  const prevTimeRef = useRef(0);
-
-  const [draggingElement, setDraggingElement] = useState(null);
-  const [dragType, setDragType] = useState(null);
-  const [dragStartX, setDragStartX] = useState(0);
-  const [dragStartTime, setDragStartTime] = useState(0);
-
-  const getPositionPercentage = (time) => {
-    if (!duration || duration === 0) return 0;
-    return (time / duration) * 100;
-  };
-
-  // All tracks (grid, speech, waveform) are inset by TRACK_LEFT/TRACK_RIGHT.
-  // Anything positioned as a % of the FULL timeline width (playhead, text
-  // blocks, scrub math) drifts up to 48px from the blocks it should align with
-  // — always convert through these helpers.
-  const TRACK_SPAN = TRACK_LEFT + TRACK_RIGHT;
-  const trackLeftCss = (pct) => `calc(${TRACK_LEFT}px + ((100% - ${TRACK_SPAN}px) * ${pct / 100}))`;
-  const trackWidthCss = (pct) => `calc((100% - ${TRACK_SPAN}px) * ${pct / 100})`;
-
-  const formatTime = (seconds = 0) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const textElements = captions?.filter(c => c && c.isTextElement) || [];
-  const regularCaptions = captions?.filter(c => c && !c.isTextElement) || [];
-
-  // Assign text elements to rows (row 5 = bottom closest to speech, row 0 = top)
-  const getTextElementRow = (index) => TEXT_ROWS - 1 - (index % TEXT_ROWS);
-
-  // Auto-scroll vertically so the timeline reopens with speech visible and only
-  // the lower half of the waveform showing by default.
+  // Ctrl/Cmd + wheel zooms around the cursor (non-passive to stop page zoom).
   useEffect(() => {
-    if (collapsed || !scrollContainerRef.current) return undefined;
+    const node = viewportRef.current
+    if (!node) return undefined
+    const onWheel = (event) => {
+      if (!(event.ctrlKey || event.metaKey)) return
+      event.preventDefault()
+      zoomTo(pps * (event.deltaY < 0 ? 1.25 : 0.8), event.clientX)
+    }
+    node.addEventListener('wheel', onWheel, { passive: false })
+    return () => node.removeEventListener('wheel', onWheel)
+  })
 
-    const timer = setTimeout(() => {
-      if (!scrollContainerRef.current) return;
-
-      const totalH = scrollContainerRef.current.scrollHeight;
-      const visibleH = scrollContainerRef.current.clientHeight;
-      const speechFirstTarget = Math.max(0, (AUDIO_TRACK_TOP + (WAVEFORM_HEIGHT * 0.52)) - visibleH);
-      const maxScroll = Math.max(0, totalH - visibleH);
-      const targetScroll = Math.min(maxScroll, speechFirstTarget);
-
-      scrollContainerRef.current.scrollTop = targetScroll;
-    }, 80);
-
-    return () => clearTimeout(timer);
-  }, [collapsed]);
-
-  // Auto-pan timeline content to keep playhead visible (uses CSS transform, NOT scrollLeft)
+  // Follow the playhead while playing, unless the user just scrolled.
   useEffect(() => {
-    if (!scrollContainerRef.current || !timelineRef.current || !duration) return;
+    if (!isPlaying || scrubTime !== null || dragState || !viewport.width) return
+    if (Date.now() - lastUserScrollAt.current < 1500) return
+    const x = xOf(displayTime)
+    const left = viewport.scrollLeft
+    if (x < left + 16 || x > left + viewport.width * 0.9) scrollToX(x - viewport.width * 0.15)
+  }, [displayTime, isPlaying, scrubTime, dragState, viewport.width, viewport.scrollLeft, xOf])
 
-    const containerWidth = scrollContainerRef.current.offsetWidth;
-    const timelineWidth = timelineRef.current.scrollWidth;
-    const playheadX = (displayTime / duration) * timelineWidth;
-    const userScroll = scrollContainerRef.current.scrollLeft;
-
-    // Detect video loop (jumped from near end to start)
-    const isLooping = prevTimeRef.current > duration - 1 && displayTime < 0.5;
-    prevTimeRef.current = displayTime;
-
-    if (isLooping) {
-      setPanOffset(0);
-      return;
+  // Ruler ticks: round steps sized to the zoom, only the visible range.
+  const ticks = useMemo(() => {
+    if (!totalDuration || !viewport.width) return { major: [], minor: [], step: 1 }
+    const major = TICK_STEPS.find((step) => step * pps >= 64) || TICK_STEPS[TICK_STEPS.length - 1]
+    const minorStep = major / 5 * pps >= 8 ? major / 5 : major / 2
+    const from = Math.max(0, (viewport.scrollLeft - PAD_X) / pps - major)
+    const to = Math.min(totalDuration, (viewport.scrollLeft + viewport.width) / pps + major)
+    const list = (step) => {
+      const out = []
+      for (let t = Math.floor(from / step) * step; t <= to + 1e-6; t += step) out.push(Number(t.toFixed(3)))
+      return out
     }
+    return { major: list(major), minor: list(minorStep), step: major }
+  }, [pps, totalDuration, viewport.scrollLeft, viewport.width])
 
-    // Calculate where the playhead is relative to the visible window (considering both scroll and pan)
-    const panOffset = panOffsetRef.current;
-    const visibleLeft = userScroll + panOffset;
-    const relativeX = playheadX - visibleLeft;
+  const waveformBars = useMemo(() => {
+    const source = Array.isArray(waveformData) && waveformData.length ? waveformData : []
+    if (!source.length) return []
+    const count = Math.min(source.length, 600)
+    const block = source.length / count
+    const bars = Array.from({ length: count }, (_, index) => {
+      let peak = 0
+      for (let i = Math.floor(index * block); i < Math.min(source.length, Math.floor((index + 1) * block)); i += 1) peak = Math.max(peak, Math.abs(Number(source[i]) || 0))
+      return peak
+    })
+    const max = Math.max(0.001, ...bars)
+    return bars.map((value) => Math.max(0.06, value / max))
+  }, [waveformData])
 
-    // If playhead is past 85% of visible area, pan forward
-    if (relativeX > containerWidth * 0.85) {
-      setPanOffset(playheadX - userScroll - containerWidth * 0.15);
+  // ---------- scrubbing ----------
+  const timeFromClientX = (clientX) => {
+    const rect = contentRef.current?.getBoundingClientRect()
+    if (!rect) return 0
+    return clamp((clientX - rect.left - PAD_X) / pps, 0, totalDuration)
+  }
+
+  const startScrub = (event) => {
+    if (!totalDuration || event.button > 0) return
+    event.preventDefault()
+    const wasPlaying = isPlaying
+    if (wasPlaying) setIsPlaying(false)
+    const pointerId = event.pointerId
+    const update = (clientX) => {
+      const time = timeFromClientX(clientX)
+      setScrubTime(time)
+      liveScrubber?.scrubTo(time)
+      return time
     }
-    // If playhead is before 15% of visible area, pan backward
-    else if (relativeX < containerWidth * 0.15 && panOffset > 0) {
-      setPanOffset(Math.max(0, playheadX - userScroll - containerWidth * 0.85));
+    let last = update(event.clientX)
+    const move = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
+      last = update(moveEvent.clientX)
     }
-    // Zoom changes the timeline width, so the pan is re-checked then too;
-    // otherwise zooming out while paused could leave the tracks off-screen.
-  }, [displayTime, duration, zoom]);
-
-  // Global Magnetic Snapping Logic - Now includes waveform peaks!
-  const getSnapTime = (targetTime, excludeElementId, allElements) => {
-    const SNAP_THRESHOLD = 0.1; // Keep dragging smooth while bounds prevent overlap
-    const WAVEFORM_SNAP_THRESHOLD = 0.05; // Lighter waveform magnetism
-    let closestSnap = targetTime;
-    let minDiff = SNAP_THRESHOLD;
-    let snapped = false;
-    let snapType = null;
-
-    // Collect all snap points:
-    // 1. Timeline Start (0) and End (duration)
-    // 2. Other Element Boundaries
-    const snapPoints = [
-      { time: 0, type: 'boundary' },
-      ...(duration && duration > 0 && isFinite(duration) ? [{ time: duration, type: 'boundary' }] : [])
-    ];
-
-    allElements.forEach(el => {
-      if (el.id === excludeElementId) return;
-      snapPoints.push({ time: el.start_time, type: 'element' });
-      snapPoints.push({ time: el.end_time, type: 'element' });
-    });
-
-    // 3. Add waveform peaks as high-priority snap points
-    waveformPeaks.forEach(peak => {
-      snapPoints.push({ time: peak.time, type: 'waveform', amplitude: peak.amplitude });
-    });
-
-    // Find closest point - prioritize waveform peaks
-    snapPoints.forEach(point => {
-      const threshold = point.type === 'waveform' ? WAVEFORM_SNAP_THRESHOLD : SNAP_THRESHOLD;
-      const diff = Math.abs(point.time - targetTime);
-
-      // Waveform peaks get priority if within their threshold
-      if (diff < threshold) {
-        if (point.type === 'waveform' && diff < WAVEFORM_SNAP_THRESHOLD) {
-          // Waveform peak takes priority
-          if (!snapped || snapType !== 'waveform' || diff < minDiff) {
-            minDiff = diff;
-            closestSnap = point.time;
-            snapped = true;
-            snapType = 'waveform';
-          }
-        } else if (diff < minDiff && snapType !== 'waveform') {
-          minDiff = diff;
-          closestSnap = point.time;
-          snapped = true;
-          snapType = point.type;
-        }
-      }
-    });
-
-    return { time: closestSnap, snapped, snapType };
-  };
-
-  const getSpeechNeighbors = (element, allElements) => (
-    allElements
-      .filter(el => el.id !== element.id && !el.isTextElement)
-      .sort((a, b) => a.start_time - b.start_time)
-  );
-
-  const getMoveBounds = (element, allElements, proposedStart) => {
-    if (element.isTextElement) {
-      return { minStart: 0, maxStart: Math.max(0, duration - (element.end_time - element.start_time)) };
-    }
-
-    const durationOfElement = element.end_time - element.start_time;
-    const neighbors = getSpeechNeighbors(element, allElements);
-
-    let previous = null;
-    let next = null;
-
-    for (const other of neighbors) {
-      if (other.start_time <= proposedStart) previous = other;
-      if (other.start_time > proposedStart) {
-        next = other;
-        break;
-      }
-    }
-
-    const minStart = previous ? previous.end_time : 0;
-    const maxStart = next ? next.start_time - durationOfElement : duration - durationOfElement;
-    return { minStart, maxStart };
-  };
-
-  const getResizeBounds = (element, allElements, type) => {
-    if (element.isTextElement) {
-      return { minStart: 0, maxEnd: duration };
-    }
-
-    const neighbors = getSpeechNeighbors(element, allElements);
-    const previous = [...neighbors].reverse().find(other => other.end_time <= element.start_time) || null;
-    const next = neighbors.find(other => other.start_time >= element.end_time) || null;
-
-    if (type === 'resize-left') {
-      return { minStart: previous ? previous.end_time : 0 };
-    }
-
-    if (type === 'resize-right') {
-      return { maxEnd: next ? next.start_time : duration };
-    }
-
-    return { minStart: 0, maxEnd: duration };
-  };
-
-  // The drag effect reads the latest snapping/bounds helpers (waveform peaks
-  // can arrive mid-session), history callback and caption setter without
-  // re-subscribing. Re-running the effect mid-drag resets its pre-drag
-  // snapshot, so a parent passing a new setter per render (every drag frame
-  // re-renders it) recorded a second undo step partway through the drag.
-  const dragHelpersRef = useRef(null);
-  dragHelpersRef.current = { getSnapTime, getMoveBounds, getResizeBounds };
-  const addToHistoryRef = useRef(addToHistory);
-  addToHistoryRef.current = addToHistory;
-  const rawSetCaptionsRef = useRef(null);
-  rawSetCaptionsRef.current = setCaptionsRaw || setCaptions;
-
-  const updateScrubFromClientX = React.useCallback((clientX) => {
-    const bounds = scrubBoundsRef.current || timelineRef.current?.getBoundingClientRect();
-    if (!bounds || !duration) return;
-
-    // Map within the inset track area so the scrubbed time matches the blocks.
-    const trackWidth = Math.max(1, bounds.width - TRACK_LEFT - TRACK_RIGHT);
-    const x = clientX - bounds.left - TRACK_LEFT;
-    const clampedX = Math.max(0, Math.min(x, trackWidth));
-    const percentage = clampedX / trackWidth;
-    setLocalScrubTime(percentage * duration);
-  }, [duration]);
-
-  const handleContainerMouseDown = (e) => {
-    if (draggingElement) return;
-    if (e.target !== e.currentTarget && e.target.closest('[data-caption-block]')) return;
-
-    isScrubbingRef.current = true;
-    if (isPlaying) {
-      wasPlayingRef.current = true;
-      setIsPlaying(false);
-    } else {
-      wasPlayingRef.current = false;
-    }
-
-    scrubBoundsRef.current = e.currentTarget.getBoundingClientRect();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    updateScrubFromClientX(e.clientX);
-    // Do NOT seek videoElement here - seeking on every mousedown/mousemove causes black frames.
-    // Video seeks once on mouseup via onSeek below.
-  };
-
-  const handleContainerMouseMove = (e) => {
-    if (draggingElement || e.buttons !== 1) return;
-    if (e.target !== e.currentTarget && e.target.closest('[data-caption-block]')) return;
-
-    if (!isScrubbingRef.current) {
-      isScrubbingRef.current = true;
-      if (isPlaying) {
-        wasPlayingRef.current = true;
-        setIsPlaying(false);
+    const end = (endEvent) => {
+      if (endEvent.pointerId !== pointerId) return
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      liveScrubber?.end()
+      // A cancelled pointer is a touch swipe that became a scroll: no seek.
+      if (endEvent.type === 'pointercancel') {
+        if (getVideoElement?.()) getVideoElement().currentTime = currentTime || 0
       } else {
-        wasPlayingRef.current = false;
+        onSeek(last)
       }
-      scrubBoundsRef.current = e.currentTarget.getBoundingClientRect();
+      setScrubTime(null)
+      if (wasPlaying) setIsPlaying(true)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+  }
+
+  // ---------- clip move / trim ----------
+  const snapPointsFor = (excludeId) => {
+    const points = [0, totalDuration, currentTime || 0]
+    ;(captions || []).forEach((item) => {
+      if (!item || item.id === excludeId) return
+      points.push(Number(item.start_time) || 0, Number(item.end_time) || 0)
+    })
+    return points
+  }
+
+  const speechBounds = (original) => {
+    const others = speechCaptions.filter((item) => item.id !== original.id).sort((a, b) => a.start_time - b.start_time)
+    const previous = [...others].reverse().find((item) => item.end_time <= original.start_time + 0.001)
+    const next = others.find((item) => item.start_time >= original.end_time - 0.001)
+    return { minStart: previous ? previous.end_time : 0, maxEnd: next ? next.start_time : totalDuration }
+  }
+
+  const startClipGesture = (event, clip, kind) => {
+    if (event.button > 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.closest('[data-timeline-root]')?.focus({ preventScroll: true })
+    const original = clip
+    const startX = event.clientX
+    const pointerId = event.pointerId
+    const rawSet = setCaptionsRaw || setCaptions
+    const bounds = original.isTextElement ? { minStart: 0, maxEnd: totalDuration } : speechBounds(original)
+    const length = original.end_time - original.start_time
+    let moved = false
+    // While dragging, only the timeline re-renders (a local preview, at most
+    // once per frame); the captions are written once on release. Writing them
+    // on every pointer move re-rendered the whole editor and stuttered.
+    let latest = null
+    let frame = 0
+    const flushPreview = () => {
+      frame = 0
+      if (!latest) return
+      setDragPreview(latest.next)
+      setSnapGuide(latest.guide)
     }
 
-    updateScrubFromClientX(e.clientX);
-    // Do NOT seek videoElement here - same reason as mousedown above.
-  };
+    const move = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) return
+      const dx = moveEvent.clientX - startX
+      if (!moved) {
+        if (Math.abs(dx) < DRAG_START_PX || !totalDuration) return
+        moved = true
+        addToHistory()
+        setDragState({ id: original.id, kind })
+      }
+      const dt = dx / pps
+      const threshold = SNAP_PX / pps
+      const snapping = snapEnabled && !moveEvent.altKey
+      const points = snapping ? snapPointsFor(original.id) : []
+      const nearest = (value) => points.reduce((best, point) => (
+        Math.abs(point - value) < threshold && (!best || Math.abs(point - value) < Math.abs(best.point - value))
+          ? { point, delta: point - value }
+          : best
+      ), null)
 
-  useEffect(() => {
-    const handleMouseMoveGlobal = (e) => {
-      if (!isScrubbingRef.current) return;
-      pendingScrubClientXRef.current = e.clientX;
-      if (scrubRafRef.current) return;
-      scrubRafRef.current = requestAnimationFrame(() => {
-        scrubRafRef.current = null;
-        if (pendingScrubClientXRef.current !== null) {
-          updateScrubFromClientX(pendingScrubClientXRef.current);
+      let next
+      let guide = null
+      if (kind === 'move') {
+        let start = original.start_time + dt
+        const atStart = nearest(start)
+        const atEnd = nearest(start + length)
+        const snap = [atStart, atEnd].filter(Boolean).sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta))[0]
+        if (snap) {
+          start += snap.delta
+          guide = snap.point
         }
-      });
-    };
-
-    const handleMouseUpGlobal = () => {
-      if (scrubRafRef.current) {
-        cancelAnimationFrame(scrubRafRef.current);
-        scrubRafRef.current = null;
-      }
-      pendingScrubClientXRef.current = null;
-      scrubBoundsRef.current = null;
-      if (isScrubbingRef.current) {
-        isScrubbingRef.current = false;
-
-        setLocalScrubTime(prevScrubTime => {
-          if (prevScrubTime !== null) {
-            onSeek(prevScrubTime); // Commits the final time to application state
-          }
-          return null;
-        });
-
-        if (wasPlayingRef.current) {
-          setIsPlaying(true);
+        start = clamp(start, bounds.minStart, Math.max(bounds.minStart, bounds.maxEnd - length))
+        next = shiftCaptionTiming(original, start - original.start_time)
+      } else if (kind === 'trim-start') {
+        let start = original.start_time + dt
+        const snap = nearest(start)
+        if (snap) {
+          start = snap.point
+          guide = snap.point
         }
+        start = clamp(start, bounds.minStart, original.end_time - MIN_CLIP_SECONDS)
+        next = invalidateWordTimingOutsideCaption({ ...original, start_time: start })
+      } else {
+        let end = original.end_time + dt
+        const snap = nearest(end)
+        if (snap) {
+          end = snap.point
+          guide = snap.point
+        }
+        end = clamp(end, original.start_time + MIN_CLIP_SECONDS, bounds.maxEnd)
+        next = invalidateWordTimingOutsideCaption({ ...original, end_time: end })
       }
-    };
+      latest = { next, guide }
+      if (!frame) frame = requestAnimationFrame(flushPreview)
+    }
 
-    window.addEventListener('pointermove', handleMouseMoveGlobal, { passive: false });
-    window.addEventListener('pointerup', handleMouseUpGlobal);
-    window.addEventListener('pointercancel', handleMouseUpGlobal);
-    return () => {
-      window.removeEventListener('pointermove', handleMouseMoveGlobal);
-      window.removeEventListener('pointerup', handleMouseUpGlobal);
-      window.removeEventListener('pointercancel', handleMouseUpGlobal);
-      if (scrubRafRef.current) {
-        cancelAnimationFrame(scrubRafRef.current);
-        scrubRafRef.current = null;
+    const end = (endEvent) => {
+      if (endEvent.pointerId !== pointerId) return
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      if (frame) cancelAnimationFrame(frame)
+      setSnapGuide(null)
+      setDragState(null)
+      setDragPreview(null)
+      if (!moved) {
+        // A click selects the clip; clicking its body also jumps to its start.
+        onSelectCaption?.(original.id)
+        if (kind === 'move') onSeek(original.start_time || 0)
+        return
       }
-    };
-  }, [onSeek, setIsPlaying, updateScrubFromClientX]);
-
-  const handleElementDragStart = (e, element, type) => {
-    e.stopPropagation();
-    e.preventDefault();
-    // Without a known duration every block sits at 0 and a drag would move the
-    // caption to 0 s or shrink it to 20 ms (e.g. while the source is relinked).
-    if (!(Number(duration) > 0) || !Number.isFinite(Number(duration))) return;
-    setDraggingElement(element);
-    setDragType(type);
-    setDragStartX(e.clientX);
-    setDragStartTime(type === 'resize-right' ? element.end_time : element.start_time);
-  };
-
-  useEffect(() => {
-    if (!draggingElement) return;
-    // Use setCaptionsRaw (bypasses history) for continuous drag updates
-    // History was already pushed in handleElementDragStart
-    if (!rawSetCaptionsRef.current) return;
-    const rawSet = (update) => rawSetCaptionsRef.current?.(update);
-
-    let rafId = null;
-    let dragStarted = false;
-    // The block as it was when pressed. Resizes are computed from it, so an
-    // edge dragged past a word and back keeps that caption's word timing.
-    const original = draggingElement;
-    const { getSnapTime, getMoveBounds, getResizeBounds } = dragHelpersRef.current;
-    document.body.style.userSelect = 'none';
-
-    const handleMouseMove = (e) => {
-      if (!dragStarted) {
-        if (Math.abs(e.clientX - dragStartX) < DRAG_START_THRESHOLD_PX) return;
-        dragStarted = true;
-        addToHistoryRef.current?.(); // Snapshot pre-drag state for undo
+      const next = latest?.next
+      if (next) {
+        rawSet((prev) => {
+          const updated = prev.map((item) => (item.id === original.id ? { ...withOriginalWordTiming(item, original), ...next } : item))
+          // Captions stay in time order (the editor and export read them in order).
+          return original.isTextElement
+            ? updated
+            : [...updated.filter((item) => item.isTextElement), ...updated.filter((item) => !item.isTextElement).sort((a, b) => a.start_time - b.start_time)]
+        })
       }
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        if (!timelineRef.current) return;
+      onSelectCaption?.(original.id)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+  }
 
-        const rect = timelineRef.current.getBoundingClientRect();
-        const deltaX = e.clientX - dragStartX;
-        // Blocks are laid out as a % of the inset track width — using the full
-        // timeline width here made drags move blocks faster than the cursor.
-        const deltaTime = (deltaX / Math.max(1, rect.width - TRACK_LEFT - TRACK_RIGHT)) * duration;
+  // ---------- commands ----------
+  const flash = (message) => {
+    setNotice(message)
+    window.clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(''), 2600)
+  }
 
-        rawSet(prev => prev.map(cap => {
-          if (cap.id !== draggingElement.id) return cap;
+  const selectedClip = (captions || []).find((item) => item?.id === selectedCaptionId) || null
 
-          const capDuration = cap.end_time - cap.start_time;
-
-          if (dragType === 'move') {
-            let rawStart = dragStartTime + deltaTime;
-
-            // Apply Snapping
-            const { time: snappedStart, snapped } = getSnapTime(rawStart, cap.id, prev);
-            let newStart = snapped ? snappedStart : rawStart;
-
-
-            const bounds = getMoveBounds(cap, prev, newStart);
-            newStart = Math.max(bounds.minStart, newStart);
-            newStart = Math.min(bounds.maxStart, newStart);
-            newStart = Math.max(0, Math.min(duration - capDuration, newStart));
-
-            // Word timings are absolute — they must shift with the caption or
-            // per-word highlighting keeps firing at the pre-drag times.
-            const timeShift = newStart - cap.start_time;
-            const shiftedWords = Array.isArray(cap.words)
-              ? cap.words.map(w => ({
-                  ...w,
-                  ...(Number.isFinite(Number(w?.start)) ? { start: Number(w.start) + timeShift } : {}),
-                  ...(Number.isFinite(Number(w?.end)) ? { end: Number(w.end) + timeShift } : {}),
-                }))
-              : cap.words;
-
-            if (!cap.isTextElement) {
-              return {
-                ...cap,
-                start_time: newStart,
-                end_time: newStart + capDuration,
-                words: shiftedWords,
-                _needsReorder: true
-              };
-            }
-
-            return {
-              ...cap,
-              start_time: newStart,
-              end_time: newStart + capDuration,
-              words: shiftedWords
-            };
-          } else if (dragType === 'resize-left') {
-            let rawStart = dragStartTime + deltaTime;
-
-            // Apply Snapping
-            const { time: snappedStart, snapped } = getSnapTime(rawStart, cap.id, prev);
-            let newStart = snapped ? snappedStart : rawStart;
-
-
-            const bounds = getResizeBounds(cap, prev, 'resize-left');
-            newStart = Math.max(bounds.minStart, newStart);
-            newStart = Math.max(0, Math.min(cap.end_time - 0.02, newStart));
-            return invalidateWordTimingOutsideCaption({ ...withOriginalWordTiming(cap, original), start_time: newStart });
-          } else if (dragType === 'resize-right') {
-            let rawEnd = dragStartTime + deltaTime;
-
-            // Apply Snapping
-            const { time: snappedEnd, snapped } = getSnapTime(rawEnd, cap.id, prev);
-            let newEnd = snapped ? snappedEnd : rawEnd;
-
-
-            const bounds = getResizeBounds(cap, prev, 'resize-right');
-            newEnd = Math.min(bounds.maxEnd, newEnd);
-            newEnd = Math.max(cap.start_time + 0.02, Math.min(duration, newEnd));
-            return invalidateWordTimingOutsideCaption({ ...withOriginalWordTiming(cap, original), end_time: newEnd });
-          }
-
-          return cap;
-        }));
-      });
-    };
-
-    const handleMouseUp = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      if (dragStarted && draggingElement && !draggingElement.isTextElement) {
-        rawSet(prev => {
-          const textEls = prev.filter(c => c.isTextElement);
-          const speechEls = prev.filter(c => !c.isTextElement)
-            .map(c => ({ ...c, _needsReorder: undefined }))
-            .sort((a, b) => a.start_time - b.start_time);
-          return [...textEls, ...speechEls];
-        });
-      }
-      setDraggingElement(null);
-      setDragType(null);
-    };
-
-    // Pointer events cover mouse, pen and touch; also listening to mouse
-    // events ran every handler twice.
-    document.addEventListener('pointermove', handleMouseMove, { passive: false });
-    document.addEventListener('pointerup', handleMouseUp);
-    document.addEventListener('pointercancel', handleMouseUp);
-
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      document.body.style.userSelect = '';
-      document.removeEventListener('pointermove', handleMouseMove);
-      document.removeEventListener('pointerup', handleMouseUp);
-      document.removeEventListener('pointercancel', handleMouseUp);
-    };
-  }, [draggingElement, dragType, dragStartX, dragStartTime, duration]);
-
-  const waveformBars = React.useMemo(() => {
-    const source = waveformData && waveformData.length > 0
-      ? waveformData
-      : Array.from({ length: 320 }).map((_, i) => Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11)));
-
-    const targetCount = 420;
-    let sampled;
-
-    if (source.length <= targetCount) {
-      sampled = source;
+  const splitAtPlayhead = () => {
+    const time = currentTime || 0
+    const inside = (item) => item && time > item.start_time + 0.05 && time < item.end_time - 0.05
+    const target = inside(selectedClip) ? selectedClip : speechCaptions.find(inside) || textElements.find(inside)
+    if (!target) {
+      flash('Move the playhead inside a clip to split it.')
+      return
+    }
+    let parts
+    if (target.isTextElement) {
+      const newId = `text-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      const secondStyles = Object.fromEntries(Object.entries(target.wordStyles || {}).map(([key, value]) => [`${newId}${key.slice(String(target.id).length)}`, value]))
+      parts = [{ ...target, end_time: time }, { ...target, id: newId, start_time: time, wordStyles: secondStyles }]
     } else {
-      const blockSize = source.length / targetCount;
-      sampled = Array.from({ length: targetCount }, (_, idx) => {
-        const start = Math.floor(idx * blockSize);
-        const end = Math.min(source.length, Math.floor((idx + 1) * blockSize));
-        let peak = 0;
-        for (let i = start; i < end; i += 1) {
-          peak = Math.max(peak, Math.abs(source[i] || 0));
-        }
-        return peak;
-      });
+      const cursor = splitCursorAt(target, time)
+      const result = cursor < 0 ? { error: 'A caption needs at least two words to split.' } : splitCaptionAtBoundary(target, cursor, `${Date.now()}-split`)
+      if (result.error) {
+        flash(result.error)
+        return
+      }
+      parts = result.captions
     }
+    setCaptions((captions || []).flatMap((item) => (item.id === target.id ? parts : [item])))
+    onSelectCaption?.(parts[1].id)
+  }
 
-    const maxPeak = sampled.reduce((max, value) => Math.max(max, Math.abs(value || 0)), 0.001);
+  const deleteSelected = () => {
+    if (!selectedClip) {
+      flash('Select a clip to delete it.')
+      return
+    }
+    setCaptions((captions || []).filter((item) => item.id !== selectedClip.id))
+    onSelectCaption?.(null)
+  }
 
-    return sampled.map((value, index) => {
-      const normalized = Math.min(1, Math.abs(value || 0) / maxPeak);
-      const previous = sampled[Math.max(0, index - 1)] || 0;
-      const next = sampled[Math.min(sampled.length - 1, index + 1)] || 0;
-      const smoothed = ((Math.abs(previous) + Math.abs(value || 0) + Math.abs(next)) / 3) / maxPeak;
-      return Math.max(0.18, Math.min(1, (normalized * 0.55) + (smoothed * 0.45)));
-    });
-  }, [waveformData]);
+  const nudgeSelected = (delta) => {
+    if (!selectedClip) return
+    const bounds = selectedClip.isTextElement ? { minStart: 0, maxEnd: totalDuration } : speechBounds(selectedClip)
+    const length = selectedClip.end_time - selectedClip.start_time
+    const start = clamp(selectedClip.start_time + delta, bounds.minStart, Math.max(bounds.minStart, bounds.maxEnd - length))
+    if (Math.abs(start - selectedClip.start_time) < 0.001) return
+    setCaptions((captions || []).map((item) => (item.id === selectedClip.id ? shiftCaptionTiming(item, start - item.start_time) : item)))
+  }
+
+  const handleKeyDown = (event) => {
+    if (event.target.closest?.('input, textarea, [contenteditable="true"]')) return
+    const key = event.key
+    if (key === 's' || key === 'S') splitAtPlayhead()
+    else if (key === 'Delete' || key === 'Backspace') deleteSelected()
+    else if (key === 'ArrowLeft' || key === 'ArrowRight') nudgeSelected((key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 1 : 0.1))
+    else if (key === '+' || key === '=') zoomTo(pps * 1.5)
+    else if (key === '-' || key === '_') zoomTo(pps / 1.5)
+    else if (key === '0') zoomTo(fitPps)
+    else return
+    event.preventDefault()
+  }
 
   if (collapsed) {
     return (
@@ -596,255 +481,209 @@ export default function CaptionTimeline({
         <span className="h-3 w-px bg-white/10" />
         <span>{captions?.length || 0} Elements</span>
       </button>
-    );
+    )
+  }
+
+  const toolButton = 'inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 text-[10px] font-semibold text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40'
+  const handleWidth = 'w-2 [@media(pointer:coarse)]:w-3.5'
+  const playheadX = xOf(clamp(displayTime, 0, totalDuration || 0))
+
+  const renderClip = (storedClip, { top, height, label, isText }) => {
+    const clip = dragPreview && dragPreview.id === storedClip.id ? dragPreview : storedClip
+    const left = xOf(Number(clip.start_time) || 0)
+    const width = Math.max(4, (Math.max(0, (Number(clip.end_time) || 0) - (Number(clip.start_time) || 0))) * pps)
+    const isSelected = selectedCaptionId === clip.id
+    const isActive = !isText && displayTime >= clip.start_time && displayTime < clip.end_time
+    const isDragging = dragState?.id === clip.id
+    const tone = isText
+      ? (isSelected ? 'border-[#c99bff] bg-[#7c3aed]/45 text-white' : 'border-[#9b6cff]/40 bg-[#7c3aed]/20 text-violet-100 hover:bg-[#7c3aed]/30')
+      : (isSelected ? 'border-sky-300/70 bg-[#2f3f55] text-white' : isActive ? 'border-[#6b7280] bg-[#333844] text-white' : 'border-[#4a4d59] bg-[#2a2d35] text-[#c7ccd7] hover:bg-[#313540]')
+    return (
+      <div
+        key={clip.id}
+        role="button"
+        tabIndex={-1}
+        aria-label={`${isText ? 'Text box' : 'Caption'} ${formatClock(clip.start_time, true)} to ${formatClock(clip.end_time, true)}: ${clip.text || ''}`}
+        aria-pressed={isSelected}
+        data-caption-block="true"
+        data-clip-id={clip.id}
+        data-clip-kind={isText ? 'text' : 'caption'}
+        className={`absolute flex touch-none select-none items-center overflow-hidden rounded-[5px] border text-[10px] font-semibold ${tone} ${isDragging ? 'z-30 shadow-[0_8px_20px_rgba(0,0,0,0.45)] cursor-grabbing' : 'z-10 cursor-grab'}`}
+        style={{ left, width, top, height }}
+        onPointerDown={(event) => startClipGesture(event, clip, 'move')}
+      >
+        <span
+          className={`cursor-ew-resize absolute inset-y-0 left-0 z-10 ${handleWidth} rounded-l-[5px] hover:bg-white/25`}
+          onPointerDown={(event) => startClipGesture(event, clip, 'trim-start')}
+        />
+        <div className="pointer-events-none min-w-0 flex-1 truncate px-2.5" dir="auto">{label}</div>
+        <span
+          className={`cursor-ew-resize absolute inset-y-0 right-0 z-10 ${handleWidth} rounded-r-[5px] hover:bg-white/25`}
+          onPointerDown={(event) => startClipGesture(event, clip, 'trim-end')}
+        />
+      </div>
+    )
   }
 
   return (
-    <div className="flex h-full shrink-0 overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 shadow-[0_12px_32px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <div className="w-12 shrink-0 border-r border-white/10 flex flex-col items-center justify-center gap-2 bg-black/10">
+    <div
+      data-timeline-root="true"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 shadow-[0_12px_32px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] outline-none focus-visible:border-sky-300/40"
+    >
+      {/* Toolbar */}
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-white/[0.06] px-2">
+        {onToggleCollapsed && (
+          <button type="button" onClick={onToggleCollapsed} className={`${toolButton} gap-1.5 pr-2`} title="Collapse timeline">
+            <span className="text-xs leading-none text-slate-400">v</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Timeline</span>
+          </button>
+        )}
+        <button type="button" onClick={() => setIsPlaying(!isPlaying)} className={`${toolButton} bg-white !text-black hover:!bg-slate-200`} aria-label={isPlaying ? 'Pause' : 'Play'} title={isPlaying ? 'Pause' : 'Play'}>
+          {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="ml-0.5 h-3.5 w-3.5" />}
+        </button>
+        <span className="min-w-[78px] px-1 font-mono text-[10px] tabular-nums text-sky-100" aria-live="off">
+          {formatClock(displayTime, true)} <span className="text-slate-600">/ {formatClock(totalDuration, true)}</span>
+        </span>
+        <span className="mx-1 h-4 w-px bg-white/10" />
+        <button type="button" onClick={splitAtPlayhead} className={toolButton} title="Split the clip at the playhead (S)" aria-label="Split at playhead">
+          <Scissors className="h-3.5 w-3.5" /><span className="hidden sm:inline">Split</span>
+        </button>
+        <button type="button" onClick={deleteSelected} disabled={!selectedClip} className={toolButton} title="Delete the selected clip (Delete)" aria-label="Delete selected clip">
+          <Trash2 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Delete</span>
+        </button>
         <button
           type="button"
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="h-9 w-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-slate-200 transition-colors"
-          title={isPlaying ? 'Pause' : 'Play'}
+          onClick={() => setSnapEnabled((value) => !value)}
+          aria-pressed={snapEnabled}
+          className={`${toolButton} ${snapEnabled ? '!text-[#F5A623]' : ''}`}
+          title="Snap to the playhead and clip edges (hold Alt to drag freely)"
+          aria-label="Snapping"
         >
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+          <Magnet className="h-3.5 w-3.5" /><span className="hidden md:inline">Snap</span>
         </button>
-        <button onClick={() => onSeek(Math.max(0, currentTime - 5))} className="rounded-md border border-white/10 px-2 py-1 text-[9px] text-slate-500 hover:text-white">-5s</button>
-        <button onClick={() => onSeek(Math.min(duration || currentTime, currentTime + 5))} className="rounded-md border border-white/10 px-2 py-1 text-[9px] text-slate-500 hover:text-white">+5s</button>
+        {notice && <span role="status" className="ml-1 truncate text-[10px] text-amber-200">{notice}</span>}
+        <div className="ml-auto flex items-center gap-1">
+          <span className="hidden text-[9px] text-slate-600 lg:inline">{captions?.length || 0} elements</span>
+          <button type="button" onClick={() => zoomTo(pps / 1.5)} className={toolButton} title="Zoom out (-)" aria-label="Zoom out">
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+          <input
+            type="range"
+            aria-label="Timeline zoom"
+            min={0}
+            max={100}
+            value={Math.round((Math.log(pps / fitPps) / Math.log(Math.max(1.0001, MAX_PPS / fitPps))) * 100) || 0}
+            onChange={(event) => zoomTo(fitPps * Math.pow(Math.max(1.0001, MAX_PPS / fitPps), Number(event.target.value) / 100))}
+            className="hidden h-1 w-20 cursor-pointer accent-white sm:block"
+          />
+          <button type="button" onClick={() => zoomTo(pps * 1.5)} className={toolButton} title="Zoom in (+)" aria-label="Zoom in">
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={() => zoomTo(fitPps)} className={toolButton} title="Fit the whole video (0)" aria-label="Fit timeline">
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
-      <div className="min-w-0 flex h-full flex-1 flex-col px-3 py-2">
-        {/* The collapse control and the zoom buttons are siblings: a button
-            nested inside another button is invalid HTML. */}
-        <div className="flex h-5 w-full items-center justify-between gap-3">
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 self-stretch text-left"
-            onClick={onToggleCollapsed}
-            title="Collapse timeline"
-          >
-            <span className="hidden text-[8px] font-medium uppercase tracking-[0.14em] text-slate-500 sm:inline">48 kHz - Stereo</span>
-            <span className="hidden h-3 w-px bg-white/10 sm:block" />
-            <span className="inline-flex items-center self-center text-slate-400 text-xs leading-none">v</span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Timeline</span>
-            <span className="text-[9px] text-slate-600">{regularCaptions.length} elements</span>
-          </button>
-          <div className="flex min-w-0 items-center gap-3 text-[9px] text-slate-500">
-            <span className="font-mono text-sky-100">{formatTime(displayTime)} / {formatTime(duration || 0)}</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(3); }} className="rounded-md p-1 hover:bg-white/5 hover:text-white" title="Reset zoom">
-              <RotateCcw className="h-3 w-3" />
-            </button>
-            <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(1, z - 0.5)); }} className="rounded-md p-1 hover:bg-white/5 hover:text-white" title="Zoom out">
-              <ZoomOut className="h-3 w-3" />
-            </button>
-            <div className="h-1 w-16 rounded-full bg-white/5">
-              <div className="h-full rounded-full bg-white/15" style={{ width: `${Math.min(100, Math.max(12, (zoom / 6) * 100))}%` }} />
+      {/* Tracks: labels stay put, the time area scrolls horizontally */}
+      <div className="flex min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <div className="relative shrink-0 border-r border-white/[0.06] bg-black/20" style={{ width: LABEL_WIDTH, height: totalHeight }}>
+          {[['Text', textTop, laneCount * LANE_HEIGHT], ['Captions', captionTop, CAPTION_HEIGHT], ['Audio', audioTop, AUDIO_HEIGHT]].map(([name, top, height]) => (
+            <div key={name} className="absolute left-0 right-0 flex items-center px-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ top, height }}>
+              {name}
             </div>
-            <button type="button" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(6, z + 0.5)); }} className="rounded-md p-1 hover:bg-white/5 hover:text-white" title="Zoom in">
-              <ZoomIn className="h-3 w-3" />
-            </button>
-          </div>
+          ))}
         </div>
 
-        <div
-          ref={scrollContainerRef}
-          className="relative mt-2 min-h-0 flex-1 overflow-y-auto overflow-x-auto rounded-xl border border-white/5 bg-[#121212] custom-scrollbar"
-        >
+        <div ref={viewportRef} onScroll={handleScroll} className="relative min-w-0 flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar">
           <div
-            ref={timelineRef}
-            className="relative min-w-full touch-none select-none cursor-pointer"
-            style={{
-              width: `${zoom * 100}%`,
-              height: `${TIMELINE_CANVAS_HEIGHT}px`,
-              transform: `translateX(-${panOffset}px)`
+            ref={contentRef}
+            className="relative select-none"
+            style={{ width: contentWidth, height: totalHeight }}
+            onPointerDown={(event) => {
+              if (event.target.closest('[data-caption-block]')) return
+              startScrub(event)
             }}
-            onPointerDown={handleContainerMouseDown}
-            onPointerMove={handleContainerMouseMove}
           >
-            <div className="absolute left-0 right-0 top-0 h-7 border-b border-white/5 bg-black/20" />
-            <div className="absolute top-1 flex justify-between px-1 text-[8px] font-mono text-slate-600" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px` }}>
-              {Array.from({ length: 8 }).map((_, i) => (
-                <span key={i}>{formatTime((duration || 0) * (i / 7))}</span>
+            {/* Ruler */}
+            <div className="absolute inset-x-0 top-0 cursor-col-resize border-b border-white/[0.06] bg-black/30" style={{ height: RULER_HEIGHT }}>
+              {ticks.minor.map((time) => (
+                <span key={`m-${time}`} className="absolute bottom-0 h-1.5 w-px bg-white/10" style={{ left: xOf(time) }} />
+              ))}
+              {ticks.major.map((time) => (
+                <span key={`M-${time}`} className="absolute bottom-0 h-3 w-px bg-white/25" style={{ left: xOf(time) }}>
+                  <span className="absolute -top-[9px] left-1 whitespace-nowrap font-mono text-[8px] text-slate-500">
+                    {formatClock(time, ticks.step < 1)}
+                  </span>
+                </span>
               ))}
             </div>
 
-            <div className="absolute left-2 top-[10px] z-10 w-[38px] text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-500">Text</div>
-            <div className="absolute left-2 z-10 w-[38px] text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ top: `${SPEECH_TRACK_TOP + 2}px` }}>Speech</div>
-            <div className="absolute left-2 z-10 w-[38px] text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ top: `${AUDIO_TRACK_TOP + 2}px` }}>Audio</div>
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={`time-grid-${i}`}
-                className="absolute top-7 bottom-0 w-px bg-white/[0.05]"
-                style={{
-                  left: `calc(${TRACK_LEFT}px + ((100% - ${TRACK_LEFT + TRACK_RIGHT}px) * ${i / 7}))`
-                }}
-              />
+            {/* Track backgrounds and second gridlines */}
+            {Array.from({ length: laneCount }).map((_, lane) => (
+              <div key={`lane-${lane}`} className="absolute inset-x-0 border-b border-white/[0.03]" style={{ top: textTop + lane * LANE_HEIGHT, height: LANE_HEIGHT, background: lane % 2 ? 'transparent' : 'rgba(255,255,255,0.012)' }} />
+            ))}
+            <div className="absolute inset-x-0 border-y border-white/[0.05] bg-white/[0.015]" style={{ top: captionTop, height: CAPTION_HEIGHT }} />
+            <div className="absolute inset-x-0 border-y border-white/[0.05]" style={{ top: audioTop, height: AUDIO_HEIGHT }} />
+            {ticks.major.map((time) => (
+              <span key={`g-${time}`} className="pointer-events-none absolute w-px bg-white/[0.04]" style={{ left: xOf(time), top: RULER_HEIGHT, height: totalHeight - RULER_HEIGHT }} />
             ))}
 
-            <div
-              className="absolute border-y border-white/[0.05] bg-white/[0.01]"
-              style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${SPEECH_TRACK_TOP}px`, height: `${SPEECH_HEIGHT}px` }}
-            />
-            <div
-              className="absolute border-y border-white/[0.05] bg-white/[0.01]"
-              style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${AUDIO_TRACK_TOP}px`, height: `${WAVEFORM_HEIGHT}px` }}
-            />
+            {/* Clips */}
+            {textElements.map((clip) => renderClip(clip, {
+              top: textTop + (laneOf.get(clip.id) || 0) * LANE_HEIGHT + 3,
+              height: LANE_HEIGHT - 6,
+              label: clip.text || 'Text',
+              isText: true,
+            }))}
+            {speechCaptions.map((clip, index) => renderClip(clip, {
+              top: captionTop + 3,
+              height: CAPTION_HEIGHT - 6,
+              label: `${String(index + 1).padStart(2, '0')} ${clip.text || ''}`,
+              isText: false,
+            }))}
 
-            {Array.from({ length: TEXT_ROWS }).map((_, rowIndex) => (
-              <div
-                key={`visible-row-${rowIndex}`}
-                className="absolute border-b border-white/[0.04]"
-                style={{
-                  left: `${TRACK_LEFT}px`,
-                  right: `${TRACK_RIGHT}px`,
-                  top: `${TEXT_TRACK_TOP + (rowIndex * TEXT_ROW_HEIGHT)}px`,
-                  height: `${TEXT_ROW_HEIGHT}px`,
-                  background: rowIndex % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent'
-                }}
+            {/* Audio */}
+            {waveformBars.length === 0 && (
+              <span
+                className="pointer-events-none absolute whitespace-nowrap text-[9px] text-slate-600"
+                style={{ left: viewport.scrollLeft + PAD_X, top: audioTop + AUDIO_HEIGHT / 2 - 6 }}
+              >
+                Waveform unavailable for this video
+              </span>
+            )}
+            {waveformBars.length > 0 && totalDuration > 0 && (
+              <svg
+                className="pointer-events-none absolute"
+                style={{ left: PAD_X, top: audioTop + 4, width: totalDuration * pps, height: AUDIO_HEIGHT - 8 }}
+                viewBox={`0 0 ${waveformBars.length} 100`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                {waveformBars.map((value, index) => (
+                  <rect key={index} x={index + 0.15} width={0.7} y={50 - value * 48} height={value * 96} fill="rgba(255,255,255,0.32)" />
+                ))}
+              </svg>
+            )}
+
+            {/* Snap guide */}
+            {snapGuide !== null && (
+              <span className="pointer-events-none absolute z-40 w-px bg-[#F5A623] shadow-[0_0_6px_rgba(245,166,35,0.8)]" style={{ left: xOf(snapGuide), top: 0, height: totalHeight }} />
+            )}
+
+            {/* Playhead: drag its handle (or the ruler / empty track) to scrub */}
+            <div className="pointer-events-none absolute top-0 z-50 w-px bg-white" style={{ left: playheadX, height: totalHeight }}>
+              <span
+                data-timeline-playhead="true"
+                className="pointer-events-auto absolute -left-[6px] top-0 h-3.5 w-[13px] cursor-col-resize rounded-b-[4px] rounded-t-[2px] bg-white shadow-[0_2px_6px_rgba(0,0,0,0.5)]"
+                onPointerDown={startScrub}
               />
-            ))}
-
-            {textElements.map((caption, idx) => {
-              const rowIndex = getTextElementRow(idx);
-              const left = getPositionPercentage(caption.start_time || 0);
-              const width = getPositionPercentage((caption.end_time || 0) - (caption.start_time || 0));
-              const isSelected = selectedCaptionId === caption.id;
-              return (
-                <motion.div
-                  key={caption.id}
-                  data-caption-block="true"
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className={`absolute cursor-grab rounded-[5px] border px-2 text-[9px] font-semibold transition-colors active:cursor-grabbing ${
-                    isSelected
-                      ? 'border-sky-300/50 bg-sky-400/20 text-white'
-                      : 'border-white/10 bg-white/[0.08] text-slate-200 hover:bg-white/[0.12]'
-                  }`}
-                  style={{
-                    top: `${TEXT_TRACK_TOP + (rowIndex * TEXT_ROW_HEIGHT) + 4}px`,
-                    left: trackLeftCss(left),
-                    width: trackWidthCss(Math.max(width, 8)),
-                    height: `${TEXT_ROW_HEIGHT - 8}px`
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectCaption(caption.id);
-                    onSeek(caption.start_time || 0);
-                  }}
-                  onPointerDown={(e) => {
-                    if (setCaptions) handleElementDragStart(e, caption, 'move');
-                  }}
-                >
-                  <span
-                    className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize rounded-l-[5px] hover:bg-white/10"
-                    onPointerDown={(e) => {
-                      if (setCaptions) handleElementDragStart(e, caption, 'resize-left');
-                    }}
-                  />
-                  <span
-                    className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize rounded-r-[5px] hover:bg-white/10"
-                    onPointerDown={(e) => {
-                      if (setCaptions) handleElementDragStart(e, caption, 'resize-right');
-                    }}
-                  />
-                  <div className="truncate leading-[18px]">{(caption.text || '').slice(0, 38)}</div>
-                </motion.div>
-              );
-            })}
-
-            <div className="absolute h-7" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${SPEECH_TRACK_TOP}px` }}>
-              {regularCaptions.map((caption, index) => {
-                const isSelected = selectedCaptionId === caption.id;
-                const isActive = currentTime >= (caption.start_time || 0) && currentTime <= (caption.end_time || 0);
-                const isDraggingThis = draggingElement?.id === caption.id;
-                const left = getPositionPercentage(caption.start_time || 0);
-                const width = getPositionPercentage((caption.end_time || 0) - (caption.start_time || 0));
-                return (
-                  <button
-                    key={caption.id}
-                    data-caption-block="true"
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectCaption(caption.id);
-                      onSeek(caption.start_time || 0);
-                    }}
-                    onPointerDown={(e) => {
-                      if (setCaptions) {
-                        e.stopPropagation();
-                        handleElementDragStart(e, caption, 'move');
-                      }
-                    }}
-                    className={`absolute top-0 h-7 truncate rounded-[4px] border px-2 text-left text-[9px] font-semibold transition-colors cursor-grab active:cursor-grabbing ${
-                      isSelected || isActive
-                        ? 'border-[#6b7280] bg-[#333844] text-white'
-                        : 'border-[#4a4d59] bg-[#2a2d35] text-[#c7ccd7] hover:bg-[#313540] hover:text-[#f1f4fa]'
-                    }`}
-                    style={{
-                      left: `${left}%`,
-                      width: `${Math.max(width, 2)}%`,
-                      zIndex: isDraggingThis ? 80 : (isSelected ? 24 : 12),
-                      boxShadow: isDraggingThis ? '0 10px 24px rgba(0,0,0,0.35)' : 'none'
-                    }}
-                  >
-                    <span
-                      className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize rounded-l-[4px] bg-white/0 hover:bg-white/10"
-                      onPointerDown={(e) => {
-                        if (setCaptions) {
-                          e.stopPropagation();
-                          handleElementDragStart(e, caption, 'resize-left');
-                        }
-                      }}
-                    />
-                    <span
-                      className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize rounded-r-[4px] bg-white/0 hover:bg-white/10"
-                      onPointerDown={(e) => {
-                        if (setCaptions) {
-                          e.stopPropagation();
-                          handleElementDragStart(e, caption, 'resize-right');
-                        }
-                      }}
-                    />
-                    <span className="block truncate px-1">
-                      {String(index + 1).padStart(2, '0')} {(caption.text || '').slice(0, 38)}
-                    </span>
-                  </button>
-                );
-              })}
             </div>
-
-            <div className="absolute border-t border-white/5" style={{ left: `${TRACK_LEFT}px`, right: `${TRACK_RIGHT}px`, top: `${AUDIO_TRACK_TOP + 2}px`, height: `${WAVEFORM_HEIGHT}px` }}>
-              {waveformBars.map((amplitude, i) => {
-                const h = Math.max(20, Math.min(WAVEFORM_HEIGHT - 6, Math.pow(Math.max(0.08, amplitude), 0.92) * (WAVEFORM_HEIGHT - 6)));
-                return (
-                  <span
-                    key={i}
-                    className="absolute rounded-full"
-                    style={{
-                      width: '2px',
-                      height: `${h}px`,
-                      left: `calc(${(i / waveformBars.length) * 100}% - 1px)`,
-                      top: `calc(50% - ${h / 2}px)`,
-                      backgroundColor: '#ffffff',
-                      boxShadow: 'none',
-                      opacity: 0.15 + amplitude * 0.83
-                    }}
-                  />
-                );
-              })}
-            </div>
-
-            <motion.div
-              className="absolute top-0 bottom-0 w-px bg-white z-50 pointer-events-none"
-              style={{ left: trackLeftCss(getPositionPercentage(displayTime)) }}
-            >
-              <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-white" />
-            </motion.div>
           </div>
         </div>
-
       </div>
     </div>
-  );
+  )
 }
