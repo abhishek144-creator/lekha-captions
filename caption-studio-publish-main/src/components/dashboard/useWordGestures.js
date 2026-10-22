@@ -1,5 +1,5 @@
 import { useDocumentGesture } from './useDocumentGesture'
-import { resolveCptWordSnap } from './cptSmartGuides'
+import { measureWordInkBox, resolveCptWordSnap } from './cptSmartGuides'
 import { settleSourceTemplateWord } from './videoPlayerWordEditing'
 
 import { useCallback } from 'react'
@@ -371,6 +371,9 @@ export function useWordGestures({
       ? containerRectAtStart.height / containerHeight
       : viewportScaleX
     const wordRectAtStart = dragMeasurementElement.getBoundingClientRect()
+    // Snapping uses the visible letters (so stacked words can sit tight); the
+    // drop position still comes from the element's own centre (wordRectAtStart).
+    const snapRectAtStart = measureWordInkBox(dragMeasurementElement) || wordRectAtStart
     // Snapshot sibling visuals once. Measuring during DOM mutation would make
     // snapping depend on the previous pointer event and double saved offsets.
     const siblingRects = []
@@ -383,11 +386,11 @@ export function useWordGestures({
       const rect = visual.getBoundingClientRect()
       if (computed.visibility === 'hidden' || Number(computed.opacity) === 0 || !rect.width || !rect.height) return
       seenWordKeys.add(key)
-      siblingRects.push(rect)
+      siblingRects.push(measureWordInkBox(visual) || rect)
     })
     const resolveDelta = (deltaX, deltaY, bypassSnap = false) => bypassSnap
       ? { deltaX, deltaY, guides: [] }
-      : resolveCptWordSnap({ draggedRect: wordRectAtStart, siblingRects, frameRect: containerRectAtStart, deltaX, deltaY })
+      : resolveCptWordSnap({ draggedRect: snapRectAtStart, siblingRects, frameRect: containerRectAtStart, deltaX, deltaY })
     const canvasGuides = guides => guides.map(guide => ({
       ...guide,
       ...(guide.x != null ? { x: (guide.x - containerRectAtStart.left) / viewportScaleX } : {}),

@@ -206,7 +206,8 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
 
   const placementClassName = {
     panel: 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/10 bg-zinc-900',
-    sheet: 'relative flex h-[44dvh] min-h-[230px] max-h-[460px] flex-col overflow-hidden rounded-t-[22px] border-t border-white/10 bg-zinc-900',
+    // Compact on phones so the preview (and the word being edited) stays large; the tabs scroll.
+    sheet: 'relative flex h-[36dvh] min-h-[220px] max-h-[380px] flex-col overflow-hidden rounded-t-[22px] border-t border-white/10 bg-zinc-900',
     floating: 'fixed z-[99999] flex flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-2xl',
   }[placement] || '';
   const floatingStyle = isFloating && floatingRect ? {

@@ -25,26 +25,45 @@ try {
   await page.goto('http://127.0.0.1:4189/e2e/fixtures/wordGeometry.html')
   const words = '[data-word-key="geometry-1"]'
   await page.waitForSelector(words)
-  const checkInline = async () => {
-    const bounds = await page.evaluate(() => [0, 1, 2].map((index) => {
-      const node = document.querySelector(`[data-word-key="geometry-${index}"]`)
-      const box = node.getBoundingClientRect()
-      const range = document.createRange()
-      range.selectNodeContents(node.querySelector('[data-word-drag-visual]'))
-      const visual = range.getBoundingClientRect()
-      return { left: visual.left, right: visual.right, top: visual.top, bottom: visual.bottom, boxWidth: box.width, visualWidth: visual.width }
-    }))
-    assert.ok(bounds[1].boxWidth >= bounds[1].visualWidth - 1, `enlarged word exceeds its click/selection box: ${JSON.stringify(bounds)}`)
-    for (let index = 1; index < bounds.length; index += 1) {
-      const before = bounds[index - 1]
-      const after = bounds[index]
-      assert.ok(after.left >= before.right - 1 || after.top >= before.bottom - 1, `adjacent words overlap: ${JSON.stringify(bounds)}`)
-    }
-  }
-  for (const button of ['enlarge', 'emphasis']) {
+  // Owner's design: enlarging or emphasising a word never moves the others.
+  // Each word keeps a slot at the caption's base size; the larger word is
+  // painted centred on its slot (and may overlap), still clickable and fully
+  // outlined when selected.
+  const slots = () => page.evaluate(() => [0, 1, 2].map((index) => {
+    const node = document.querySelector(`[data-word-key="geometry-${index}"]`)
+    const box = node.getBoundingClientRect()
+    const range = document.createRange()
+    range.selectNodeContents(node.querySelector('[data-word-drag-visual]'))
+    const paint = range.getBoundingClientRect()
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, paintLeft: paint.left, paintRight: paint.right, paintTop: paint.top, paintBottom: paint.bottom }
+  }))
+  const checkInline = async (baselineButton, button) => {
+    await page.click(`#${baselineButton}`)
+    const before = await slots()
     await page.click(`#${button}`)
-    await checkInline()
+    const after = await slots()
+    for (const index of [0, 2]) {
+      for (const edge of ['left', 'right', 'top', 'bottom']) {
+        assert.ok(Math.abs(after[index][edge] - before[index][edge]) < 1, `${button}: word ${index} moved (${edge}): ${JSON.stringify({ before, after })}`)
+      }
+    }
+    const word = after[1]
+    assert.ok(word.paintRight - word.paintLeft > (word.right - word.left) * 1.3, `${button}: word is not painted larger than its slot: ${JSON.stringify(word)}`)
+    const slotCentre = (word.left + word.right) / 2
+    assert.ok(Math.abs((word.paintLeft + word.paintRight) / 2 - slotCentre) < 1.5, `${button}: painted word is not centred on its slot: ${JSON.stringify(word)}`)
+    // The part painted beyond the slot still selects the word, and the ring
+    // outlines the whole painted word.
+    await page.mouse.click(word.paintRight - 2, (word.paintTop + word.paintBottom) / 2)
+    const ring = await page.waitForFunction(() => {
+      const visual = document.querySelector('[data-word-key="geometry-1"] [data-word-drag-visual]')
+      const node = [...(visual?.children || [])].find((child) => child.style.border)
+      return node && node.getBoundingClientRect().toJSON()
+    }, { timeout: 3000 }).then((handle) => handle.jsonValue())
+    assert.ok(ring.left <= word.paintLeft + 1 && ring.right >= word.paintRight - 1, `${button}: selection ring does not cover the painted word: ${JSON.stringify({ ring, word })}`)
+    await page.click('#unselect')
   }
+  await checkInline('restyle', 'enlarge')
+  await checkInline('reset', 'emphasis')
   await page.click('#detach')
   const bounds = () => page.$eval(words, (node) => {
     const range = document.createRange()
@@ -65,7 +84,7 @@ try {
   assert.ok(Math.abs(after.x - before.x) < 1 && Math.abs(after.y - before.y) < 1, 'unselecting moved detached text')
   }
   assert.deepEqual(errors, [])
-  console.log('Word editing geometry passed on desktop and phone viewport: enlarged/emphasised spacing and detached text centring, click and selection stability.')
+  console.log('Word editing geometry passed on desktop and phone viewport: enlarged/emphasised words leave neighbours in place and stay centred, clickable and outlined; detached text centring, click and selection stability.')
 } finally {
   await browser?.close()
   await server.close()

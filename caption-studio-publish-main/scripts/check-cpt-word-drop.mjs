@@ -75,13 +75,17 @@ const centerOf = (page, selector) => page.evaluate((sel) => {
   return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
 }, selector)
 
-async function dragBy(page, from, dx, dy, measure) {
+// `precise` holds Alt, which turns smart-guide snapping off, for checks that
+// need the exact pointer offset.
+async function dragBy(page, from, dx, dy, measure, { precise = false } = {}) {
   await page.mouse.move(from.x, from.y)
+  if (precise) await page.keyboard.down('Alt')
   await page.mouse.down()
   // Leave a one-line caption within the first steps, as a real drag does.
   for (let step = 1; step <= 12; step += 1) await page.mouse.move(from.x + (dx * step) / 12, from.y + (dy * step) / 12)
   const during = measure ? await measure() : null
   await page.mouse.up()
+  if (precise) await page.keyboard.up('Alt')
   await sleep(700)
   return { during, after: measure ? await measure() : null }
 }
@@ -153,7 +157,7 @@ async function checkSelectedWordTools() {
   // The Move button started the drag without a pointer id and threw.
   const before = await centerOf(page, text)
   const move = await centerOf(page, '[title="Move word"]')
-  const { during, after } = await dragBy(page, move, -50, 40, () => centerOf(page, text))
+  const { during, after } = await dragBy(page, move, -50, 40, () => centerOf(page, text), { precise: true })
   assert.ok(Math.abs(after.x - (before.x - 50)) < 2 && Math.abs(after.y - (before.y + 40)) < 2, `Move button must move the word (before ${before.x},${before.y} after ${after.x},${after.y})`)
   assert.ok(Math.abs(after.x - during.x) < 1.5 && Math.abs(after.y - during.y) < 1.5, 'Move button drop must stay where shown')
   // Escape closes the floating word editor (the first-run tip, a dismissable

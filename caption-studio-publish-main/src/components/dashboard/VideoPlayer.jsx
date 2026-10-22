@@ -2541,12 +2541,15 @@ export default function VideoPlayer({
                         const detached = isWordDetached(ws);
                         const isPastSidebarWord = sidebarTemplateActive && wordIndex < sidebarCurrentIdx;
                         const isCurrentSidebarWord = sidebarTemplateActive && wordIndex === sidebarCurrentIdx;
-                        // Detached words keep their original slot. In-line words
-                        // reserve the size they paint, including emphasis.
-                        const layoutFontSize = detached ? baseFontSize : (ws.isEmphasis ? Math.round(wordFontSize * 1.2) : wordFontSize)
+                        // Every word keeps a slot at the caption's base size, so
+                        // enlarging or emphasising one word never moves the others:
+                        // the bigger text is painted centred on its slot (the owner's
+                        // design; the export renderer mirrors it). In-line slots still
+                        // follow an explicitly chosen font family/weight/style.
+                        const layoutFontSize = baseFontSize
                         const layoutTypography = detached ? {} : {
                           fontFamily: ws.fontFamily || 'inherit',
-                          fontWeight: ws.isEmphasis ? emphasisFontWeight(ws.fontWeight || captionStyle?.font_weight) : (ws.fontWeight || (isCurrentSidebarWord ? (captionStyle?.font_weight || '700') : 'inherit')),
+                          fontWeight: ws.fontWeight || (isCurrentSidebarWord ? (captionStyle?.font_weight || '700') : 'inherit'),
                           fontStyle: ws.fontStyle || 'inherit',
                           textTransform: ws.textTransform || undefined,
                         }
@@ -2660,17 +2663,6 @@ export default function VideoPlayer({
                               }
                             }}
                           >
-                            {/* Selection follows the word's reserved typography box. */}
-                            {isSelected && (
-                              <span style={{
-                                position: 'absolute',
-                                inset: '-2px',
-                                border: '2px solid #F5A623',
-                                borderRadius: '3px',
-                                pointerEvents: 'none',
-                                zIndex: 30,
-                              }} />
-                            )}
                             {/* Inner span: all visual styles. Absolute so it never affects layout flow */}
                             <span
                               data-word-drag-visual="true"
@@ -2700,8 +2692,19 @@ export default function VideoPlayer({
                               }}
                             >
                               <span style={{ display: 'inline-block', ...resolvedWordMotionStyle }}>{word}</span>
+                              {/* Selection outlines the painted word, which may be larger than its slot. */}
+                              {isSelected && (
+                                <span style={{
+                                  position: 'absolute',
+                                  inset: '-2px',
+                                  border: '2px solid #F5A623',
+                                  borderRadius: '3px',
+                                  pointerEvents: 'none',
+                                  zIndex: 30,
+                                }} />
+                              )}
                             </span>
-                            {/* Invisible spacer — holds layout width at layoutFontSize (baseFontSize for dragged words) */}
+                            {/* Invisible spacer: holds the word's slot at the caption's base size */}
                             <span style={{ visibility: 'hidden', fontSize: `${layoutFontSize}px`, whiteSpace: 'pre', ...layoutTypography }}>
                               {word}
                             </span>

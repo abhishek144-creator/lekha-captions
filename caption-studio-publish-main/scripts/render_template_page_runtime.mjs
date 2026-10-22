@@ -2516,18 +2516,29 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const renderPlainWord = (word, index, isLastInLine = false) => {
         if (!showInactive && index > currentIndex) return '';
         const wordStyle = word.style || {};
-        const inline = [
+        const baseFontSize = globalStyle?.font_size ?? 18;
+        const paintedFontSize = (wordStyle.fontSize ?? baseFontSize) * (wordStyle.isEmphasis ? 1.2 : 1);
+        // An enlarged/emphasised word keeps a slot at the caption's base size and
+        // is painted centred on it, so its neighbours stay where they are
+        // (mirrors the editor preview in VideoPlayer.jsx).
+        const keepsBaseSlot = Math.abs(paintedFontSize - baseFontSize) > 0.001;
+        const slotDeclarations = [
           isCptCaption && index > currentIndex ? 'opacity:0' : '',
           'display:inline-block',
           'position:relative',
+          !isLastInLine ? \`margin-right:\${wordSpacing}\` : '',
+        ].filter(Boolean);
+        const inline = [
+          ...(keepsBaseSlot
+            ? ['display:inline-block', 'position:absolute', 'left:50%', 'top:50%', 'transform:translate(-50%,-50%)', 'white-space:nowrap']
+            : slotDeclarations),
           \`font-family:"\${wordStyle.fontFamily || globalStyle?.font_family || 'Inter'}"\`,
-          \`font-size:\${scaleExportPx((wordStyle.fontSize ?? globalStyle?.font_size ?? 18) * (wordStyle.isEmphasis ? 1.2 : 1))}px\`,
+          \`font-size:\${scaleExportPx(paintedFontSize)}px\`,
           \`font-weight:\${wordStyle.fontWeight || (wordStyle.isEmphasis ? '700' : (globalStyle?.font_weight || '500'))}\`,
           \`font-style:\${wordStyle.fontStyle || globalStyle?.font_style || 'normal'}\`,
           \`color:\${wordStyle.color || (wordStyle.isEmphasis ? (globalStyle?.highlight_color || globalStyle?.secondary_color) : '') || globalStyle?.text_color || '#ffffff'}\`,
           wordStyle.textDecoration ? \`text-decoration:\${wordStyle.textDecoration}\` : '',
           wordStyle.textTransform ? \`text-transform:\${wordStyle.textTransform}\` : '',
-          !isLastInLine ? \`margin-right:\${wordSpacing}\` : '',
         ].filter(Boolean);
         // Not scaleExportPx: that clamps to >= 1px, and zero shadow offsets/blur are authored values.
         const scaleEffectPx = (value) => Math.round((Number(value) || 0) * (window.__exportCanvasScale || 1));
@@ -2546,7 +2557,19 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => inline.push(\`\${property}:\${value}\`));
         // Escape the attribute: font-family is double-quoted, and a raw quote
         // here ends style="..." early, dropping every later declaration.
-        return \`<span data-word-key="\${word.key}" style="\${escapeHtml(inline.join(';'))}">\${escapeHtml(transformText(word.text, globalStyle))}</span>\`;
+        const wordText = escapeHtml(transformText(word.text, globalStyle));
+        const painted = \`<span data-word-key="\${word.key}" style="\${escapeHtml(inline.join(';'))}">\${wordText}</span>\`;
+        if (!keepsBaseSlot) return painted;
+        const slotTypography = [
+          \`font-family:"\${wordStyle.fontFamily || globalStyle?.font_family || 'Inter'}"\`,
+          \`font-size:\${scaleExportPx(baseFontSize)}px\`,
+          \`font-weight:\${wordStyle.fontWeight || globalStyle?.font_weight || '500'}\`,
+          \`font-style:\${wordStyle.fontStyle || globalStyle?.font_style || 'normal'}\`,
+          wordStyle.textTransform ? \`text-transform:\${wordStyle.textTransform}\` : '',
+        ].filter(Boolean);
+        return \`<span data-word-slot="true" style="\${escapeHtml([...slotDeclarations, ...slotTypography].join(';'))}">\`
+          + painted
+          + \`<span aria-hidden="true" style="visibility:hidden;white-space:pre">\${wordText}</span></span>\`;
       };
 
       let wordCursor = 0;

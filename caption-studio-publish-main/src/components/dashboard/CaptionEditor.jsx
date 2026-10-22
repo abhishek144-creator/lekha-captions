@@ -13,7 +13,8 @@ import {
   Copy,
   MoreHorizontal,
   Languages,
-  Loader2
+  Loader2,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -283,20 +284,22 @@ function CaptionEditor({
       </div>
 
       {onTranslate && transcriptCount > 0 && (
-        <div className="relative z-10 mb-3 rounded-xl border border-white/10 bg-black/25 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="caption-translate-target" className="flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              <Languages className="h-3.5 w-3.5" />
-              Translate to
-            </label>
+        <div
+          className="relative z-10 mb-3 flex h-8 items-center gap-1.5"
+          title="Adds a translated language track. Your original captions are kept; switch back any time."
+        >
+          <label htmlFor="caption-translate-target" className="sr-only">Translate captions to</label>
+          <div className="relative min-w-0 flex-1">
+            <Languages className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
             <select
               id="caption-translate-target"
               value={translateTarget}
               onChange={(event) => setTranslateTarget(event.target.value)}
               disabled={isTranslating}
-              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#111] px-2 py-1.5 text-xs text-white disabled:opacity-50"
+              aria-describedby="caption-translate-hint"
+              className={`h-8 w-full min-w-0 appearance-none rounded-lg border border-white/10 bg-black/35 pl-8 pr-7 text-xs outline-none transition-colors hover:border-white/20 focus:border-sky-300/40 disabled:opacity-50 ${translateTarget ? 'text-white' : 'text-slate-500'}`}
             >
-              <option value="">Choose a language</option>
+              <option value="">Translate to…</option>
               <optgroup label="South Asian languages">
                 {southAsianLanguages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
               </optgroup>
@@ -304,17 +307,18 @@ function CaptionEditor({
                 {globalLanguages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
               </optgroup>
             </select>
-            <button
-              type="button"
-              onClick={() => onTranslate(translateTarget, getCaptionLanguageLabel(translateTarget))}
-              disabled={!translateTarget || isTranslating}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300/40 bg-sky-300/10 px-2.5 py-1.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-300/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isTranslating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
-              {isTranslating ? 'Translating…' : 'Translate'}
-            </button>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" aria-hidden="true" />
           </div>
-          <p className="mt-2 text-[10px] leading-4 text-slate-500">Translates the original transcript into a new language track. Your original captions are kept; switch back any time.</p>
+          <button
+            type="button"
+            onClick={() => onTranslate(translateTarget, getCaptionLanguageLabel(translateTarget))}
+            disabled={!translateTarget || isTranslating}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white px-3 text-[11px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-slate-500"
+          >
+            {isTranslating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isTranslating ? 'Translating…' : 'Translate'}
+          </button>
+          <span id="caption-translate-hint" className="sr-only">Adds a translated language track. Your original captions are kept; switch back any time.</span>
         </div>
       )}
 

@@ -169,8 +169,8 @@ export default function MobileDashboardDock({
         </button>
       </div>
 
-      {/* Caption strip: hidden while a tool sheet needs the room */}
-      {!isSheetOpen && lines.length > 0 && (
+      {/* Caption strip: hidden while a tool sheet or the word editor needs the room */}
+      {!isSheetOpen && !wordEditor && lines.length > 0 && (
         <div
           ref={stripRef}
           className="flex gap-2 overflow-x-auto px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"

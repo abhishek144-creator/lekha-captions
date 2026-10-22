@@ -135,6 +135,8 @@ Caption IDs are `${Date.now()}-${idx}` (no spaces). They are used as key prefixe
 | Word index drift after newline/double space | VideoPlayer.jsx | Split caption words with `splitCaptionWordTokens` (any whitespace), never `split(' ')` |
 | Same-time seek ignored | Dashboard.jsx handleSeek | `seekSignal` is a new `{ time }` object per seek |
 | Animated dragged word ended offset from its drop spot | VideoPlayerKeyframes.jsx `word-*` | Word animations run on an inner motion span whose parent centres it; `word-*` keyframes must not contain `translate(-50%,-50%)` |
+| Enlarging a word moved the other words | VideoPlayer.jsx in-line words + render_template_page_runtime.mjs `renderPlainWord` | Owner's design: every word keeps a slot at the caption's base size; a larger/emphasised word is painted centred on it (may overlap). Preview and export must match |
+| Word drag never snapped / no guides | cptSmartGuides.js | DOMRect width/height are prototype getters, so `{ ...rect }` lost them (NaN centres). Build boxes with `toBox`; words snap by ink bounds, no forced gap/collision |
 | Word popup font list closed the popup | Dashboard.jsx outside-click handler | Portaled Radix content (`[data-radix-popper-content-wrapper]`) and `data-editor-panel` areas keep the popup open |
 
 ---

@@ -12,6 +12,8 @@ function Harness() {
     words: [], wordStyles: {},
   }])
   return <>
+    <button id="reset" onClick={() => { setWordPopup(null); setCaptions((items) => items.map((caption) => ({ ...caption, wordStyles: {} }))) }}>Reset</button>
+    <button id="restyle" onClick={() => setCaptions((items) => items.map((caption) => ({ ...caption, wordStyles: { 'geometry-1': { fontWeight: '900', textTransform: 'uppercase' } } })))}>Restyle</button>
     <button id="enlarge" onClick={() => setCaptions((items) => items.map((caption) => ({ ...caption, wordStyles: { 'geometry-1': { fontSize: 40, fontWeight: '900', textTransform: 'uppercase' } } })))}>Enlarge</button>
     <button id="emphasis" onClick={() => setCaptions((items) => items.map((caption) => ({ ...caption, wordStyles: { 'geometry-1': { fontSize: 32, isEmphasis: true } } })))}>Emphasis</button>
     <button id="detach" onClick={() => { setWordPopup(null); setCaptions((items) => items.map((caption) => ({ ...caption, wordStyles: { 'geometry-1': { fontSize: 32, abs_x_pct: 60, abs_y_pct: 40 } } }))) }}>Detach</button>

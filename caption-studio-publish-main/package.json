@@ -19,7 +19,7 @@
     "test:template-export:lc-boxed": "node scripts/check-template-export-parity.mjs --scope=lc-boxed",
     "test:template-export:left-highlight-pair": "node scripts/check-template-export-parity.mjs --scope=left-highlight-pair",
     "test:lc-playback": "node scripts/check-lc-playback-completeness.mjs",
-    "test:dragged-word-export": "node scripts/check-export-font-readiness.mjs && node scripts/check-dragged-word-export-parity.mjs && node scripts/check-word-paint-export.mjs",
+    "test:dragged-word-export": "node scripts/check-export-font-readiness.mjs && node scripts/check-dragged-word-export-parity.mjs && node scripts/check-word-paint-export.mjs && node scripts/check-word-size-slot-export.mjs",
     "test:cpt-editing": "node scripts/check-cpt-editing-contracts.mjs && node scripts/check-caption-editing-invariants.mjs",
     "test:pricing-defaults": "node scripts/check-pricing-yearly-default.mjs",
     "test:google-auth": "node scripts/check-google-auth-redirect.mjs",

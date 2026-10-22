@@ -58,10 +58,9 @@ const rect = (left, top, width, height) => ({
   const result = resolveCptWordSnap({
     draggedRect: rect(0, 10, 30, 16),
     siblingRects: [rect(45, 10, 30, 16)],
-    deltaX: 7,
-    minGap: 6,
+    deltaX: 13,
   });
-  assert.equal(result.rect.right, 39, 'adjacent right edge should magnetize to the minimum gap');
+  assert.equal(result.rect.right, 45, 'a word brought next to another should snap to touching');
   assert.ok(
     result.guides.some((guide) => guide.type === 'spacing-horizontal'),
     'side-by-side words should show a horizontal spacing marker',
@@ -69,28 +68,60 @@ const rect = (left, top, width, height) => ({
 }
 
 {
-  const sibling = rect(40, 10, 30, 16);
+  // Creative layouts: nothing blocks placement, words may overlap on purpose.
   const result = resolveCptWordSnap({
     draggedRect: rect(0, 10, 30, 16),
-    siblingRects: [sibling],
-    deltaX: 20,
-    minGap: 6,
+    siblingRects: [rect(40, 10, 30, 16)],
+    deltaX: 25,
   });
-  assert.ok(result.rect.right <= sibling.left - 6, 'a dragged word must not overlap its sibling');
+  assert.equal(result.rect.left, 25, 'a dragged word may be placed overlapping its sibling');
 }
 
 {
   const result = resolveCptWordSnap({
     draggedRect: rect(20, 0, 32, 14),
     siblingRects: [rect(20, 30, 32, 14)],
-    deltaY: 9,
-    minGap: 6,
+    deltaY: 14,
   });
-  assert.equal(result.rect.bottom, 24, 'stacked word edges should magnetize vertically');
+  assert.equal(result.rect.bottom, 30, 'stacked words should snap to touching');
   assert.ok(
     result.guides.some((guide) => guide.type === 'spacing-vertical'),
     'stacked words should show a vertical spacing marker',
   );
+}
+
+{
+  // Equal spacing: a third word snaps to the gap already used between two others,
+  // and both gaps are marked.
+  const result = resolveCptWordSnap({
+    draggedRect: rect(20, 100, 32, 14),
+    siblingRects: [rect(20, 0, 32, 14), rect(20, 24, 32, 14)],
+    deltaY: -50,
+  });
+  assert.equal(result.rect.top, 48, 'the gap should snap to the 10px spacing already used');
+  assert.equal(result.guides.filter((guide) => guide.type === 'spacing-vertical').length, 2, 'both equal gaps should be marked');
+}
+
+{
+  // Live drags pass DOMRects, whose width/height are prototype getters.
+  class LiveRect {
+    constructor(left, top, width, height) { this._box = [left, top, width, height]; }
+    get left() { return this._box[0]; }
+    get top() { return this._box[1]; }
+    get width() { return this._box[2]; }
+    get height() { return this._box[3]; }
+    get right() { return this._box[0] + this._box[2]; }
+    get bottom() { return this._box[1] + this._box[3]; }
+  }
+  const result = resolveCptWordSnap({
+    draggedRect: new LiveRect(100, 300, 50, 20),
+    siblingRects: [new LiveRect(110, 200, 38, 20)],
+    frameRect: new LiveRect(0, 0, 360, 640),
+    deltaX: 6,
+    deltaY: 0,
+  });
+  assert.equal(result.rect.left + result.rect.width / 2, 129, 'centres should align with DOMRect-like input');
+  assert.ok(result.guides.some((guide) => guide.type === 'vertical' && guide.kind === 'center'), 'a centre guide should be drawn for DOMRect-like input');
 }
 
 {
