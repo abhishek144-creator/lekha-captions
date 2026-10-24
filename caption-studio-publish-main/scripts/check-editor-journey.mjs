@@ -169,6 +169,23 @@ const textClick = async (text) => {
   await page.waitForFunction((label) => [...document.querySelectorAll('button,summary')].some((el) => el.textContent.trim() === label), {}, text)
   await page.evaluate((label) => [...document.querySelectorAll('button,summary')].find((el) => el.textContent.trim() === label).click(), text)
 }
+async function openSeededDraft(value) {
+  // Seed after the previous document has flushed its draft on navigation.
+  // Writing into the old page lets its pagehide save replace the new fixture.
+  const seed = await page.evaluateOnNewDocument((nextDraft) => {
+    localStorage.clear()
+    localStorage.setItem('captionEditorState', JSON.stringify(nextDraft))
+  }, value)
+  try {
+    await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  } finally {
+    await page.removeScriptToEvaluateOnNewDocument(seed.identifier)
+  }
+  await page.waitForFunction((ids) => {
+    const captions = JSON.parse(localStorage.getItem('captionEditorState') || '{}').captions || []
+    return JSON.stringify(captions.map((item) => item.id)) === JSON.stringify(ids)
+  }, {}, value.captions.map((item) => item.id))
+}
 try {
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
   await page.evaluate((value) => localStorage.setItem('captionEditorState', JSON.stringify(value)), draft)
@@ -429,8 +446,7 @@ try {
     ],
   })
   const storedMood = () => page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.filter((item) => item.id?.startsWith?.('mood-')))
-  await page.evaluate((value) => { localStorage.clear(); localStorage.setItem('captionEditorState', JSON.stringify(value)) }, moodDraft('mood-ai'))
-  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await openSeededDraft(moodDraft('mood-ai'))
   await textClick('Auto layout')
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.id === 'mood-2' && item.layoutSource === 'auto' && item.aiEmotion), { timeout: 15000 })
   assert.equal(emotionRequests.length, 1, 'one AI call for the whole script')
@@ -450,8 +466,7 @@ try {
   assert.equal(emotionRequests.length, 1, 'lines already read are not sent again')
 
   emotionMode = 'fail'
-  await page.evaluate((value) => { localStorage.clear(); localStorage.setItem('captionEditorState', JSON.stringify(value)) }, moodDraft('mood-rules'))
-  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await openSeededDraft(moodDraft('mood-rules'))
   await textClick('Auto layout')
   await page.waitForFunction(() => /AI reading unavailable, used timing and volume/.test(document.body.textContent), { timeout: 15000 })
   await page.waitForFunction(() => {
