@@ -83,6 +83,13 @@ const server = await createServer({
 await server.listen()
 const browser = await puppeteer.launch({ headless: true, args: process.env.CI ? ['--no-sandbox'] : [] })
 const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-templates-'))
+const fontBundle = process.env.STUDIO_FONT_BUNDLE_PATH || path.join(workDir, 'fonts.css')
+if (!process.env.STUDIO_FONT_BUNDLE_PATH) {
+  await execFileAsync(process.execPath, [path.join(root, 'scripts', 'build_render_font_bundle.mjs'), fontBundle], {
+    cwd: root, timeout: 600_000, maxBuffer: 4 * 1024 * 1024,
+  })
+}
+const fontCss = await fs.readFile(fontBundle, 'utf8')
 const failures = []
 const check = (ok, message) => { if (!ok) failures.push(message) }
 
@@ -100,8 +107,9 @@ async function openEditor(lang) {
   page.on('request', (request) => {
     const url = new URL(request.url())
     const external = url.hostname !== '127.0.0.1' && !['data:', 'blob:'].includes(url.protocol)
-    // Google Fonts may load (the templates need their faces); nothing else leaves.
-    if (external && !['fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname)) return request.abort()
+    // Both sides use the renderer's packaged faces. A remote timeout must not
+    // turn a font fallback into an apparent canvas/export geometry defect.
+    if (external) return request.abort()
     if (external || !url.pathname.startsWith('/api/')) return request.continue()
     let payload = { success: true }
     if (url.pathname === '/api/editor-preferences/load') payload.preferences = { revision: 0, brand_kits: [], glossary_terms: [] }
@@ -118,6 +126,7 @@ async function openEditor(lang) {
   await page.goto('http://127.0.0.1:4196/e2e/fixtures/editor.html')
   await page.evaluate((value) => localStorage.setItem('captionEditorState', JSON.stringify(value)), mkDraft(lang))
   await page.goto('http://127.0.0.1:4196/e2e/fixtures/editor.html?restoreSession=1')
+  await page.addStyleTag({ content: fontCss })
   await page.waitForSelector('.lekha-video-frame [data-word-key="c0-0"]', { timeout: 60000 })
   await page.waitForFunction(() => (document.querySelector('.lekha-video-frame video')?.duration || 0) > 9, { timeout: 30000 }).catch(() => {})
   return page
@@ -165,20 +174,19 @@ async function canvasScene(page, index) {
     }
     // The canvas nests a visual span carrying the same index; keep the outer one.
     const words = [...block.querySelectorAll('[data-w]')].filter((word) => !word.parentElement?.closest('[data-w]')).map((word) => {
-      const rect = word.getBoundingClientRect()
-      const cs = getComputedStyle(word)
-      // The word span also holds a hidden copy that reserves its slot.
-      const raw = word.textContent.trim()
-      const half = raw.slice(0, raw.length / 2)
+      const visual = word.querySelector('[data-source-word-visual="true"], [data-word-drag-visual="true"]') || word
+      const rect = visual.getBoundingClientRect()
+      const cs = getComputedStyle(visual)
       return {
-        text: raw.length % 2 === 0 && half + half === raw ? half : raw,
+        text: visual.textContent.trim(),
         wordIndex: Number(word.dataset.w),
         visible: visible(word),
         cx: (rect.left + rect.width / 2 - frame.left) / frame.width,
         cy: (rect.top + rect.height / 2 - frame.top) / frame.height,
         left: (rect.left - frame.left) / frame.width,
         right: (rect.right - frame.left) / frame.width,
-        fs: Number.parseFloat(cs.fontSize) / frame.height,
+        fs: Number.parseFloat(cs.fontSize) / frame.width,
+        width: rect.width / frame.width,
         color: cs.webkitTextFillColor || cs.color,
         weight: cs.fontWeight,
         family: cs.fontFamily,
@@ -229,7 +237,8 @@ async function renderExport(id, lang, request) {
   }))
   await execFileAsync(process.execPath, [path.join(root, 'scripts', 'render_template_overlay.mjs'), payloadPath], {
     cwd: root,
-    env: { ...process.env, TEMPLATE_OVERLAY_GEOMETRY_AUDIT: '1' },
+    env: { ...process.env, TEMPLATE_OVERLAY_GEOMETRY_AUDIT: '1', RENDER_FONT_BUNDLE_PATH: fontBundle,
+      RENDER_FONT_BUNDLE_REQUIRED: '1', PREFER_PACKAGED_RENDER_FONTS: '1' },
     timeout: 600_000,
     maxBuffer: 1024 * 1024 * 16,
   })
@@ -279,7 +288,7 @@ async function runTemplate(id, lang) {
       const canvas = scenes[index]
       if (!canvas || !Array.isArray(audit.wordGeometry)) return
       if (process.env.STUDIO_DEBUG_GEOMETRY === '1') {
-        const row = (word) => `${word.text}${word.emphasis ? '*' : ''}@${word.cx.toFixed(3)},${word.cy.toFixed(3)} fs${word.fs.toFixed(4)}`
+        const row = (word) => `${word.text}${word.emphasis ? '*' : ''}@${word.cx.toFixed(3)},${word.cy.toFixed(3)} fs${word.fs.toFixed(4)} w${word.width?.toFixed(4)} ${word.family}/${word.weight}`
         console.log(`    caption ${index} canvas: ${canvas.words.map(row).join(' | ')}`)
         console.log(`    caption ${index} export: ${audit.wordGeometry.map(row).join(' | ')}`)
       }

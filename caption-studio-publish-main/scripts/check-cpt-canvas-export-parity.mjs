@@ -73,7 +73,8 @@ try {
         duration: 1, output_dir: output, style: { ...state.style, fps: 24 }, captions: [{ ...caption,
           word_styles: caption.wordStyles, imp_word_chosen: true, emphasis_color: state.style.highlight_color }] }))
       await run(process.execPath, ['scripts/render_template_overlay.mjs', payloadPath], {
-        env: { ...process.env, TEMPLATE_OVERLAY_GEOMETRY_AUDIT: '1', RENDER_FONT_BUNDLE_PATH: fontBundle }, maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, TEMPLATE_OVERLAY_GEOMETRY_AUDIT: '1', RENDER_FONT_BUNDLE_PATH: fontBundle,
+          RENDER_FONT_BUNDLE_REQUIRED: '1', PREFER_PACKAGED_RENDER_FONTS: '1' }, maxBuffer: 8 * 1024 * 1024,
       })
       const audit = JSON.parse(await readFile(resolve(output, 'template-completeness-audit.json'), 'utf8'))
       const actual = audit.at(-1)?.captions?.[0]?.wordGeometry || audit.at(-1)?.wordGeometry
@@ -100,7 +101,8 @@ try {
     await writeFile(payloadPath, JSON.stringify({ video_width: 360, video_height: 640, duration: 1,
       output_dir: output, style: { ...fixture.style, fps: 24 }, captions: [{ ...fixture.caption, word_styles: wordStyles }] }))
     await run(process.execPath, ['scripts/render_template_overlay.mjs', payloadPath], {
-      env: { ...process.env, TEMPLATE_OVERLAY_GEOMETRY_AUDIT: '1', RENDER_FONT_BUNDLE_PATH: fontBundle }, maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, TEMPLATE_OVERLAY_GEOMETRY_AUDIT: '1', RENDER_FONT_BUNDLE_PATH: fontBundle,
+        RENDER_FONT_BUNDLE_REQUIRED: '1', PREFER_PACKAGED_RENDER_FONTS: '1' }, maxBuffer: 8 * 1024 * 1024,
     })
     const audit = JSON.parse(await readFile(resolve(output, 'template-completeness-audit.json'), 'utf8')).at(-1)
     assert.equal(audit.wordGeometry.length, words.length, `${complete ? 'full' : 'mixed'} absolute CPT must keep all words`)

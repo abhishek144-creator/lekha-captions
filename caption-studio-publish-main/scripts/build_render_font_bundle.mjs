@@ -32,7 +32,9 @@ const packagedFamilies = new Set([
   'mukta malar', 'noto sans', 'noto sans bengali', 'noto sans devanagari',
   'noto sans kannada', 'noto sans malayalam', 'noto sans telugu', 'roboto',
 ]);
-const ALWAYS_BUNDLED_FAMILIES = ['Mukta', 'Poppins', 'Rajdhani'];
+// Studio designs also use intermediate Latin weights. Bundle the same web
+// faces as the canvas instead of relying on host-installed font versions.
+const ALWAYS_BUNDLED_FAMILIES = ['Inter', 'Marcellus', 'Montserrat', 'Roboto', 'Mukta', 'Poppins', 'Rajdhani'];
 
 const source = (await Promise.all(sourcePaths.map((item) => fs.readFile(path.join(root, item), 'utf8'))))
   .join('\n')
@@ -48,12 +50,28 @@ for (const match of source.matchAll(/font-family\s*:\s*([^;}{]+)/gi)) {
 }
 
 const userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36';
+async function fetchFont(url) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'user-agent': userAgent }, signal: AbortSignal.timeout(20_000),
+      })
+      if (response.ok) return response
+      if (response.status !== 429 && response.status < 500) {
+        throw new Error(`Font request rejected: ${response.status} ${url}`)
+      }
+      await response.body?.cancel()
+      if (attempt === 2) throw new Error(`Font service unavailable: ${response.status} ${url}`)
+    } catch (error) {
+      if (attempt === 2 || error.message.startsWith('Font request rejected:')) throw error
+    }
+    await new Promise((done) => setTimeout(done, 1000 * (attempt + 1)))
+  }
+}
 const fontAssets = new Map();
 const cssParts = [];
 for (const family of [...families].sort()) {
-  const response = await fetch(`https://fonts.googleapis.com/css2?${googleFontFamilyParam(family)}&display=swap`, {
-    headers: { 'user-agent': userAgent },
-  });
+  const response = await fetchFont(`https://fonts.googleapis.com/css2?${googleFontFamilyParam(family)}&display=swap`);
   if (!response.ok) throw new Error(`Google Fonts CSS failed for ${family}: ${response.status}`);
   cssParts.push(await response.text());
 }
@@ -61,7 +79,7 @@ let css = cssParts.join('\n');
 for (const match of css.matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g)) {
   const url = match[1];
   if (fontAssets.has(url)) continue;
-  const response = await fetch(url, { headers: { 'user-agent': userAgent } });
+  const response = await fetchFont(url);
   if (!response.ok) throw new Error(`Google Fonts asset failed: ${response.status} ${url}`);
   const bytes = Buffer.from(await response.arrayBuffer());
   const contentType = response.headers.get('content-type') || 'font/woff2';

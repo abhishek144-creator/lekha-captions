@@ -11,6 +11,7 @@ export const RENDER_FONT_AXES = Object.freeze({
   'lato': 'wght@100;300;400;700;900',
   'libre baskerville': 'ital,wght@0,400;0,700;1,400',
   'mulish': 'wght@200..1000',
+  'montserrat': 'ital,wght@0,100..900;1,100..900',
   // Devanagari fallback for every template (static family: a weight list, not a range).
   'mukta': 'wght@200;300;400;500;600;700;800',
   'nunito': 'wght@200..1000',
@@ -22,6 +23,7 @@ export const RENDER_FONT_AXES = Object.freeze({
   'poppins': 'ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700',
   'raleway': 'ital,wght@0,100..900;1,100..900',
   'rajdhani': 'wght@300;400;500;600;700',
+  'roboto': 'ital,wght@0,100..900;1,100..900',
   'space grotesk': 'wght@300..700',
   'tiro devanagari hindi': 'ital@0;1',
   'work sans': 'wght@100..900',

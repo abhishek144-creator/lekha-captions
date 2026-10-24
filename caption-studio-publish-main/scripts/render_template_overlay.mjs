@@ -2298,16 +2298,20 @@ async function main() {
     // cold CI runners. Keep the wait bounded, but leave enough room for the
     // same assets the export subsequently verifies via document.fonts.ready.
     page.setDefaultNavigationTimeout(60_000);
+    const allowRemoteFonts = !(process.env.RENDER_FONT_BUNDLE_REQUIRED === '1'
+      && process.env.PREFER_PACKAGED_RENDER_FONTS === '1');
+    const pendingFontRequests = new Set();
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const rawUrl = request.url();
+      if (rawUrl.startsWith('https:')) pendingFontRequests.add(rawUrl);
       if (rawUrl === 'about:blank' || rawUrl.startsWith('data:')) {
         request.continue();
         return;
       }
       try {
         const parsed = new URL(rawUrl);
-        if (parsed.protocol === 'https:' && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(parsed.hostname)) {
+        if (allowRemoteFonts && parsed.protocol === 'https:' && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(parsed.hostname)) {
           request.continue();
           return;
         }
@@ -2316,6 +2320,8 @@ async function main() {
       }
       request.abort('blockedbyclient');
     });
+    page.on('requestfinished', (request) => pendingFontRequests.delete(request.url()));
+    page.on('requestfailed', (request) => pendingFontRequests.delete(request.url()));
     const pageErrors = [];
     page.on('pageerror', (error) => {
       pageErrors.push(error?.stack || error?.message || String(error));
@@ -2346,7 +2352,12 @@ async function main() {
           <script>${buildRuntimeScript(advancedTemplateBlockMarkup)}</script>
         </body>
       </html>
-    `, { waitUntil: 'networkidle0' });
+    // Packaged fonts need DOM initialization and the explicit font-readiness
+    // checks below. Chromium network-idle tracking can stall on a large inline
+    // font bundle even with no outstanding network requests.
+    `, { waitUntil: allowRemoteFonts ? 'networkidle0' : 'domcontentloaded' }).catch((error) => {
+      throw new Error(`[Template DOM] ${error.message}; pending fonts: ${JSON.stringify([...pendingFontRequests])}; page errors: ${pageErrors.slice(-5).join(' | ')}`);
+    });
 
     await page.addStyleTag({ content: captionCss });
     await page.addStyleTag({ content: advancedCaptionCss });
@@ -3305,6 +3316,9 @@ async function main() {
                       cx: (rect.left + rect.width / 2) / window.innerWidth,
                       cy: (rect.top + rect.height / 2) / window.innerHeight,
                       fs: Number.parseFloat(styles.fontSize) / window.innerWidth,
+                      family: styles.fontFamily,
+                      weight: styles.fontWeight,
+                      width: rect.width / window.innerWidth,
                       color: styles.webkitTextFillColor || styles.color,
                       emphasis: word.classList.contains('is-emphasis'),
                     };
