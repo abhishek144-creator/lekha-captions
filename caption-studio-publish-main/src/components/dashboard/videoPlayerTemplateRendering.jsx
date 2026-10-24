@@ -1863,6 +1863,15 @@ export function AppliedSidebarTemplateSourceRenderer({
     };
 
     runnerRef.current = { play, pause };
+    // A paused native seek can complete without another React time render
+    // (especially when the first caption's runner initializes during it).
+    // Sample the actual media clock when the seek completes as well.
+    const lcVideo = isLcTemplateSet ? videoRef?.current : null;
+    const syncLcMediaClock = () => {
+      if (lcTimelineInitialized) syncLcTimeline();
+    };
+    lcVideo?.addEventListener('seeked', syncLcMediaClock);
+    lcVideo?.addEventListener('loadeddata', syncLcMediaClock);
     if (playStateRef.current.isPlaying) {
       play();
     } else if (isLcTemplateSet) {
@@ -1872,6 +1881,8 @@ export function AppliedSidebarTemplateSourceRenderer({
     }
 
     return () => {
+      lcVideo?.removeEventListener('seeked', syncLcMediaClock);
+      lcVideo?.removeEventListener('loadeddata', syncLcMediaClock);
       clearScheduledWork();
       stopLcClock();
       runnerRef.current = null;

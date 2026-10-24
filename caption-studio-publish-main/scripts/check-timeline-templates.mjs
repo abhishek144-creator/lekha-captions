@@ -131,6 +131,31 @@ try {
   await page.goto('http://127.0.0.1:4194/e2e/fixtures/editor.html?restoreSession=1')
   await page.waitForSelector('.lekha-video-frame [data-word-key]', { timeout: 30000 }); await sleep(1200)
   report('template survives a reload', (await state(page)).captionStyle.template_id === tplId && !!(await page.$(`.lekha-video-frame .${tplId}, .lekha-video-frame [class*="${tplId}"]`)), String((await state(page)).captionStyle.template_id))
+  // A native paused seek must update LC motion even if React's currentTime
+  // value has not changed. Reproduce that ordering without a timeupdate event.
+  for (let attempt = 0; attempt < 12 && !(await page.$('[data-template-card-id="T263"]')); attempt += 1) {
+    await page.evaluate(() => [...document.querySelectorAll('button')]
+      .filter((button) => button.textContent.trim() === 'Templates' && button.getBoundingClientRect().left < window.innerWidth / 2)
+      .forEach((button) => button.click()))
+    await sleep(500)
+  }
+  await page.click('[data-template-card-id="T263"]')
+  await page.waitForSelector('.lekha-applied-template-host[data-lc-timeline-ms]')
+  await page.evaluate(() => {
+    const video = document.querySelector('.lekha-video-frame video')
+    video.pause()
+    video.currentTime = 0
+    video.dispatchEvent(new Event('timeupdate', { bubbles: true }))
+  })
+  await page.waitForFunction(() => document.querySelector('.lekha-applied-template-host')?.dataset.lcTimelineMs === '0')
+  await page.evaluate(() => {
+    const video = document.querySelector('.lekha-video-frame video')
+    Object.defineProperty(video, 'currentTime', { configurable: true, get: () => 3.88 })
+    video.dispatchEvent(new Event('seeked'))
+  })
+  const nativeSeekSynced = await page.waitForFunction(() => document.querySelector('.lekha-applied-template-host')?.dataset.lcTimelineMs === '3880', { timeout: 3000 }).then(() => true, () => false)
+  report('paused native seek resynchronizes the LC animation clock without a React time update', nativeSeekSynced)
+  await page.evaluate(() => { delete document.querySelector('.lekha-video-frame video').currentTime })
   console.log('errors', JSON.stringify(page.errors)); if (page.errors.length) failures += 1
   await page.close()
   if (failures) throw new Error(`${failures} check(s) failed`)
