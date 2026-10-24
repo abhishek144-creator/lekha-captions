@@ -692,12 +692,18 @@ const CASES = [
     impWordIndex: 1,
     // t34's pinned accent is #15F5F9 (cyan), and this all-caps Syne line at the
     // export font (~14.4px = library font_size 20 x 0.72 preview ratio) paints
-    // a ~11px cap-height bbox — matching the canvas. The old 12px floor dated
+    // a 9px glyph core (11px including Windows' faint antialiased edges).
+    // Linux Chrome paints the same 203px width without those two edge rows.
+    // Check the layout height and width too, so accepting that raster variance
+    // cannot conceal a real font-size regression. The old 12px floor dated
     // from the font_size-24 era (~17px export font); 99f8966 lowered the
     // library font to 20 without recalibrating. Orange was the old rotating
     // palette.
     requiredColors: ['cyan', 'white'],
-    minBboxHeight: 10,
+    minBboxHeight: 9,
+    minBboxWidth: 195,
+    maxBboxWidth: 210,
+    minTemplateBoxHeight: 18,
   },
   {
     id: 'left-legacy-current-cyan',
@@ -1699,6 +1705,7 @@ async function renderCase(testCase, rootOutputDir) {
     env: {
       ...process.env,
       ...(testCase.positionAudit ? { TEMPLATE_OVERLAY_POSITION_AUDIT: '1' } : {}),
+      ...(testCase.minTemplateBoxHeight ? { TEMPLATE_OVERLAY_GEOMETRY_AUDIT: '1' } : {}),
     },
     timeout: 120_000,
     maxBuffer: 1024 * 1024 * 4,
@@ -2044,6 +2051,16 @@ try {
     }
     if (testCase.maxBboxWidth && (!counts.bbox || counts.bbox.width > testCase.maxBboxWidth)) {
       fail(`${testCase.id} exported too wide for preview-sized output: bbox=${JSON.stringify(counts.bbox)}`);
+    }
+    if (testCase.minBboxWidth && (!counts.bbox || counts.bbox.width < testCase.minBboxWidth)) {
+      fail(`${testCase.id} exported too narrow for preview-sized output: bbox=${JSON.stringify(counts.bbox)}`);
+    }
+    if (testCase.minTemplateBoxHeight) {
+      const box = audits.at(-1)?.boxGeometry?.find((entry) => entry?.selector === '.sb.active, .sblock.active');
+      const height = box ? (box.bottom - box.top) * (testCase.videoHeight || 640) : 0;
+      if (height < testCase.minTemplateBoxHeight) {
+        fail(`${testCase.id} exported undersized template layout: height=${height}`);
+      }
     }
     if (testCase.maxWhiteBboxHeight && (!counts.whiteBbox || counts.whiteBbox.height > testCase.maxWhiteBboxHeight)) {
       fail(`${testCase.id} exported text too large for preview-sized output: whiteBbox=${JSON.stringify(counts.whiteBbox)}`);
