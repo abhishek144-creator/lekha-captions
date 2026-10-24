@@ -36,6 +36,9 @@ import sidebarLcTemplateHtml2 from '../../assets/lekha-captions-lc-2.html?raw';
 import sidebarLcTemplateHtml3 from '../../assets/lekha-captions-lc-3.html?raw';
 import sidebarLcTemplateHtml4 from '../../assets/lekha-captions-lc-4.html?raw';
 import sidebarLcTemplateHtml5 from '../../assets/lekha-captions-lc-5.html?raw';
+import sidebarLcStudioTemplateHtml from '../../assets/lekha-captions-lc-studio.html?raw';
+import sidebarLcPicksTemplateHtml from '../../assets/lekha-captions-lc-picks.html?raw';
+import { STUDIO_TEMPLATE_FONT_URL } from './studioTemplateFonts.js';
 import {
   isSourceBasicTemplateId,
   sanitizeAppliedTemplateMarkup,
@@ -79,6 +82,10 @@ import {
   getRecreatedAdvancedWbwImpClass,
   shouldRecreateAdvancedWbwPhase,
   shouldSuppressStyledSemanticEmphasis,
+  templateBlockHasAuthoredKeyword,
+  splitTemplateKeywordClasses,
+  stripTemplateKeywordColor,
+  planTemplateRowWords,
 } from './templateTextRules.js';
 
 export {
@@ -135,8 +142,11 @@ export const sidebarLcTemplateHtml = [
   sidebarLcTemplateHtml3,
   sidebarLcTemplateHtml4,
   sidebarLcTemplateHtml5,
+  sidebarLcStudioTemplateHtml,
+  sidebarLcPicksTemplateHtml,
 ].join('\n');
-export const LC_TEMPLATE_FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,500;0,600;0,700;0,800;0,900;1,600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,700&family=Great+Vibes&display=swap');";
+export const LC_TEMPLATE_FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,500;0,600;0,700;0,800;0,900;1,600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,700&family=Great+Vibes&display=swap');
+@import url('${STUDIO_TEMPLATE_FONT_URL}');`;
 
 
 export function isRecreatedAdvancedTemplateId(templateId) {
@@ -503,61 +513,69 @@ export function _astReplaceLcCpt(container, words, impWordIndex, impWordIndices 
   const rows = Array.from(new Set(sourceSpans.map((span) => span.parentElement).filter(Boolean)));
   const sourceByRow = rows.map((row) => Array.from(row.querySelectorAll(':scope > .w')));
   const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices));
-  const totalSourceSlots = sourceByRow.reduce((sum, rowSpans) => sum + rowSpans.length, 0);
-  let wordCursor = 0;
+  // The authored keyword (hero / underline / box / mark ...) and its motion
+  // belong to the caption's important words, not to whichever word lands in
+  // the slot the template's sample keyword used.
+  const isKeywordSpan = (span) => Boolean(splitTemplateKeywordClasses(span.className).keyword);
+  const keywordSource = sourceSpans.find(isKeywordSpan) || null;
+  const bodySource = sourceSpans.find((span) => !isKeywordSpan(span)) || null;
+  const keywordClasses = keywordSource ? splitTemplateKeywordClasses(keywordSource.className).keyword : '';
+  const keywordRow = sourceByRow.length > 1
+    ? sourceByRow.findIndex((rowSpans) => rowSpans.length && rowSpans.every(isKeywordSpan))
+    : -1;
+  const hasBodyRow = sourceByRow.some((rowSpans) => !rowSpans.every(isKeywordSpan));
+  const rowPlan = planTemplateRowWords(
+    sourceByRow.map((rowSpans) => rowSpans.length),
+    words.length,
+    [...targetImpIndices],
+    hasBodyRow ? keywordRow : -1,
+  );
+  const roleAttr = (source, attr) => source?.getAttribute(attr) || '';
 
   sourceByRow.forEach((rowSpans, rowIndex) => {
     const row = rows[rowIndex];
-    const remainingRows = sourceByRow.length - rowIndex - 1;
-    const proportional = Math.round((rowSpans.length / Math.max(1, totalSourceSlots)) * words.length);
-    const rowWordCount = rowIndex === sourceByRow.length - 1
-      ? words.length - wordCursor
-      : Math.max(1, Math.min(words.length - wordCursor - remainingRows, proportional));
-    const rowWords = words.slice(wordCursor, wordCursor + rowWordCount);
-    const sourceClasses = rowSpans.map((span) => _astCleanClass(span.className, 'w'));
-    const sourceLcAnims = rowSpans.map((span) => span.getAttribute('data-lc-anim') || '');
-    const sourceLcDurations = rowSpans.map((span) => span.getAttribute('data-lc-duration') || '');
-    const sourceLcEases = rowSpans.map((span) => span.getAttribute('data-lc-ease') || '');
+    const rowWordIndices = rowPlan[rowIndex] || [];
+    const sourceClasses = rowSpans.map((span) => splitTemplateKeywordClasses(_astCleanClass(span.className, 'w')).base);
     const sourceLcDelays = rowSpans.map((span) => span.getAttribute('data-lc-delay') || '');
-    const sourceStyles = rowSpans.map((span) => String(span.getAttribute('style') || '').replace(/\banimation\s*:[^;]+;?/gi, '').trim());
+    const sourceStyles = rowSpans.map((span) => stripTemplateKeywordColor(String(span.getAttribute('style') || '').replace(/\banimation\s*:[^;]+;?/gi, '')));
     const sourceVisible = rowSpans.map((span) => span.classList.contains('on') && !span.getAttribute('data-lc-anim'));
     const sourceRowHasUnderline = rowSpans.some((span) => (
       span.matches('.ul, .ns3hero, .imp-underline')
     ));
+    const rowKeywordSource = rowSpans.find(isKeywordSpan) || keywordSource;
+    const rowBodySource = rowSpans.find((span) => !isKeywordSpan(span)) || bodySource;
     const createdRowSpans = [];
     row.textContent = '';
-    rowWords.forEach((word, localIndex) => {
+    rowWordIndices.forEach((wordIndex, localIndex) => {
       if (localIndex > 0) row.appendChild(container.ownerDocument.createTextNode(' '));
-      const wordIndex = wordCursor + localIndex;
       const span = container.ownerDocument.createElement('span');
-      const className = _astMappedClass(sourceClasses, localIndex, rowWords.length, 'w')
-        .replace(/\bis-emphasis\b/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      const lcAnim = _astMappedClass(sourceLcAnims, localIndex, rowWords.length, '');
-      const lcDuration = _astMappedClass(sourceLcDurations, localIndex, rowWords.length, '');
-      const lcEase = _astMappedClass(sourceLcEases, localIndex, rowWords.length, '');
-      const lcDelay = _astMappedClass(sourceLcDelays, localIndex, rowWords.length, '');
-      const sourceStyle = _astMappedClass(sourceStyles, localIndex, rowWords.length, '');
-      const isVisibleStatic = _astMappedClass(sourceVisible, localIndex, rowWords.length, false);
-      span.className = `${className || 'w'}${targetImpIndices.has(wordIndex) ? ' is-emphasis' : ''}${isVisibleStatic ? ' on' : ''}`;
+      const isEmphasis = targetImpIndices.has(wordIndex);
+      const motionSource = (isEmphasis ? rowKeywordSource : rowBodySource)
+        || _astMappedClass(rowSpans, localIndex, rowWordIndices.length, null);
+      const className = _astMappedClass(sourceClasses, localIndex, rowWordIndices.length, 'w');
+      const lcAnim = roleAttr(motionSource, 'data-lc-anim');
+      const lcDuration = roleAttr(motionSource, 'data-lc-duration');
+      const lcEase = roleAttr(motionSource, 'data-lc-ease');
+      const lcDelay = _astMappedClass(sourceLcDelays, localIndex, rowWordIndices.length, '');
+      const sourceStyle = _astMappedClass(sourceStyles, localIndex, rowWordIndices.length, '');
+      const isVisibleStatic = _astMappedClass(sourceVisible, localIndex, rowWordIndices.length, false);
+      span.className = `${className || 'w'}${isEmphasis && keywordClasses ? ` ${keywordClasses}` : ''}${isEmphasis ? ' is-emphasis' : ''}${isVisibleStatic ? ' on' : ''}`;
       if (lcAnim) span.setAttribute('data-lc-anim', lcAnim);
       if (lcDuration) span.setAttribute('data-lc-duration', lcDuration);
       if (lcEase) span.setAttribute('data-lc-ease', lcEase);
-      if (lcDelay) span.setAttribute('data-lc-delay', lcDelay);
+      if (lcAnim && lcDelay) span.setAttribute('data-lc-delay', lcDelay);
       if (sourceStyle) span.setAttribute('style', sourceStyle);
       span.setAttribute('data-w', String(wordIndex));
-      span.textContent = word;
+      span.textContent = words[wordIndex];
       row.appendChild(span);
       createdRowSpans.push(span);
     });
     const emphasizedRowSpans = createdRowSpans.filter((span) => span.classList.contains('is-emphasis'));
-    if (sourceRowHasUnderline && emphasizedRowSpans.length >= 2) {
+    if ((sourceRowHasUnderline || /\b(?:ul|ns3hero)\b/.test(keywordClasses)) && emphasizedRowSpans.length >= 2) {
       emphasizedRowSpans.forEach((span) => {
         span.dataset.pairedEmphasisUnderline = 'true';
       });
     }
-    wordCursor += rowWordCount;
   });
 }
 
@@ -654,12 +672,30 @@ export function _astReplacePlain(block, words, captionText, impWordIndex, impWor
   });
 }
 
-export function _astFillBlock(block, words, captionText, settled, impWordIndex, impWordIndices = [], forceContiguousPositioned = false) {
+export function _astFillBlock(block, words, captionText, settled, impWordIndex, impWordIndices = [], forceContiguousPositioned = false, emphasisChosen = false) {
+  // A phase designed without a keyword shows no guessed highlight; a keyword
+  // the layout director or the user chose is still shown, and when they chose
+  // none (a plain sentence) the phase's own highlight is not guessed either.
+  const hasChosenKeyword = (impWordIndices || []).length > 0 || Number(impWordIndex) >= 0;
+  const showEmphasis = emphasisChosen ? hasChosenKeyword : templateBlockHasAuthoredKeyword(block);
   block.querySelectorAll('.wbw, .wbw-line').forEach((c) => _astReplaceWBW(c, words, settled, impWordIndex, impWordIndices));
   block.querySelectorAll('.sw-line').forEach((c) => _astReplaceSticky(c, words, settled, impWordIndex, impWordIndices));
   block.querySelectorAll('.cpt, .nline').forEach((c) => _astReplaceLcCpt(c, words, impWordIndex, impWordIndices));
   _astReplacePositioned(block, words, impWordIndex, impWordIndices, forceContiguousPositioned);
   _astReplacePlain(block, words, captionText, impWordIndex, impWordIndices);
+  if (!showEmphasis) {
+    block.querySelectorAll('.is-emphasis').forEach((word) => {
+      word.classList.remove('is-emphasis');
+      if (word.classList.length === 0) word.className = 'plain-word';
+    });
+    block.querySelectorAll('[data-imp]').forEach((word) => word.removeAttribute('data-imp'));
+    // LC word highlights (the line classes, e.g. a CPT's large row, stay).
+    if (emphasisChosen) {
+      block.querySelectorAll('.w.hero, .w.ns3hero, .w.ns3box, .w.ns3mark, .w.ns3bracket, .w.ns3dot').forEach((word) => {
+        word.classList.remove('hero', 'ns3hero', 'ns3box', 'ns3mark', 'ns3bracket', 'ns3dot');
+      });
+    }
+  }
 }
 
 // Build the in-page HTML for one active phase of the applied template, with the
@@ -684,7 +720,7 @@ export function getAppliedTemplateMarkupSignature(markup = '') {
   return signature;
 }
 
-export function buildAppliedSidebarTemplateInline(captionText, captionStyle, { activePhase = 0, settled = true, impWordIndex = -1, impWordIndices = [] } = {}) {
+export function buildAppliedSidebarTemplateInline(captionText, captionStyle, { activePhase = 0, settled = true, impWordIndex = -1, impWordIndices = [], emphasisChosen = false } = {}) {
   // Memoize the (expensive) markup lookup + DOMParser + word-injection on a key of the
   // inputs that actually change the output. renderAppliedSidebarTemplateCaption runs
   // on every VideoPlayer render (frequent — currentTime ticks, etc.); re-parsing the
@@ -692,17 +728,17 @@ export function buildAppliedSidebarTemplateInline(captionText, captionStyle, { a
   // (incl. the asset scan in findAppliedSidebarTemplateMarkup) ONLY on cache miss.
   const rawMarkup = captionStyle?.template_markup || findAppliedSidebarTemplateMarkup(captionStyle);
   const normalizedImpWordIndices = resolveImpWordIndicesForWords(String(captionText || '').trim().split(/\s+/).filter(Boolean), impWordIndex, impWordIndices);
-  const cacheKey = `${captionStyle?.template_id || ''}|${captionStyle?.template_20_id || ''}|${captionStyle?.template_source || ''}|${captionStyle?.template_class || ''}|${captionStyle?.template_effect || ''}|${getAppliedTemplateMarkupSignature(rawMarkup)}|${activePhase}|${settled ? 1 : 0}|${JSON.stringify(normalizedImpWordIndices)}|${captionText || ''}`;
+  const cacheKey = `${captionStyle?.template_id || ''}|${captionStyle?.template_20_id || ''}|${captionStyle?.template_source || ''}|${captionStyle?.template_class || ''}|${captionStyle?.template_effect || ''}|${getAppliedTemplateMarkupSignature(rawMarkup)}|${activePhase}|${settled ? 1 : 0}|${JSON.stringify(normalizedImpWordIndices)}|${emphasisChosen ? 1 : 0}|${captionText || ''}`;
   if (_appliedInlineCache.has(cacheKey)) return _appliedInlineCache.get(cacheKey);
   const isLc = captionStyle?.template_source === 'lekha-lc';
   const forceContiguousPositioned = false;
-  const result = _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isLc, captionText, activePhase, settled, impWordIndex, normalizedImpWordIndices, forceContiguousPositioned);
+  const result = _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isLc, captionText, activePhase, settled, impWordIndex, normalizedImpWordIndices, forceContiguousPositioned, emphasisChosen);
   if (_appliedInlineCache.size > 400) _appliedInlineCache.clear();
   _appliedInlineCache.set(cacheKey, result);
   return result;
 }
 
-export function _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isNew, captionText, activePhase, settled, impWordIndex, impWordIndices = [], forceContiguousPositioned = false) {
+export function _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isNew, captionText, activePhase, settled, impWordIndex, impWordIndices = [], forceContiguousPositioned = false, emphasisChosen = false) {
   const markup = sanitizeAppliedTemplateMarkup(rawMarkup, isNew);
   if (!markup || typeof DOMParser === 'undefined') return null;
   const words = String(captionText || '').trim().split(/\s+/).filter(Boolean);
@@ -725,7 +761,7 @@ export function _buildAppliedSidebarTemplateInlineUncached(rawMarkup, isNew, cap
   if (!blocks.length) return null;
   const phase = ((activePhase % blocks.length) + blocks.length) % blocks.length;
   blocks.forEach((b, i) => {
-    _astFillBlock(b, words, captionText, settled, impWordIndex, impWordIndices, forceContiguousPositioned);
+    _astFillBlock(b, words, captionText, settled, impWordIndex, impWordIndices, forceContiguousPositioned, emphasisChosen);
     b.classList.toggle('active', i === phase);
     b.style.visibility = i === phase ? 'visible' : 'hidden';
     b.style.opacity = i === phase ? '1' : '0';
@@ -1506,13 +1542,9 @@ export function AppliedSidebarTemplateSourceRenderer({
       element.dataset.appliedVisible = 'true';
     };
 
-    // The accent colour should land on the word the template renders BOLD (the
-    // larger / heavier "hero" word), not on an independently-guessed semantic
-    // word — otherwise the highlight colours the wrong/unimportant word. Detect
-    // the bold tier by computed size (then weight) and paint only those words;
-    // if there is no distinct bold tier, leave the build-time semantic emphasis
-    // untouched (so plain/uniform lines fall back to the important-word guess,
-    // and lines with neither simply get no colour).
+    // Highlighted words are the caption's important words (chosen when the
+    // block was filled). They all take the one accent colour; nothing here
+    // moves the colour to whichever word the template happens to draw largest.
     const clearHeroEmphasis = (block) => {
       block.querySelectorAll('[data-hero-emphasis="true"]').forEach((el) => {
         if (el.closest?.('[data-source-word-gradient="true"]')) return;
@@ -1530,10 +1562,8 @@ export function AppliedSidebarTemplateSourceRenderer({
         lineWords.push(word);
         emphasisByLine.set(line, lineWords);
       });
-      let hasPairedEmphasis = false;
       emphasisByLine.forEach((lineWords) => {
         if (lineWords.length < 2) return;
-        hasPairedEmphasis = true;
         const hasUnderline = lineWords.some((word) => {
           const styles = window.getComputedStyle(word);
           return word.matches('.ul, .ns3hero, .imp-underline')
@@ -1545,50 +1575,6 @@ export function AppliedSidebarTemplateSourceRenderer({
             word.dataset.pairedEmphasisUnderline = 'true';
           });
         }
-      });
-      // Preserve semantic phrases instead of collapsing them onto one authored
-      // hero atom. Every word in the phrase keeps the same accent and treatment.
-      if (hasPairedEmphasis) return true;
-
-      const atoms = Array.from(block.querySelectorAll('.w, .wbw-word, .sw, .sw-w')).filter((el) => (
-        !el.closest?.('[data-source-word-gradient="true"]')
-      ));
-      if (atoms.length < 2) return false;
-      const measure = atoms.map((el) => {
-        const cs = window.getComputedStyle(el);
-        return { el, fs: parseFloat(cs.fontSize) || 0, fw: parseInt(cs.fontWeight, 10) || 400 };
-      });
-      const sizes = measure.map((m) => m.fs).filter((v) => v > 0);
-      if (sizes.length < 2) return false;
-      const maxFs = Math.max(...sizes);
-      const minFs = Math.min(...sizes);
-      let heroEls = [];
-      if (maxFs >= minFs * 1.18) {
-        // A distinct larger size tier = the hero row / bold word(s).
-        heroEls = measure.filter((m) => m.fs >= maxFs - 0.5).map((m) => m.el);
-      } else {
-        // Uniform size: fall back to a clear font-weight tier (bold vs regular).
-        const weights = measure.map((m) => m.fw);
-        const maxFw = Math.max(...weights);
-        const minFw = Math.min(...weights);
-        if (maxFw >= 700 && maxFw - minFw >= 200) {
-          heroEls = measure.filter((m) => m.fw >= maxFw - 50).map((m) => m.el);
-        }
-      }
-      // No bold tier, or everything is "hero" — keep the semantic emphasis as-is.
-      if (!heroEls.length || heroEls.length === atoms.length) return false;
-      // Drop the build-time semantic colour, then paint the bold word(s).
-      atoms.forEach((el) => {
-        if (el.classList.contains('is-emphasis')) {
-          el.classList.remove('is-emphasis');
-          el.style.color = '';
-          el.style.webkitTextFillColor = '';
-        }
-      });
-      heroEls.forEach((el) => {
-        el.style.color = emphasisAccent;
-        el.style.webkitTextFillColor = emphasisAccent;
-        el.dataset.heroEmphasis = 'true';
       });
       return true;
     };

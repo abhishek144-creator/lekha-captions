@@ -1,3 +1,4 @@
+import { SOURCE_TEMPLATE_WORD_GEOMETRY_SCRIPT } from "../src/components/dashboard/sourceTemplateWordGeometry.js"
 // Browser runtime builder extracted verbatim from the overlay renderer.
 import { isAdvancedTemplateId } from "../src/components/dashboard/templateTextRules.js"
 import { ADVANCED_IMP_ENTRANCES, ADVANCED_TEMPLATE_EMPHASIS_COLORS, ADVANCED_TEMPLATE_TIMING, LEGACY_TEMPLATE_TIMING, ORIGINAL_TEMPLATE_BLOCK_TYPES, RECREATED_ADVANCED_TEMPLATE_IDS, LC_TEMPLATE_TIMING, fitLcMotionScheduleToCaption, getLcMotionSchedule, getKeyframeTemplatePlaybackMs, KEYFRAME_ADVANCED_TEMPLATE_IDS, seekKeyframeTemplateAnimations } from "../src/components/dashboard/templateMotionConfig.js"
@@ -1066,11 +1067,11 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       )
     );
 
-    // ExportPanel expands a canvas CPT into one absolute entry per word. Once
+    // The layout director can store one absolute entry per word. Once
     // that complete composition exists, render it directly instead of feeding
     // it back through the source template's sentence-flow markup.
     const captionHasAbsoluteCptLayout = (caption) => {
-      const words = String(caption?.text || '').trim().split(/\s+/).filter(Boolean);
+      const words = String(caption?.text || '').trim().split(/\\s+/).filter(Boolean);
       if (!words.length || !captionHasCptWords(caption)) return false;
       return words.every((_, index) => (
         hasAbsoluteWordPosition(caption?.word_styles?.[String(caption.id) + '-' + index] || {})
@@ -1179,21 +1180,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         .sort((left, right) => left.index - right.index);
     };
 
-    const sourceTemplateVisualSelector = '[data-source-word-visual="true"], .kf-base, .kf-fill';
-    const getSourceTemplateVisualTargets = (node) => {
-      if (!node) return [];
-      const existingTargets = Array.from(node.querySelectorAll(sourceTemplateVisualSelector));
-      if (existingTargets.length) return existingTargets;
-      const elementChildren = Array.from(node.children || []);
-      if (elementChildren.length) return [node];
-      const visual = document.createElement('span');
-      visual.dataset.sourceWordVisual = 'true';
-      while (node.firstChild) {
-        visual.appendChild(node.firstChild);
-      }
-      node.appendChild(visual);
-      return [visual];
-    };
+    ${SOURCE_TEMPLATE_WORD_GEOMETRY_SCRIPT}
 
     // CSS transforms do not apply to non-replaced inline boxes. The managed
     // visual span this renderer wraps a word in is inline by default, so a
@@ -1271,7 +1258,8 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           setImportant(node, 'opacity', '1');
         }
         if (!Object.keys(wordStyle).length && !isCptCaption) return;
-        const targets = getSourceTemplateVisualTargets(node);
+        const isPlainEditorLayer = Boolean(node.closest('.plain-caption-shell, .text-element-shell'));
+        const targets = isPlainEditorLayer ? [node] : prepareSourceTemplateWordNode(node);
         if (isCptCaption) {
           // CPT words appear immediately in the exact final canvas state. Kill
           // authored template, caption, and per-word entrance motion on both the
@@ -1290,7 +1278,6 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             delete target.dataset.cptWordMotion;
           });
         }
-        const isPlainEditorLayer = Boolean(node.closest('.plain-caption-shell, .text-element-shell'));
         const positionTargets = isPlainEditorLayer ? [node] : targets;
         const hasSourceXPct = wordStyle.x_pct !== null
           && wordStyle.x_pct !== ''
@@ -1346,6 +1333,15 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             );
           });
         }
+        // A word kept in its template can still be turned with the selected
+        // word's rotate button (the editor sets the same 'rotate').
+        const keptWordRotation = (absoluteWordPosition || isPlainEditorLayer) ? 0 : (Number(wordStyle.rotation || 0) || 0);
+        if (keptWordRotation) {
+          positionTargets.forEach((target) => {
+            ensureTransformableWordTarget(target);
+            setImportant(target, 'rotate', keptWordRotation + 'deg');
+          });
+        }
         if (isPlainEditorLayer && wordStyle.boxWidth) {
           setImportant(node, 'width', \`\${scaleExportPx(wordStyle.boxWidth)}px\`);
           setImportant(node, 'white-space', 'normal');
@@ -1362,9 +1358,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         targets.forEach((target) => {
           if (wordStyle.fontFamily) setImportant(target, 'font-family', wordStyle.fontFamily);
           if (wordStyle.fontSize) {
-            const scaledFontSize = isPlainEditorLayer
-              ? scaleExportPx(wordStyle.fontSize)
-              : scaleTemplateFontSize(wordStyle.fontSize);
+            const scaledFontSize = scaleExportPx(wordStyle.fontSize);
             setImportant(target, 'font-size', \`\${scaledFontSize}px\`);
           }
           if (wordStyle.fontWeight) setImportant(target, 'font-weight', wordStyle.fontWeight);
@@ -1430,9 +1424,9 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       }
       const words = text.split(/\\s+/).filter(Boolean);
       const phaseCount = window.__basicTpl.countAppliedBasicTemplatePhasesFromMarkup(rawMarkup);
-      const templateCaptionIndex = Number.isFinite(Number(caption.__templateIndex))
-        ? Number(caption.__templateIndex)
-        : 0;
+      // The phase the editor stored for this caption (the layout director's
+      // or the user's choice) wins over caption order, as on the canvas.
+      const templateCaptionIndex = resolveAdvancedTemplatePhaseIndex(caption, 0);
       const selectedPhase = ((templateCaptionIndex % phaseCount) + phaseCount) % phaseCount;
       const currentIndex = window.__basicTpl.getAppliedBasicCurrentWordIndex
         ? window.__basicTpl.getAppliedBasicCurrentWordIndex(caption, time, words.length)
@@ -1522,11 +1516,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     };
 
     const buildTemplateMarkup = (caption, globalStyle, time) => {
-      const templateIndex = /^t\\d{2}$/.test(String(globalStyle?.template_id || ''))
-        ? resolveAdvancedTemplatePhaseIndex(caption, caption.__templateIndex ?? caption.__template_index ?? 0)
-        : Number.isFinite(Number(caption.__templateIndex))
-          ? Number(caption.__templateIndex)
-          : Number(caption.__template_index || 0);
+      const templateIndex = resolveAdvancedTemplatePhaseIndex(caption, caption.__templateIndex ?? caption.__template_index ?? 0);
       const words = buildWordMeta(caption);
       const captionStart = Number(caption.start_time ?? 0);
       const captionEnd = Number(caption.end_time ?? captionStart);
@@ -1814,56 +1804,68 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const rows = Array.from(new Set(sourceSpans.map((span) => span.parentElement).filter(Boolean)));
       const sourceByRow = rows.map((row) => Array.from(row.querySelectorAll(':scope > .w')));
       const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices));
-      const totalSlots = sourceByRow.reduce((sum, rowSpans) => sum + rowSpans.length, 0);
-      let wordCursor = 0;
+      // Parity with _astReplaceLcCpt: the authored keyword classes and motion
+      // follow the important words, and the template's keyword row takes them.
+      const isKeywordSpan = (span) => Boolean(splitTemplateKeywordClasses(span.className).keyword);
+      const keywordSource = sourceSpans.find(isKeywordSpan) || null;
+      const bodySource = sourceSpans.find((span) => !isKeywordSpan(span)) || null;
+      const keywordClasses = keywordSource ? splitTemplateKeywordClasses(keywordSource.className).keyword : '';
+      const keywordRow = sourceByRow.length > 1
+        ? sourceByRow.findIndex((rowSpans) => rowSpans.length && rowSpans.every(isKeywordSpan))
+        : -1;
+      const hasBodyRow = sourceByRow.some((rowSpans) => !rowSpans.every(isKeywordSpan));
+      const rowPlan = planTemplateRowWords(
+        sourceByRow.map((rowSpans) => rowSpans.length),
+        words.length,
+        Array.from(targetImpIndices),
+        hasBodyRow ? keywordRow : -1,
+      );
 
       sourceByRow.forEach((rowSpans, rowIndex) => {
         const row = rows[rowIndex];
-        const remainingRows = sourceByRow.length - rowIndex - 1;
-        const remainingWords = words.length - wordCursor;
-        const proportional = Math.round((rowSpans.length / Math.max(1, totalSlots)) * words.length);
-        const rowWordCount = rowIndex === sourceByRow.length - 1
-          ? remainingWords
-          : Math.max(0, Math.min(remainingWords, Math.max(1, Math.min(remainingWords - remainingRows, proportional))));
-        const rowWords = words.slice(wordCursor, wordCursor + rowWordCount);
-        const sourceClasses = rowSpans.map((span) => cleanSidebarClassName(span.className, 'w'));
+        const rowWordIndices = rowPlan[rowIndex] || [];
+        const sourceClasses = rowSpans.map((span) => splitTemplateKeywordClasses(cleanSidebarClassName(span.className, 'w')).base);
         const sourceVisible = rowSpans.map((span) => span.classList.contains('on') && !span.getAttribute('data-lc-anim'));
-        const sourceStyles = rowSpans.map((span) => String(span.getAttribute('style') || '').replace(/\\banimation\\s*:[^;]+;?/gi, '').trim());
+        const sourceStyles = rowSpans.map((span) => stripTemplateKeywordColor(String(span.getAttribute('style') || '').replace(/\\banimation\\s*:[^;]+;?/gi, '')));
         const sourceRowHasUnderline = rowSpans.some((span) => (
           span.matches('.ul, .ns3hero, .imp-underline')
         ));
+        const rowKeywordSource = rowSpans.find(isKeywordSpan) || keywordSource;
+        const rowBodySource = rowSpans.find((span) => !isKeywordSpan(span)) || bodySource;
         const createdRowSpans = [];
         row.textContent = '';
-        rowWords.forEach((word, localIndex) => {
+        rowWordIndices.forEach((wordIndex, localIndex) => {
           if (localIndex > 0) row.appendChild(document.createTextNode(' '));
-          const wordIndex = wordCursor + localIndex;
           const span = document.createElement('span');
-          const className = mappedSidebarClassName(sourceClasses, localIndex, rowWords.length, 'w')
-            .replace(/\\bis-emphasis\\b/g, '')
-            .replace(/\\s+/g, ' ')
-            .trim();
+          const isEmphasis = targetImpIndices.has(wordIndex);
+          const motionSource = (isEmphasis ? rowKeywordSource : rowBodySource)
+            || mappedSidebarClassName(rowSpans, localIndex, rowWordIndices.length, null);
+          const className = mappedSidebarClassName(sourceClasses, localIndex, rowWordIndices.length, 'w');
           span.dataset.exportCaptionText = 'true';
           span.dataset.w = String(wordIndex);
           span.className = (className || 'w')
-            + (targetImpIndices.has(wordIndex) ? ' is-emphasis' : '')
-            + (mappedSidebarClassName(sourceVisible, localIndex, rowWords.length, false) ? ' on' : '');
-          for (const attrName of ['data-lc-anim', 'data-lc-duration', 'data-lc-ease', 'data-lc-delay']) {
-            const value = mappedSidebarNodeValue(rowSpans, localIndex, rowWords.length, attrName, '');
+            + (isEmphasis && keywordClasses ? ' ' + keywordClasses : '')
+            + (isEmphasis ? ' is-emphasis' : '')
+            + (mappedSidebarClassName(sourceVisible, localIndex, rowWordIndices.length, false) ? ' on' : '');
+          const lcAnim = motionSource ? motionSource.getAttribute('data-lc-anim') || '' : '';
+          for (const attrName of ['data-lc-anim', 'data-lc-duration', 'data-lc-ease']) {
+            const value = motionSource ? motionSource.getAttribute(attrName) || '' : '';
             if (value) span.setAttribute(attrName, value);
           }
-          const sourceStyle = mappedSidebarClassName(sourceStyles, localIndex, rowWords.length, '');
+          const lcDelay = mappedSidebarNodeValue(rowSpans, localIndex, rowWordIndices.length, 'data-lc-delay', '');
+          if (lcAnim && lcDelay) span.setAttribute('data-lc-delay', lcDelay);
+          const sourceStyle = mappedSidebarClassName(sourceStyles, localIndex, rowWordIndices.length, '');
           if (sourceStyle) span.setAttribute('style', sourceStyle);
-          span.textContent = word;
+          span.textContent = words[wordIndex];
           row.appendChild(span);
           createdRowSpans.push(span);
         });
         const emphasizedRowSpans = createdRowSpans.filter((span) => span.classList.contains('is-emphasis'));
-        if (sourceRowHasUnderline && emphasizedRowSpans.length >= 2) {
+        if ((sourceRowHasUnderline || /\\b(?:ul|ns3hero)\\b/.test(keywordClasses)) && emphasizedRowSpans.length >= 2) {
           emphasizedRowSpans.forEach((span) => {
             span.dataset.pairedEmphasisUnderline = 'true';
           });
         }
-        wordCursor += rowWordCount;
       });
       return true;
     };
@@ -1948,7 +1950,13 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       return true;
     };
 
-    const replaceSidebarTemplateText = (block, captionText, impWordIndex, impWordIndices = [], forceContiguousPositioned = false, templateSource = '') => {
+    const replaceSidebarTemplateText = (block, captionText, impWordIndex, impWordIndices = [], forceContiguousPositioned = false, templateSource = '', emphasisChosen = false) => {
+      // Parity with _astFillBlock: a phase designed without a keyword shows no
+      // guessed highlight; a keyword the director or the user chose still shows.
+      // When the director or the user chose no keyword (a plain sentence), the
+      // phase's own highlight is not guessed either.
+      const hasChosenKeyword = (impWordIndices || []).length > 0 || Number(impWordIndex) >= 0;
+      const showEmphasis = emphasisChosen ? hasChosenKeyword : templateBlockHasAuthoredKeyword(block);
       const words = String(captionText || '').trim().split(/\\s+/).filter(Boolean);
       block.querySelectorAll('.wbw, .wbw-line').forEach((container) => replaceSidebarWordByWord(container, words, impWordIndex, impWordIndices));
       block.querySelectorAll('.sw-line').forEach((container) => replaceSidebarSticky(container, words, impWordIndex, impWordIndices));
@@ -1957,6 +1965,17 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       }
       replaceSidebarPositioned(block, words, impWordIndex, impWordIndices, forceContiguousPositioned);
       replaceSidebarPlain(block, words, impWordIndex, impWordIndices);
+      if (!showEmphasis) {
+        block.querySelectorAll('.is-emphasis').forEach((word) => {
+          word.classList.remove('is-emphasis');
+          if (word.classList.length === 0) word.className = 'plain-word';
+        });
+        if (emphasisChosen) {
+          block.querySelectorAll('.w.hero, .w.ns3hero, .w.ns3box, .w.ns3mark, .w.ns3bracket, .w.ns3dot').forEach((word) => {
+            word.classList.remove('hero', 'ns3hero', 'ns3box', 'ns3mark', 'ns3bracket', 'ns3dot');
+          });
+        }
+      }
     };
 
     const getSidebarWordMotion = (word) => {
@@ -2073,7 +2092,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const dots = Array.from(shell.querySelectorAll('.dots i, .lk-dots i'));
 
         blocks.forEach((block) => {
-          replaceSidebarTemplateText(block, captionText, impWordIndex, impWordIndices, false, templateSource);
+          replaceSidebarTemplateText(block, captionText, impWordIndex, impWordIndices, false, templateSource, shell.dataset.impWordChosen === 'true');
           block.classList.remove('active');
           block.style.opacity = '0';
           block.style.visibility = 'hidden';
@@ -2120,11 +2139,13 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         // (the shell's inline style mirrors the preview host) plus the template's
         // own class CSS. Never force them per word — that flattens the dimmed
         // context alphas (rgba support rows) and the bold hero tiers that give
-        // each template its identity, and it breaks the weight-based hero
-        // detection below.
+        // each template its identity.
+        // The accent is the same variable the canvas paints .is-emphasis with
+        // (--sidebar-emphasis-accent: the user's highlight colour, or the
+        // default gold when it equals the text colour).
         const shellStyles = getComputedStyle(shell);
-        const emphasisAccent = shellStyles.getPropertyValue('--template-highlight').trim()
-          || shellStyles.getPropertyValue('--sidebar-emphasis-accent').trim()
+        const emphasisAccent = shellStyles.getPropertyValue('--sidebar-emphasis-accent').trim()
+          || shellStyles.getPropertyValue('--template-highlight').trim()
           || '#DDAA03';
         const getLcEmphasisColor = (word) => (
           isLcTemplateSet && word.closest('.ln.box')
@@ -2146,10 +2167,8 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           lineWords.push(word);
           emphasisByLine.set(line, lineWords);
         });
-        let hasPairedEmphasis = false;
         emphasisByLine.forEach((lineWords) => {
           if (lineWords.length < 2) return;
-          hasPairedEmphasis = true;
           const hasUnderline = lineWords.some((word) => {
             const styles = getComputedStyle(word);
             return word.matches('.ul, .ns3hero, .imp-underline')
@@ -2162,58 +2181,9 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
             });
           }
         });
-        // Parity with the live preview (recolorEmphasisToHero in VideoPlayer.jsx):
-        // the accent colour belongs on the BOLD / hero word(s) — the largest size,
-        // or the heaviest weight when sizes are uniform — not the semantic
-        // is-emphasis word. Detect the bold tier and move the colour there.
-        (function () {
-          if (hasPairedEmphasis) return;
-          const heroAtoms = Array.from(phase.block.querySelectorAll('.w, .wbw-word, .sw, .sw-w'));
-          if (heroAtoms.length < 2) return;
-          const heroMeasure = heroAtoms.map((el) => {
-            const cs = getComputedStyle(el);
-            return { el: el, fs: parseFloat(cs.fontSize) || 0, fw: parseInt(cs.fontWeight, 10) || 400 };
-          });
-          const heroSizes = heroMeasure.map((m) => m.fs).filter((v) => v > 0);
-          if (heroSizes.length < 2) return;
-          const heroMaxFs = Math.max.apply(null, heroSizes);
-          const heroMinFs = Math.min.apply(null, heroSizes);
-          let heroPick = [];
-          if (heroMaxFs >= heroMinFs * 1.18) {
-            heroPick = heroMeasure.filter((m) => m.fs >= heroMaxFs - 0.5).map((m) => m.el);
-          } else {
-            const heroWeights = heroMeasure.map((m) => m.fw);
-            const heroMaxFw = Math.max.apply(null, heroWeights);
-            const heroMinFw = Math.min.apply(null, heroWeights);
-            if (heroMaxFw >= 700 && heroMaxFw - heroMinFw >= 200) {
-              heroPick = heroMeasure.filter((m) => m.fw >= heroMaxFw - 50).map((m) => m.el);
-            }
-          }
-          if (!heroPick.length || heroPick.length === heroAtoms.length) return;
-          // Demote exactly like the preview: drop the is-emphasis class (and the
-          // inline accent set above) so the word falls back to its source-CSS
-          // class colour — do NOT force the caption text colour onto it.
-          heroAtoms.forEach((el) => {
-            if (!el.classList.contains('is-emphasis')) return;
-            el.classList.remove('is-emphasis');
-            el.style.removeProperty('color');
-            el.style.removeProperty('-webkit-text-fill-color');
-            el.style.removeProperty('font-size');
-            el.style.removeProperty('line-height');
-            el.style.removeProperty('vertical-align');
-          });
-          heroPick.forEach((el) => {
-            const emphasisColor = getLcEmphasisColor(el);
-            el.style.setProperty('color', emphasisColor, 'important');
-            el.style.setProperty('-webkit-text-fill-color', emphasisColor, 'important');
-            // The preview marks the picked words too. A semantic keyword is
-            // often picked only because .is-emphasis made it bold; once that
-            // class is gone, this attribute is what keeps it at the hero
-            // weight. Without it the keyword exported in the accent colour
-            // but at body weight, beside a bold hero word.
-            el.dataset.heroEmphasis = 'true';
-          });
-        })();
+        // Parity with the live preview: highlighted words are the caption's
+        // important words chosen at fill time; the accent is never moved to
+        // whichever word the template draws largest.
         dots.forEach((dot, dotIndex) => {
           dot.className = dotIndex === phase.index ? 'on' : '';
         });
@@ -2360,9 +2330,10 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         + ' data-caption-start="' + Number(caption.start_time || 0) + '"'
         + ' data-caption-end="' + Number(caption.end_time || caption.start_time || 0) + '"'
         + ' data-caption-index="' + Number(caption.__templateIndex || 0) + '"'
-        + ' data-template-phase-index="' + Number(caption.__templateIndex ?? caption.template_phase_index ?? 0) + '"'
+        + ' data-template-phase-index="' + resolveAdvancedTemplatePhaseIndex(caption, caption.__templateIndex ?? 0) + '"'
         + ' data-imp-word-index="' + Number(caption.imp_word_index ?? -1) + '"'
         + ' data-imp-word-indices="' + escapeHtml(JSON.stringify(normalizeImpWordIndices(caption.imp_word_index, caption.imp_word_indices || []))) + '"'
+        + ' data-imp-word-chosen="' + (caption.imp_word_chosen ? 'true' : 'false') + '"'
         + ' data-emphasis-color="' + escapeHtml(caption.emphasis_color || '') + '"'
         + ' data-caption-font-weight="' + escapeHtml(globalStyle?.font_weight || appliedStyle.font_weight || '400') + '"'
         + ' data-caption-text-color="' + escapeHtml(globalStyle?.text_color || appliedStyle.text_color || '#FFFFFF') + '"'

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -15,6 +16,13 @@ import { browserLaunchOptions } from './render_browser_runtime.mjs'
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const rendererPath = path.join(projectRoot, 'scripts', 'render_template_overlay.mjs')
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'lekha-word-slot-'))
+// Use the same packaged face for each render. A remote font failure in just
+// one case otherwise measures a fallback-font change as displaced neighbours.
+const font = (await readFile(path.join(projectRoot, 'fonts', 'Inter.ttf'))).toString('base64')
+const fontCss = `@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;src:url(data:font/ttf;base64,${font})}`
+const fontBundle = path.join(tempRoot, 'fonts.css')
+await writeFile(fontBundle, fontCss)
+await writeFile(`${fontBundle}.json`, JSON.stringify({ families: ['Inter'], sha256: createHash('sha256').update(fontCss).digest('hex') }))
 
 const words = ['LEFTWORD', 'MID', 'RIGHTWORD']
 const caseStyles = {
@@ -80,7 +88,9 @@ try {
     const outputDir = path.join(tempRoot, id)
     const payloadPath = path.join(tempRoot, `${id}.json`)
     await writeFile(payloadPath, JSON.stringify(payloadFor(id, wordStyle, outputDir)), 'utf8')
-    execFileSync(process.execPath, [rendererPath, payloadPath], { cwd: projectRoot, env: process.env, stdio: 'pipe' })
+    execFileSync(process.execPath, [rendererPath, payloadPath], {
+      cwd: projectRoot, env: { ...process.env, RENDER_FONT_BUNDLE_PATH: fontBundle }, stdio: 'pipe',
+    })
     const frames = (await readdir(outputDir)).filter((name) => /^frame-\d+\.png$/i.test(name))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     assert.ok(frames.length, `${id}: renderer produced no frames`)

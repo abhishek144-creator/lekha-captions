@@ -215,27 +215,14 @@ export function useWordGestures({
     captionUpdater(prev => prev.map(c => {
       if (c.id !== selectedDetachedWord.caption.id) return c
       const wordStyles = c.wordStyles || {}
+      // The box's reset returns the word to its caption cleanly: position,
+      // size, colour and effects together, like the word editor's reset.
       const styleKey = `${c.id}-${selectedDetachedWord.wordIndex}`
-      const currentWordStyle = wordStyles[styleKey] || {}
-      const nextWordStyle = { ...currentWordStyle }
-
-      delete nextWordStyle.abs_x_pct
-      delete nextWordStyle.abs_y_pct
-      delete nextWordStyle.x
-      delete nextWordStyle.y
-      delete nextWordStyle.x_pct
-      delete nextWordStyle.y_pct
-      delete nextWordStyle.boxWidth
-      delete nextWordStyle.textScaleX
-      delete nextWordStyle.rotation
-      delete nextWordStyle.isLocked
+      const { [styleKey]: _removed, ...remainingWordStyles } = wordStyles
 
       return {
         ...c,
-        wordStyles: {
-          ...wordStyles,
-          [styleKey]: nextWordStyle
-        }
+        wordStyles: remainingWordStyles,
       }
     }))
   }, [addToHistory, selectedDetachedWord, setCaptions, setCaptionsRaw])
@@ -532,11 +519,14 @@ export function useWordGestures({
             const wordStyles = c.wordStyles || {}
             const styleKey = `${c.id}-${dragState.wordIndex}`
             const currentWordStyle = wordStyles[styleKey] || {}
+            // Source-template words draw x/y as reference px x the render
+            // scale (applySourceTemplateWordStyle), so store them unscaled.
+            const sourceTemplateScale = Math.max(Number(previewRenderScale) || 1, 0.001)
             const nextWordStyle = dragState.dragSource === 'source-template'
               ? {
                   ...currentWordStyle,
-                  x: (finalCoords.x / containerWidth) * baselineWidth,
-                  y: (finalCoords.y / containerHeight) * baselineHeight,
+                  x: finalCoords.x / sourceTemplateScale,
+                  y: finalCoords.y / sourceTemplateScale,
                   x_pct: (finalCoords.x / containerWidth) * 100,
                   y_pct: (finalCoords.y / containerHeight) * 100,
                   frozenFontSize: currentWordStyle.frozenFontSize || parentFontSize

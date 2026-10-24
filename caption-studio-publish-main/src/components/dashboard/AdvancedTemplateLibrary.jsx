@@ -7,6 +7,7 @@ import { BASIC_TEMPLATE_STYLES, getBasicTemplateStyle } from './basicTemplateCat
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 import {
   LEGACY_TEMPLATE_CARDS,
+  STUDIO_TEMPLATE_CARDS,
   TemplatePreviewFrame as LegacyTemplatePreviewFrame,
   buildTemplateStyle as buildLegacyTemplateStyle,
 } from './SidebarTemplateGallery20.jsx';
@@ -55,14 +56,31 @@ const BASIC_TEMPLATE_PREVIEW_TIMING = Object.freeze({
   stickyWaveStaggerMs: 300,
 });
 
-const REMOVED_ADVANCED_TEMPLATE_IDS = new Set(['t17']);
+// Hidden from the Templates tab; their rendering stays so projects that
+// already use them still play and export. T41–T52 (Magnet Poetry to Receipt
+// Print, the keyframe pack added 2026-10-04) were removed by the owner on
+// 2026-10-22. On 2026-10-23 the owner removed Startup Hustle (t13), Storm
+// Surge (t15), Cinematic Chapter (t18), Comedy Punchline (t23), Sci-Fi
+// Futuristic (t27), Battle Cry (t29) and Anime Energy (t34).
+const REMOVED_ADVANCED_TEMPLATE_IDS = new Set([
+  't17',
+  't13', 't15', 't18', 't23', 't27', 't29', 't34',
+  't41', 't42', 't43', 't44', 't45', 't46',
+  't47', 't48', 't49', 't50', 't51', 't52',
+]);
+// 2026-10-23: the owner removed Light Streak (t-52) and 3D Shadow (t-109).
 const REMOVED_BASIC_TEMPLATE_IDS = new Set([
   't-12',
   't-36',
+  't-52',
   't-95',
   't-103',
   't-104',
+  't-109',
 ]);
+// 2026-10-23: the owner removed The Current (A2), The Dispatch (A4), The Stage
+// (B2) and The Verdict (B4) from the moved original templates.
+const REMOVED_MOVED_LEGACY_TEMPLATE_IDS = new Set(['A2', 'A4', 'B2', 'B4']);
 
 const FALLBACK_TEMPLATE_PACK = [
   { id: 't11', code: 'T11', name: 'Oracle', formula: '3-Style', stageLabel: 'CLUSTER', mood: 'spiritual' },
@@ -503,13 +521,21 @@ const BASIC_TEMPLATES_BELOW_VELVET_IDS = new Set(
   })(),
 );
 // Keep the first ten legacy templates (A1–B5) in the right-side library.
-const MOVED_LEGACY_TEMPLATE_PACK = LEGACY_TEMPLATE_CARDS.slice(0, 10).map((template) => ({
-  ...template,
-  desc: [template.mood, template.formula].filter(Boolean).join(' · '),
-}));
+// Their source names carry a mis-encoded separator ("Â· The Vigil").
+const MOVED_LEGACY_TEMPLATE_PACK = LEGACY_TEMPLATE_CARDS.slice(0, 10)
+  .filter((template) => !REMOVED_MOVED_LEGACY_TEMPLATE_IDS.has(template.id))
+  .map((template) => ({
+    ...template,
+    name: String(template.name || '').replace(/^\s*(?:\u00c2)?\s*\u00b7\s*/, ''),
+    desc: [template.mood, template.formula].filter(Boolean).join(' · '),
+  }));
+// The Studio set (owner's 06_Lekha_Studio_Caption_Set) follows The Voltage
+// (B5). Like the moved legacy cards it renders through the left-gallery (LC)
+// pipeline, so its preview, canvas and export are unchanged.
 const BASIC_TEMPLATE_PACK = [
   ...NATIVE_BASIC_TEMPLATE_PACK,
   ...MOVED_LEGACY_TEMPLATE_PACK,
+  ...STUDIO_TEMPLATE_CARDS,
 ];
 const BASIC_TEMPLATE_IMAN_FONT_STYLE = { font_family: 'Noto Sans', font_size: 24 };
 const BASIC_TEMPLATE_IMAN_FONT_IDS = new Set(
@@ -1264,7 +1290,7 @@ function BasicTemplateCard({
   onToggleFavorite,
   onApplyTemplate,
 }) {
-  const isMovedLegacyTemplate = template.format === 'legacy';
+  const isMovedLegacyTemplate = template.format === 'legacy' || template.format === 'lc';
   const isActive = isMovedLegacyTemplate
     ? currentStyle?.template_20_id === template.id
     : currentStyle?.template_id === template.id;
@@ -1466,7 +1492,7 @@ export default function AdvancedTemplateLibrary({
   );
   const visibleBasicTemplates = useMemo(
     () => BASIC_TEMPLATE_PACK.filter((template) => {
-      const storageKind = template.format === 'legacy' ? 'sidebar-template' : 'basic-template';
+      const storageKind = (template.format === 'legacy' || template.format === 'lc') ? 'sidebar-template' : 'basic-template';
       return isExportableTemplateCandidate(template)
         && templateMatchesQuery(template, templateSearchQuery)
         && (!favoritesOnly || isFavorite(storageKind, template.id))
@@ -1482,7 +1508,7 @@ export default function AdvancedTemplateLibrary({
   ));
   const velvetIsVisible = visibleAdvancedTemplates.some((template) => template.id === 't12');
   const renderBasicTemplateCard = (template) => {
-    const storageKind = template.format === 'legacy' ? 'sidebar-template' : 'basic-template';
+    const storageKind = (template.format === 'legacy' || template.format === 'lc') ? 'sidebar-template' : 'basic-template';
     return (
       <BasicTemplateCard
         key={`basic-${template.id}-${template.name}`}

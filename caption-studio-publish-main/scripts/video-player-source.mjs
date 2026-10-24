@@ -14,10 +14,12 @@ export const VIDEO_PLAYER_SOURCE_FILES = [
   "src/components/dashboard/videoPlayerTemplateRendering.jsx",
   "src/components/dashboard/videoPlayerTemplateStyles.jsx",
   "src/components/dashboard/videoPlayerWordEditing.js",
+  "src/components/dashboard/sourceTemplateWordGeometry.js",
   "src/components/dashboard/VideoPlayerKeyframes.jsx",
   "src/components/dashboard/CanvasToolRail.jsx",
   "src/components/dashboard/PlaybackControls.jsx",
   "src/components/dashboard/PreviewScrubber.jsx",
+  "src/components/dashboard/SelectedWordOutline.jsx",
 ]
 
 export function readVideoPlayerSource(projectRoot) {

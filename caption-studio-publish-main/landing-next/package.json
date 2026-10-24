@@ -11,15 +11,11 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "^16.2.12",
+    "next": "^16.4.3",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
-  "comments": {
-    "overrides.sharp": "Next 16.2.12 pins sharp ^0.34.5. Keep this override until Next widens its range so installs receive current Sharp security fixes."
-  },
   "overrides": {
-    "postcss": "^8.5.10",
-    "sharp": "^0.35.5"
+    "postcss": "^8.5.10"
   }
 }

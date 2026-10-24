@@ -473,6 +473,7 @@ app.add_middleware(UploadBodyLimitMiddleware)
 app_state._provider_breakers: Dict[str, observability.CircuitBreaker] = {
     "openai_translate": observability.CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
     "openai_detect_language": observability.CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
+    "openai_caption_emotion": observability.CircuitBreaker(failure_threshold=4, cooldown_seconds=120),
 }
 
 

@@ -4,8 +4,10 @@ import { useCanvasTransforms } from './useCanvasTransforms'
 import { useWordGestures } from './useWordGestures'
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, X, Move, RotateCw, Trash2 } from 'lucide-react';
+import { Play, X, Move, RotateCw, RotateCcw } from 'lucide-react';
+import { clearPopupWordStyle } from '@/lib/wordStyleEdits';
 import CanvasToolRail from './CanvasToolRail';
+import SelectedWordOutline from './SelectedWordOutline';
 import PlaybackControls from './PlaybackControls';
 import PreviewScrubber from './PreviewScrubber';
 
@@ -262,13 +264,17 @@ export default function VideoPlayer({
   }, [isCompactPreview, isVideoFullscreen, videoUrl]);
   const compactFit = isCompactPreview && !isVideoFullscreen && compactFitScale > 0 ? compactFitScale : 0;
 
+  // Caption lengths are CSS px on the export renderers' 360px-wide reference
+  // frame (render_template_overlay.mjs exportCssScale, ass_style.py
+  // scale_factor). Scaling them by the canvas width keeps every line, word
+  // size and gap in the export's proportions at any canvas size; a fixed 1
+  // let desktop lines drift whenever the canvas was not exactly 360px wide.
+  // Phones lay the frame out at 360px and scale it whole, so they get 1.
   const getPreviewRenderScale = useCallback(() => {
     const currentWidth = canvasSize.width || videoContainerRef.current?.offsetWidth || 0;
-    if (!isVideoFullscreen) return 1;
-    const baselineWidth = fitCanvasSizeRef.current.width || currentWidth;
-    if (!currentWidth || !baselineWidth) return 1;
-    return currentWidth / baselineWidth;
-  }, [canvasSize.width, isVideoFullscreen]);
+    if (!currentWidth) return 1;
+    return currentWidth / COMPACT_PREVIEW_REFERENCE_WIDTH;
+  }, [canvasSize.width]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -964,7 +970,7 @@ export default function VideoPlayer({
     const templateHtml = buildAppliedSidebarTemplateInline(
       text,
       effectiveStyle,
-      { activePhase: selectedPhase, settled: false, impWordIndex, impWordIndices },
+      { activePhase: selectedPhase, settled: false, impWordIndex, impWordIndices, emphasisChosen: !!emotional?.emphasisChosen },
     )
 
     if (templateHtml) {
@@ -1347,6 +1353,31 @@ export default function VideoPlayer({
     };
   })();
 
+  // A selected word that is still inside its caption/template (template words
+  // move as offsets and never detach) is framed by SelectedWordOutline.
+  const selectedInlineWordKey = !selectedDetachedWord && wordPopup?.caption && wordPopup?.type !== 'element'
+    ? `${wordPopup.caption.id}-${wordPopup.wordIndex}`
+    : '';
+  const selectedInlineCaption = selectedInlineWordKey
+    ? captions?.find(c => c.id === wordPopup.caption.id) || null
+    : null;
+  const writeSelectedInlineWordStyle = (producer) => {
+    if (!selectedInlineCaption) return;
+    const captionUpdater = setCaptionsRaw || setCaptions;
+    captionUpdater(prev => prev.map((c) => (c.id !== selectedInlineCaption.id ? c : {
+      ...c,
+      wordStyles: {
+        ...(c.wordStyles || {}),
+        [selectedInlineWordKey]: producer(c.wordStyles?.[selectedInlineWordKey] || {}),
+      },
+    })));
+  };
+  const resetSelectedInlineWord = () => {
+    if (!wordPopup) return;
+    if (addToHistory) addToHistory();
+    (setCaptionsRaw || setCaptions)(prev => clearPopupWordStyle(prev, wordPopup));
+  };
+
   // Handle individual word OR element word style updates
   const { isEditing, setIsEditing, editInitialText, setEditText, handleCaptionDoubleClick, handleEditComplete, handleEditKeyDown, handleEditInput } = useCanvasTextEditing({
     setCaptions,
@@ -1571,23 +1602,6 @@ export default function VideoPlayer({
         }}
         data-video-control
       >
-        <button
-          type="button"
-          className="absolute -right-4 -top-4 z-[96] flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-[#141418] text-white/80 shadow-[0_8px_20px_-12px_rgba(0,0,0,0.95)] transition-colors hover:border-red-400/60 hover:bg-red-500/12 hover:text-red-300"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handleSelectedDetachedWordDelete();
-          }}
-          title="Delete word"
-          data-video-control
-        >
-          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.9} />
-        </button>
         <span
           data-selected-word-text="true"
           style={{
@@ -1664,6 +1678,25 @@ export default function VideoPlayer({
             >
               <Move className="h-3 w-3" strokeWidth={1.9} />
             </span>
+            {/* In the action row: the top-right corner dot would sit on top of it. */}
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d8d2e8] bg-white text-[#4f4f5a] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelectedDetachedWordDelete();
+              }}
+              title="Reset word (position, size, colour and effects)"
+              aria-label="Reset word"
+              data-video-control
+            >
+              <RotateCcw className="h-3 w-3" strokeWidth={1.9} />
+            </button>
           </span>
         )}
       </span>,
@@ -2822,6 +2855,19 @@ export default function VideoPlayer({
 
     </div>
     {selectedDetachedWordEditor}
+    <SelectedWordOutline
+      containerRef={videoContainerRef}
+      wordKey={selectedInlineWordKey}
+      wordStyle={selectedInlineCaption?.wordStyles?.[selectedInlineWordKey] || {}}
+      renderScale={previewRenderScale}
+      onGestureStart={addToHistory}
+      onWordStyleChange={writeSelectedInlineWordStyle}
+      onMoveStart={(event, node) => {
+        if (!selectedInlineCaption) return;
+        startSourceTemplateWordDrag({ event, node, caption: selectedInlineCaption, wordIndex: wordPopup.wordIndex });
+      }}
+      onReset={resetSelectedInlineWord}
+    />
     </>
   );
 }

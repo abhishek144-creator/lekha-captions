@@ -1158,6 +1158,70 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 401)
 
+    def test_caption_emotions_require_auth(self):
+        res = self.client.post("/api/caption-emotions", json={"lines": [{"id": "1", "text": "Hello"}], "id_token": ""})
+        self.assertEqual(res.status_code, 401)
+
+    def test_caption_emotion_provider_keywords_are_untrusted(self):
+        import language_api
+        for malformed in (1, "0", {"0": True}, None):
+            with self.subTest(keywords=malformed):
+                result = language_api._clean_caption_emotion({"keywords": malformed}, "two words")
+                self.assertEqual(result["keywords"], [])
+        result = language_api._clean_caption_emotion(
+            {"keywords": [float("inf"), float("nan"), True, -1, 0.5, 1]}, "two words"
+        )
+        self.assertEqual(result["keywords"], [1])
+
+    @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "emotion-user"})
+    def test_caption_emotions_classify_once_sanitise_and_cache(self, _verify_token):
+        import language_api
+        language_api._caption_emotion_cache.clear()
+        replies = [json.dumps({"lines": [
+            {"type": "hook", "emotion": "excitement", "intensity": 0.9, "keywords": [2, 0, 9, 2]},
+            {"type": "made-up", "emotion": "smug", "intensity": 7, "keywords": ["1", True, 1.5]},
+        ]})]
+        requests = []
+
+        def create(**kwargs):
+            requests.append(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=replies.pop(0)))])
+
+        fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        body = {"lines": [{"id": "a", "text": "we grew 300% today"}, {"id": "b", "text": "and that is it"}], "id_token": "token-123"}
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch("openai.OpenAI", return_value=fake_client):
+            res = self.client.post("/api/caption-emotions", json=body)
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertFalse(data["cached"])
+            self.assertEqual(len(requests), 1, "one provider call for the whole transcript")
+            self.assertEqual(requests[0]["response_format"], {"type": "json_object"})
+            first, second = data["lines"]
+            self.assertEqual(first, {"id": "a", "type": "hook", "emotion": "excitement", "intensity": 0.9, "keywords": [2, 0]})
+            # Unknown labels, out-of-range intensity and non-integer indexes are cleaned.
+            self.assertEqual(second, {"id": "b", "type": "narration", "emotion": "neutral", "intensity": 1.0, "keywords": []})
+
+            # The same transcript is answered from the cache: no second provider call.
+            again = self.client.post("/api/caption-emotions", json={**body, "lines": [{"id": "x", "text": "we grew 300% today"}, {"id": "y", "text": "and that is it"}]})
+            self.assertEqual(again.status_code, 200)
+            self.assertTrue(again.json()["cached"])
+            self.assertEqual([line["id"] for line in again.json()["lines"]], ["x", "y"])
+            self.assertEqual(len(requests), 1)
+
+            # A miscounted reply is retried once, then fails cleanly (the editor falls back to rules).
+            replies[:] = ['{"lines": []}', "not json"]
+            failed = self.client.post("/api/caption-emotions", json={"lines": [{"id": "c", "text": "a new line"}], "id_token": "token-123"})
+            self.assertEqual(failed.status_code, 502)
+            self.assertEqual(len(requests), 3)
+        language_api._caption_emotion_cache.clear()
+
+    @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "emotion-user"})
+    def test_caption_emotions_reject_oversized_requests(self, _verify_token):
+        too_many = {"lines": [{"id": str(i), "text": "x"} for i in range(301)], "id_token": "token-123"}
+        self.assertEqual(self.client.post("/api/caption-emotions", json=too_many).status_code, 422)
+        too_long = {"lines": [{"id": "1", "text": "x" * 501}], "id_token": "token-123"}
+        self.assertEqual(self.client.post("/api/caption-emotions", json=too_long).status_code, 422)
+
     def test_detect_language_requires_auth(self):
         res = self.client.post(
             "/api/detect-language",

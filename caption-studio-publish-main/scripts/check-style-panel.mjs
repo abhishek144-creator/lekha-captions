@@ -131,11 +131,11 @@ try {
 
   // A recreated advanced template keeps user word colours in export
   const tpl = await open(1440, 900, null)
-  for (let attempt = 0; attempt < 10 && !(await tpl.$('[data-template-card-id="t18"]')); attempt += 1) {
+  for (let attempt = 0; attempt < 10 && !(await tpl.$('[data-template-card-id="t21"]')); attempt += 1) {
     await tpl.evaluate(() => [...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Templates').pop()?.click())
     await sleep(4000)
   }
-  await tpl.evaluate(() => document.querySelector('[data-template-card-id="t18"]').click()); await sleep(2500)
+  await tpl.evaluate(() => document.querySelector('[data-template-card-id="t21"]').click()); await sleep(2500)
   await tpl.evaluate(() => [...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Style').pop()?.click()); await sleep(800)
   const key = await tpl.evaluate(() => [...document.querySelectorAll('.lekha-video-frame [data-word-key]')].map((n) => n.getAttribute('data-word-key'))[0])
   const b = await tpl.evaluate((k) => { const n = document.querySelector(`.lekha-video-frame [data-word-key="${k}"]`).getBoundingClientRect(); return { x: n.left + n.width / 2, y: n.top + n.height / 2 } }, key)

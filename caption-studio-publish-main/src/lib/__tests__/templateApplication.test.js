@@ -91,6 +91,21 @@ describe('buildTemplateApplication', () => {
     }
   })
 
+  it('clearing the template also removes word colour, size and effect edits', () => {
+    const templated = apply({ template_id: 't12' }).captions.map((cap) => (cap.isTextElement ? cap : {
+      ...cap,
+      wordStyles: { 'c1-0': { color: 'red', fontSize: 41, textGradient: 'linear-gradient(red, blue)', x: 8, y: -341 } },
+    }))
+    const { captions } = apply({}, { ...defaultCaptionStyle, template_id: 't12' }, templated)
+    expect(captions[0].wordStyles).toEqual({})
+    expect(captions[1]).toBe(templated[1])
+  })
+
+  it('pressing None without a template keeps word edits (drops only dragged layout and motion)', () => {
+    const { captions } = apply({}, { ...defaultCaptionStyle, template_id: '', template_20_id: '' })
+    expect(captions[0].wordStyles['c1-0']).toEqual({ color: 'red' })
+  })
+
   it('pins the Horror/Tension template to its second phase', () => {
     expect(apply({ template_id: 't17' }).captions[0].template_phase_index).toBe(1)
   })

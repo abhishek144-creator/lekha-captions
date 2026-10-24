@@ -46,6 +46,10 @@ class CaptionItem(BaseModel):
     template_phase_index: Optional[int] = None
     imp_word_index: int = -1
     imp_word_indices: List[Any] = Field(default_factory=list, max_length=100)
+    # "auto" (layout director) or "user": the keywords above were chosen, so the
+    # renderer keeps them instead of re-guessing and shows them on every phase.
+    layout_source: str = Field(default="", max_length=20)
+    imp_word_chosen: bool = False
     emphasis_color: str = Field(default="", max_length=50)
     emotional_mode: str = Field(default="", max_length=50)
     audio_emotion_metrics: Optional[Dict[str, Any]] = Field(default=None, max_length=100)
@@ -221,6 +225,18 @@ class ProcessRequest(BaseModel):
 
 class MediaUrlRequest(BaseModel):
     file_id: str = Field(min_length=36, max_length=36)
+    id_token: str = Field(default="", max_length=8_192)
+    org_id: str = Field(default="", max_length=128)
+
+
+class CaptionEmotionLine(BaseModel):
+    id: str = Field(default="", max_length=128)
+    text: str = Field(default="", max_length=500)
+
+
+class CaptionEmotionRequest(BaseModel):
+    # One video's transcript (3-minute cap: typically under 100 lines).
+    lines: List[CaptionEmotionLine] = Field(min_length=1, max_length=300)
     id_token: str = Field(default="", max_length=8_192)
     org_id: str = Field(default="", max_length=128)
 

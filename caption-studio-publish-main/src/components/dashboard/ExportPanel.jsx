@@ -864,6 +864,8 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
             template_phase_index: resolvedTemplatePhaseIndex,
             imp_word_index: !isText ? Number(emotional?.impWordIndex ?? cap.imp_word_index ?? -1) : -1,
             imp_word_indices: !isText ? (emotional?.impWordIndices || cap.imp_word_indices || []) : [],
+            layout_source: !isText ? (cap.layoutSource || '') : '',
+            imp_word_chosen: !isText && !!emotional?.emphasisChosen,
             emphasis_color: !isText ? (emotional?.emphasisColor || cap.emphasis_color || '') : '',
             audio_emotion_metrics: !isText ? (cap.audio_emotion_metrics || emotional?.audio || null) : null,
             custom_style: isText ? buildTextElementExportStyle(cs) : null,

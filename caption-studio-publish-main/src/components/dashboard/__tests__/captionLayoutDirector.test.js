@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyCaptionLayout,
+  attachCaptionEmotions,
   autoLayoutCaptions,
   buildCptComposition,
+  captionsNeedingEmotion,
+  captionTextKey,
   getCaptionLayoutMode,
   getCaptionLayoutMotion,
   planCaptionLayouts,
   setCaptionLayout,
 } from '../captionLayoutDirector'
-import { buildEmotionalCaptionPlan } from '../emotionalTemplateUtils'
+import { buildEmotionalCaptionPlan, getTemplatePhaseTypes } from '../emotionalTemplateUtils'
 
 const measure = (text, size) => String(text).length * size * 0.5
 const frame = { width: 360, height: 640 }
@@ -187,5 +190,146 @@ describe('applyCaptionLayout', () => {
     expect(getCaptionLayoutMode(next[0])).toBe('keywords')
     expect(next.slice(1)).toEqual(captions.slice(1))
     next.slice(1).forEach((item, index) => expect(item).toBe(captions[index + 1]))
+  })
+})
+
+describe('AI emotion pass', () => {
+  const read = (captions, readings) => attachCaptionEmotions(captions, readings)
+
+  it('lets meaning override volume: loud narration stays plain, a quiet punchline becomes the CPT', () => {
+    const captions = read(story(), [
+      { id: 'a', type: 'hook', emotion: 'excitement', intensity: 0.6, keywords: [5] },
+      { id: 'b', type: 'narration', emotion: 'neutral', intensity: 0.2, keywords: [] },
+      { id: 'c', type: 'narration', emotion: 'neutral', intensity: 0.15, keywords: [2] },
+      { id: 'd', type: 'narration', emotion: 'calm', intensity: 0.2, keywords: [] },
+      { id: 'e', type: 'punchline', emotion: 'surprise', intensity: 0.95, keywords: [0] },
+      { id: 'f', type: 'narration', emotion: 'neutral', intensity: 0.2, keywords: [] },
+    ])
+    // Caption c is the loudest line (the rules alone made it the CPT).
+    const plans = planCaptionLayouts(captions, { waveformData: quietWithPeak(12, 14.5), duration: 60 })
+    const byId = Object.fromEntries(plans.map((plan) => [plan.captionId, plan]))
+    expect(byId.c.mode).toBe('sentence')
+    expect(byId.e.mode).toBe('cpt')
+    expect(byId.e.heroIndex).toBe(0)
+    expect(byId.e.insight).toEqual({ type: 'punchline', emotion: 'surprise', source: 'ai' })
+    expect(byId.d.insight.source).toBe('ai')
+  })
+
+  it('uses the AI keywords and the emotion for the entrance', () => {
+    const [line] = read([caption('k', 'this changed everything for our small team', 0, 3)], [
+      { id: 'k', type: 'emotional_peak', emotion: 'sadness', intensity: 0.7, keywords: [2, 6] },
+    ])
+    const [plan] = planCaptionLayouts([line], { duration: 3 })
+    expect(plan.keywordIndices).toEqual([2, 6])
+    expect(plan.animation).toBe('fade')
+  })
+
+  it('ignores a reading once the caption text changes, and only sends lines without a current reading', () => {
+    const captions = read([caption('a', 'first line here', 0, 2), caption('b', 'second line here', 2, 4)], [
+      { id: 'a', type: 'hook', emotion: 'joy', intensity: 0.9, keywords: [0] },
+      { id: 'b', type: 'narration', emotion: 'neutral', intensity: 0.2, keywords: [] },
+    ])
+    expect(captions[0].aiEmotion.textKey).toBe(captionTextKey('first line here'))
+    expect(captionsNeedingEmotion(captions)).toEqual([])
+    const edited = [{ ...captions[0], text: 'first line changed' }, captions[1]]
+    expect(captionsNeedingEmotion(edited)).toEqual([{ id: 'a', text: 'first line changed' }])
+    const [plan] = planCaptionLayouts([edited[0]], { duration: 2 })
+    expect(plan.insight.source).toBe('rules')
+  })
+
+  it('drops keyword indexes outside the line', () => {
+    const [stored] = read([caption('a', 'two words', 0, 2)], [{ id: 'a', type: 'hook', emotion: 'joy', intensity: 0.8, keywords: [1, 7] }])
+    const [plan] = planCaptionLayouts([stored], { duration: 2 })
+    expect(plan.keywordIndices).toEqual([1])
+  })
+
+  it('does not attach an in-flight reading to text edited before the response arrives', () => {
+    const original = [caption('a', 'first line here', 0, 2), caption('b', 'second line here', 2, 4)]
+    const pending = captionsNeedingEmotion(original)
+    const edited = [{ ...original[0], text: 'new words with a new meaning' }, original[1]]
+    const result = attachCaptionEmotions(edited, [
+      { id: 'a', type: 'hook', emotion: 'joy', intensity: 0.9, keywords: [0] },
+      { id: 'b', type: 'narration', emotion: 'neutral', intensity: 0.2, keywords: [] },
+    ], pending)
+    expect(result[0]).toBe(edited[0])
+    expect(result[0].aiEmotion).toBeUndefined()
+    expect(result[1].aiEmotion.textKey).toBe(captionTextKey(original[1].text))
+  })
+})
+
+// The template brief's rules (docs/caption-template-design-brief.md, section 7).
+describe('emotionally intelligent rules', () => {
+  const plan = (captions, extra = {}) => planCaptionLayouts(captions, { duration: 60, ...extra })
+  const wordsOf = (text) => text.split(' ')
+
+  it('highlights the word that carries the sentence, not a position word', () => {
+    const text = 'मेरे पीछे जो आप शिप देख.'
+    const [first] = plan([caption('a', text, 0, 3)])
+    expect(first.keywordIndices.map((index) => wordsOf(text)[index])).toEqual(['शिप'])
+  })
+
+  it('puts the emphasis on the first content word after a contrast word', () => {
+    const text = 'it looks easy but it takes years'
+    const [, line] = plan([caption('h', 'hello everyone', 0, 1), caption('a', text, 2, 5)])
+    expect(wordsOf(text)[line.heroIndex]).toBe('takes')
+  })
+
+  it('keeps a number with its unit', () => {
+    const [, line] = plan([caption('h', 'hello everyone', 0, 1), caption('a', 'we raised 10 lakh rupees', 2, 5)])
+    expect(line.keywordIndices).toEqual([2, 3])
+  })
+
+  it('keeps a question quiet and gives its answer the emphasis', () => {
+    const script = (question) => [
+      caption('h', 'let me tell you something', 0, 2),
+      caption('q', question, 10, 12),
+      caption('a', 'one simple habit', 12.5, 14.5),
+      caption('z', 'that is all for today', 30, 32),
+    ]
+    const asked = Object.fromEntries(plan(script('what changed everything?')).map((item) => [item.captionId, item]))
+    const told = Object.fromEntries(plan(script('this changed everything')).map((item) => [item.captionId, item]))
+    expect(asked.q.mode).not.toBe('cpt')
+    expect(asked.q.insight.type).toBe('question')
+    expect(asked.a.intensity).toBeGreaterThan(told.a.intensity)
+  })
+
+  it('ends a call to action calm, with the action word highlighted', () => {
+    const captions = [
+      caption('h', 'here is the trick', 0, 2),
+      caption('m', 'it works every single time for me', 3, 6),
+      caption('c', 'so follow for more tips', 7, 9),
+    ]
+    const cta = plan(captions).find((item) => item.captionId === 'c')
+    expect(cta.mode).toBe('keywords')
+    expect(cta.motion).toBe('none')
+    expect(wordsOf('so follow for more tips')[cta.keywordIndices[0]]).toBe('follow')
+  })
+
+  it('does not highlight the same word in two captions in a row', () => {
+    const [first, second] = plan([caption('a', 'discipline beats talent', 0, 2), caption('b', 'discipline builds habits slowly', 2.5, 5)])
+    expect(wordsOf('discipline beats talent')[first.heroIndex]).toBe('discipline')
+    expect(wordsOf('discipline builds habits slowly')[second.heroIndex]).not.toBe('discipline')
+  })
+
+  it('never builds a long or fast caption word by word', () => {
+    const long = caption('l', 'this is a very long explanation that keeps going on and on for a while', 0, 3)
+    const [only] = plan([long], { waveformData: Array.from({ length: 600 }, () => 0.9) })
+    expect(only.motion).not.toBe('word')
+    expect(only.mode).not.toBe('cpt')
+  })
+
+  it('reads LC scenes as styled, plain or animated template looks', () => {
+    const scene = (inner) => `<div class="sb" data-si="0"><div class="cap"><div class="scene">${inner}</div></div></div>`
+    const markup = [
+      scene('<div class="cpt pyramid"><div class="ln"><span class="w">BIG</span></div></div>'),
+      scene('<div class="nline plainwrap"><span class="w on">still</span></div>'),
+      scene('<div class="nline"><span class="w" data-lc-anim="rise">moving</span></div>'),
+      scene('<div class="cpt st-flow st-al-l"><div class="ln"><span class="w" data-lc-anim="stFade">flows</span></div></div>'),
+    ].join('')
+    expect(getTemplatePhaseTypes(markup)).toEqual(['styled', 'plain', 'normal', 'normal'])
+    const templated = caption('t', 'one two three four', 0, 3, { template_markup: markup, template_20_id: 'T999' })
+    const cpt = applyCaptionLayout(templated, { mode: 'cpt', motion: 'word', plan: { heroIndex: 2, captionIndex: 1 } })
+    expect(cpt.template_phase_index).toBe(0)
+    expect(cpt.imp_word_indices).toEqual([2])
   })
 })

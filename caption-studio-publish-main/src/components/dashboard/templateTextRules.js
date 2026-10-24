@@ -136,6 +136,95 @@ export function resolveImpWordIndicesForWords(wordsOrTokens = [], impWordIndex =
   return normalizeImpWordIndices(impWordIndex, impWordIndices);
 }
 
+// Classes a template puts on its authored keyword. They describe the highlight,
+// not the word slot, so the fill code moves them onto the caption's important
+// words instead of leaving them on whichever word lands in that slot.
+export const TEMPLATE_KEYWORD_CLASS_NAMES = ['hero', 'ul', 'ns3hero', 'ns3box', 'ns3mark', 'ns3bracket', 'ns3dot'];
+
+const TEMPLATE_AUTHORED_KEYWORD_SELECTOR = [
+  '.is-emphasis',
+  ...TEMPLATE_KEYWORD_CLASS_NAMES.map((name) => `.${name}`),
+  '[class*="imp-"]',
+  '[class*="ns2-"]',
+  '[class*="ns3-"]',
+].join(', ');
+
+// A phase whose authored design has no keyword (a plain or word-by-word
+// sentence) must not show a guessed highlight.
+export function templateBlockHasAuthoredKeyword(block) {
+  return Boolean(block?.querySelector?.(TEMPLATE_AUTHORED_KEYWORD_SELECTOR));
+}
+
+export function splitTemplateKeywordClasses(className = '') {
+  const base = [];
+  const keyword = [];
+  String(className || '').split(/\s+/).filter(Boolean).forEach((name) => {
+    if (name === 'is-emphasis') return;
+    (TEMPLATE_KEYWORD_CLASS_NAMES.includes(name) ? keyword : base).push(name);
+  });
+  return { base: base.join(' '), keyword: keyword.join(' ') };
+}
+
+// Authored keyword spans carry a per-scene inline colour. Every highlighted
+// word takes the one accent the user picked instead.
+export function stripTemplateKeywordColor(style = '') {
+  return String(style || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part && !/^(?:color|-webkit-text-fill-color)\s*:/i.test(part))
+    .join(';');
+}
+
+function splitIndicesOverRows(indices = [], rowSlots = []) {
+  const total = rowSlots.reduce((sum, slots) => sum + Math.max(0, Number(slots) || 0), 0);
+  let cursor = 0;
+  return rowSlots.map((slots, rowIndex) => {
+    const remaining = indices.length - cursor;
+    const remainingRows = rowSlots.length - rowIndex - 1;
+    const proportional = Math.round((Math.max(0, Number(slots) || 0) / Math.max(1, total)) * indices.length);
+    const count = rowIndex === rowSlots.length - 1
+      ? remaining
+      : Math.max(0, Math.min(remaining, Math.max(1, Math.min(remaining - remainingRows, proportional))));
+    const rowIndices = indices.slice(cursor, cursor + count);
+    cursor += count;
+    return rowIndices;
+  });
+}
+
+// Splits a caption's word indices over a template's authored rows.
+// rowSlots: authored word count per row; keywordRow: the row the template built
+// for its keyword (-1 if none). When the important words fit, the keyword row
+// gets them, so the template's big / accent row carries the word that matters;
+// otherwise rows share the words in proportion to their authored slots. Words
+// always stay in reading order (the export's completeness check requires it).
+export function planTemplateRowWords(rowSlots = [], wordCount = 0, impIndices = [], keywordRow = -1) {
+  const allIndices = Array.from({ length: Math.max(0, wordCount) }, (_, index) => index);
+  const proportional = () => splitIndicesOverRows(allIndices, rowSlots);
+  const rowCount = rowSlots.length;
+  const important = [...new Set(impIndices.map(Number))]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < wordCount)
+    .sort((a, b) => a - b);
+  if (rowCount < 2 || keywordRow < 0 || keywordRow >= rowCount || !important.length) return proportional();
+
+  const rowsBefore = keywordRow;
+  const rowsAfter = rowCount - 1 - keywordRow;
+  let start = important[0];
+  let end = important[important.length - 1] - start > 2 ? start : important[important.length - 1];
+  if (rowsBefore === 0) start = 0;
+  if (rowsAfter === 0) end = wordCount - 1;
+  const keywordSpan = end - start + 1;
+  if (
+    start < rowsBefore
+    || wordCount - 1 - end < rowsAfter
+    || keywordSpan > Math.max(3, Math.ceil(wordCount / 2))
+  ) {
+    return proportional();
+  }
+  const beforeRows = splitIndicesOverRows(allIndices.slice(0, start), rowSlots.slice(0, keywordRow));
+  const afterRows = splitIndicesOverRows(allIndices.slice(end + 1), rowSlots.slice(keywordRow + 1));
+  return [...beforeRows, allIndices.slice(start, end + 1), ...afterRows];
+}
+
 export function extractHtmlStyle(markup = '') {
   return Array.from(
     String(markup).matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi),

@@ -141,7 +141,7 @@ def _reserve_system_ai_quota(db, operation: str) -> None:
 
 def _reserve_ai_quota(uid: str, operation: str) -> None:
     """Atomically reserve one daily paid-provider call before invoking it."""
-    if operation not in {"process", "translate", "detect_language"}:
+    if operation not in {"process", "translate", "detect_language", "caption_emotion"}:
         raise HTTPException(status_code=400, detail="Unknown AI operation")
     if settings._IS_TEST:
         return
@@ -283,7 +283,7 @@ def _release_ai_quota(uid: str, operation: str, release_system: bool = True) -> 
     Best-effort by design: a failed release must never mask the original error,
     and the counter self-heals at the next UTC date rollover.
     """
-    if operation not in {"process", "translate", "detect_language"}:
+    if operation not in {"process", "translate", "detect_language", "caption_emotion"}:
         return
     if settings._IS_TEST or not uid:
         return

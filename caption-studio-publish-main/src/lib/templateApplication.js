@@ -131,6 +131,13 @@ export function buildTemplateApplication({
     getTemplateSelectionIdentity(templateStyleForSnapshot)
     !== getTemplateSelectionIdentity(captionStyle)
   )
+  // Removing an applied template (None) also removes every per-word edit made
+  // on it - position, size, colour and effects - so the captions return clean
+  // (owner, 2026-10-23). Pressing None with no template applied keeps edits.
+  const isTemplateRemoval = !hasTemplateSelection && !!(
+    captionStyle?.template_id
+    || captionStyle?.template_20_id
+  )
   const templateSnapshot = hasTemplateSelection
     ? JSON.parse(JSON.stringify({
       ...templateStyleForSnapshot,
@@ -168,7 +175,7 @@ export function buildTemplateApplication({
       CAPTION_TEMPLATE_FIELDS.forEach((key) => { delete rest[key] })
       return {
         ...rest,
-        wordStyles: stripDetachedWordLayout(rest.wordStyles || {}),
+        wordStyles: isTemplateRemoval ? {} : stripDetachedWordLayout(rest.wordStyles || {}),
       }
     }
     const emotional = emotionalByCaptionId.get(cap.id)

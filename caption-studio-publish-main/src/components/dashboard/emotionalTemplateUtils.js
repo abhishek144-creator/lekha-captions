@@ -16,6 +16,10 @@ export const EMPHASIS_STOP_WORDS = new Set([
   'their', 'them', 'then', 'there', 'these', 'they', 'this', 'to', 'too',
   'up', 'us', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'who',
   'why', 'will', 'with', 'you', 'your',
+  'am', 'just', 'really', 'very', 'also', 'about', 'into', 'over', 'some', 'any',
+  'all', 'can', 'could', 'would', 'should', 'get', 'got', 'go', 'going', 'gonna',
+  'wanna', 'its', "it's", "i'm", "that's", "you're", "we're", "they're", "there's",
+  'okay', 'ok', 'yeah', 'um', 'uh', 'like', 'now', 'only', 'even', 'still', 'again',
   'और', 'या', 'पर', 'पे', 'से', 'को', 'का', 'की', 'के', 'में', 'तक', 'तो',
   'ही', 'भी', 'ने', 'लिए', 'कि', 'जो', 'वो', 'यह', 'ये', 'वह', 'वे', 'मैं',
   'हम', 'आप', 'तुम', 'मुझे', 'मेरे', 'मेरा', 'मेरी', 'हमारा', 'हमारी', 'आपका', 'आपकी', 'आपको',
@@ -23,6 +27,13 @@ export const EMPHASIS_STOP_WORDS = new Set([
   'हो', 'होगा', 'होगी', 'होंगे', 'रहा', 'रही', 'रहे', 'कर', 'करके', 'किया', 'करना', 'नहीं',
   'ना', 'मत', 'बस', 'अब', 'तब', 'यहाँ', 'वहाँ', 'कहाँ', 'क्यों', 'कैसे', 'क्या', 'आज',
   'कल',
+  // Positions, quantities and helper verbs: they frame a sentence, they don't
+  // carry it ("मेरे पीछे जो आप शिप देख" highlights शिप, not पीछे).
+  'पीछे', 'आगे', 'ऊपर', 'नीचे', 'अंदर', 'बाहर', 'साथ', 'बाद', 'पहले', 'फिर', 'सब',
+  'कुछ', 'एक', 'वाला', 'वाली', 'वाले', 'गया', 'गई', 'गए', 'दिया', 'लिया', 'करते',
+  'करती', 'होता', 'होती', 'होते', 'सकते', 'सकता', 'सकती', 'चाहिए', 'जब', 'अगर',
+  'जैसे', 'ऐसे', 'वैसे', 'इसे', 'उसे', 'इसका', 'उसका', 'इसकी', 'उसकी', 'अपना', 'अपनी',
+  'अपने', 'यहां', 'वहां', 'रहें', 'हुआ', 'हुई', 'हुए', 'यार', 'मतलब', 'अच्छा', 'हाँ', 'हां',
 ]);
 
 export function normalizeEmphasisWord(word = '') {
@@ -166,13 +177,23 @@ export function getTemplatePhaseTypes(markup = '') {
   while ((match = blockPattern.exec(source))) {
     const block = extractCompleteDiv(source, match.index);
     if (!block) break;
-    const type = /\bplain-s\b/i.test(block)
-      ? 'plain'
-      : /\bwbw(?:-line)?\b/i.test(block)
-        ? 'normal'
-        : /\b(?:sw|sw-w|pos\d+)\b/i.test(block)
-          ? 'styled'
-          : 'normal';
+    // LC scenes (left gallery, Studio set): a CPT composition or a display
+    // headline is the styled layout; a sentence, including a merged one that
+    // flows as a single line, is plain when still and normal when animated.
+    const isLcScene = /class="scene"/i.test(block);
+    const isMergedSentence = /class="cpt (?:st-flow|splice|serifbreak|baseline|weld)\b/i.test(block)
+      && !/\bst-disp\b/i.test(block);
+    const type = isLcScene
+      ? (/class="cpt\b/i.test(block) && !isMergedSentence
+        ? 'styled'
+        : (/\bplainwrap\b/i.test(block) || !/data-lc-(?:block-)?anim=/i.test(block) ? 'plain' : 'normal'))
+      : /\bplain-s\b/i.test(block)
+        ? 'plain'
+        : /\bwbw(?:-line)?\b/i.test(block)
+          ? 'normal'
+          : /\b(?:sw|sw-w|pos\d+)\b/i.test(block)
+            ? 'styled'
+            : 'normal';
     phases.push(type);
     blockPattern.lastIndex = match.index + block.length;
   }
@@ -225,6 +246,7 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
         phaseIndex,
         impWordIndex: chosen[0] ?? -1,
         impWordIndices: chosen,
+        emphasisChosen: true,
         emphasisColor: '',
         audio: { rms: audio.rms, peak: audio.peak, silenceRatio: audio.silenceRatio, rising: audio.rising },
       };
@@ -241,6 +263,7 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
           ? [Number(emphasis.impWordIndex)]
           : []
       ),
+      emphasisChosen: false,
       emphasisColor: emphasis.emphasisColor,
       audio: {
         rms: audio.rms,

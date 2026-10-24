@@ -61,6 +61,8 @@ let uploadResumes = 0
 let uploadOffset = 0
 let interruptedChunk = false
 const translationRequests = []
+const emotionRequests = []
+let emotionMode = 'ok'
 let recoveringUpload = false
 const uploadRanges = []
 const chunkBytes = 8 * 1024 * 1024
@@ -142,6 +144,22 @@ page.on('request', async (request) => {
     const submitted = JSON.parse(request.postData())
     translationRequests.push(submitted)
     payload = { success: true, captions: submitted.captions.map((item) => ({ id: item.id, text: `translated ${item.id}` })) }
+  }
+  else if (url.pathname === '/api/caption-emotions') {
+    const submitted = JSON.parse(request.postData())
+    emotionRequests.push(submitted)
+    if (emotionMode === 'fail') {
+      status = 502
+      payload = { detail: 'Smart layout analysis failed. Please retry.' }
+    } else {
+      payload = {
+        success: true,
+        cached: false,
+        lines: submitted.lines.map((line) => (line.id === 'mood-2'
+          ? { id: line.id, type: 'punchline', emotion: 'surprise', intensity: 0.95, keywords: [1] }
+          : { id: line.id, type: 'narration', emotion: 'neutral', intensity: 0.2, keywords: [] })),
+      }
+    }
   }
   else if (url.pathname.includes('analytics')) payload = { success: true }
   else { status = 404; payload = { detail: `Unexpected local test API: ${url.pathname}` } }
@@ -396,6 +414,53 @@ try {
   await textClick('Translate')
   await page.waitForFunction(() => document.body.textContent.includes('Translation supports up to 1000 captions'))
   assert.equal(translationRequests.length, 1, '1,001 captions are refused before calling the provider')
+
+  // Auto layout reads the script with AI once, applies what it read, keeps the
+  // reading on the captions (no second call), and falls back to rules on failure.
+  const moodDraft = (projectId) => ({
+    ...draft,
+    projectId,
+    videoUrl: '/launch-video.mp4',
+    captionTracks: [],
+    captions: [
+      { id: 'mood-1', text: 'so today we are talking about work', start_time: 0, end_time: 3, words: [], wordStyles: {} },
+      { id: 'mood-2', text: 'nobody believed us', start_time: 12, end_time: 14, words: [], wordStyles: {} },
+      { id: 'mood-3', text: 'and that is how it went', start_time: 24, end_time: 27, words: [], wordStyles: {} },
+    ],
+  })
+  const storedMood = () => page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.filter((item) => item.id?.startsWith?.('mood-')))
+  await page.evaluate((value) => { localStorage.clear(); localStorage.setItem('captionEditorState', JSON.stringify(value)) }, moodDraft('mood-ai'))
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await textClick('Auto layout')
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.id === 'mood-2' && item.layoutSource === 'auto' && item.aiEmotion), { timeout: 15000 })
+  assert.equal(emotionRequests.length, 1, 'one AI call for the whole script')
+  assert.deepEqual(emotionRequests[0].lines.map((line) => line.id), ['mood-1', 'mood-2', 'mood-3'])
+  {
+    const mood = await storedMood()
+    const punchline = mood.find((item) => item.id === 'mood-2')
+    assert.equal(punchline.layoutMode, 'cpt', 'the line the AI read as the punchline becomes the CPT')
+    assert.equal(punchline.layoutInsight?.source, 'ai')
+    assert.ok(punchline.wordStyles?.['mood-2-1']?.isEmphasis, "the AI's keyword is the hero word")
+    assert.equal(mood.find((item) => item.id === 'mood-1').layoutMode, 'sentence', 'low-key narration stays a plain sentence')
+  }
+  await page.waitForFunction(() => /Read 3 lines with AI/.test(document.body.textContent))
+  await textClick('Auto layout')
+  await page.waitForFunction(() => /Auto layout:/.test(document.body.textContent))
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  assert.equal(emotionRequests.length, 1, 'lines already read are not sent again')
+
+  emotionMode = 'fail'
+  await page.evaluate((value) => { localStorage.clear(); localStorage.setItem('captionEditorState', JSON.stringify(value)) }, moodDraft('mood-rules'))
+  await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html?restoreSession=1')
+  await textClick('Auto layout')
+  await page.waitForFunction(() => /AI reading unavailable, used timing and volume/.test(document.body.textContent), { timeout: 15000 })
+  await page.waitForFunction(() => {
+    const mood = JSON.parse(localStorage.getItem('captionEditorState')).captions.filter((item) => item.id?.startsWith?.('mood-'))
+    return mood.length === 3 && mood.every((item) => item.layoutSource === 'auto' && !item.aiEmotion && item.layoutInsight?.source === 'rules')
+  }, { timeout: 10000 }).catch(async () => {
+    throw new Error(`without AI the rules still lay out every caption: ${JSON.stringify((await storedMood()).map((item) => [item.id, item.layoutSource, !!item.aiEmotion, item.layoutInsight]))}`)
+  })
+  emotionMode = 'ok'
 
   // Real pricing UI with a Razorpay double; external requests remain blocked.
   await page.evaluateOnNewDocument(() => {

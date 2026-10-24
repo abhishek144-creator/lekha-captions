@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyWordStyleChange,
+  clearPopupWordStyle,
   getPopupWordStyle,
   getPopupWordText,
   resetWordFontSize,
-  resetWordPosition,
   updatePopupWordStyle,
   wordPopupStyleKey,
 } from '../wordStyleEdits'
@@ -57,9 +57,24 @@ describe('updatePopupWordStyle', () => {
     expect(captions[0].wordStyles['c1-1'].color).toBe('red')
   })
 
-  it('resets size and position without writing zero coordinates', () => {
+  it('resets the size alone from the size control', () => {
     expect(resetWordFontSize({ color: 'red', fontSize: 30, frozenFontSize: 28 })).toEqual({ color: 'red' })
-    // A stored abs 0,0 reads as "dragged to the corner" in export.
-    expect(resetWordPosition({ color: 'red', x: 1, y: 2, x_pct: 3, y_pct: 4, abs_x_pct: 5, abs_y_pct: 6 })).toEqual({ color: 'red' })
+  })
+
+  it('resets the whole word: position, size, colour and effects', () => {
+    const edited = [{
+      id: 'c1',
+      text: 'one two three',
+      wordStyles: {
+        'c1-0': { color: 'green' },
+        // A dragged template word (offsets) with paint and motion.
+        'c1-1': { x: 8, y: -341, x_pct: 2, y_pct: -50, cptCanvasXPercent: 30, cptCanvasYPercent: 20, fontSize: 41, frozenFontSize: 28, color: 'red', textGradient: 'linear-gradient(red, blue)', isEmphasis: true, animation: 'pop' },
+      },
+    }]
+    const next = clearPopupWordStyle(edited, captionPopup)
+    // The key is removed, never zeroed: a stored abs 0,0 reads as "dragged to the corner" in export.
+    expect(next[0].wordStyles).toEqual({ 'c1-0': { color: 'green' } })
+    expect(edited[0].wordStyles['c1-1'].color).toBe('red')
+    expect(clearPopupWordStyle(captions, elementPopup)).toEqual(captions)
   })
 })

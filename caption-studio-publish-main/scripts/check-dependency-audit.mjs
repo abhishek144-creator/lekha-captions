@@ -17,17 +17,7 @@ import process from 'node:process'
 
 const repoRoot = path.resolve(import.meta.dirname, '..')
 
-const EXCEPTIONS = [
-  {
-    workspace: '.',
-    package: 'braces',
-    id: 'GHSA-vfj7-8cjw-p6xm',
-    reviewBy: '2026-11-02',
-    reason: 'No patched release exists (3.0.3 is latest). Reached only through tailwindcss build-time file '
-      + 'scanning (chokidar, micromatch, fast-glob) on glob patterns from our own config; never bundled or '
-      + 'fed user input.',
-  },
-]
+const EXCEPTIONS = []
 
 const WORKSPACES = [
   { dir: '.', label: 'app' },

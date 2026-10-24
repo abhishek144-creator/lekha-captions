@@ -980,7 +980,8 @@ const CASES = [
   {
     // User report 2026-10-21: in a Hindi LC export the planner's keyword (टिप)
     // came out in the accent colour but at body weight, next to the bold
-    // authored hero word. The canvas draws both bold.
+    // authored hero word. Since 2026-10-22 the authored hero treatment moves
+    // onto the keyword itself, so टिप is the one highlighted word, at hero weight.
     id: 'left-lc-hindi-highlight-weight',
     sidebar: true,
     template20Id: 'T166',
@@ -990,7 +991,8 @@ const CASES = [
     impWordIndex: 3,
     requiredColors: [],
     requireUniformHighlightWeight: true,
-    minHighlightedWords: 2,
+    minHighlightedWords: 1,
+    expectedHighlightedWords: ['टिप'],
     style: {
       template_name: 'LC Hindi Highlight Weight',
       font_family: 'Archivo',
@@ -1209,10 +1211,14 @@ function buildLcSidebarCases() {
       const cardStart = lcSidebarHtml.indexOf(cardClass);
       const cardMarkup = cardStart >= 0 ? extractCompleteDiv(lcSidebarHtml, lcSidebarHtml.lastIndexOf('<div', cardStart)) : '';
       const phaseCount = Math.max(1, (cardMarkup.match(/class="sb[" ]/g) || []).length);
+      const phaseMarkups = Array.from(cardMarkup.matchAll(/<div class="sb[" ]/g))
+        .map((match) => extractCompleteDiv(cardMarkup, match.index));
       return Array.from({ length: phaseCount }, (_, phaseIndex) => ({
         ...testCase,
         id: `${testCase.id}-p${phaseIndex}`,
         phaseIndex,
+        // Phases authored without a keyword show no guessed highlight.
+        phaseHasKeyword: /class="[^"]*\b(?:hero|is-emphasis|ul|ns3hero|ns3box|ns3mark|ns3bracket|ns3dot)\b/.test(phaseMarkups[phaseIndex] || ''),
         // Phase 0 is always an animated hook scene; later phases may be
         // static/plain by design, so motion cannot be asserted there.
         motionCritical: phaseIndex === 0,
@@ -1283,7 +1289,7 @@ function buildLeftHighlightPairCases() {
 // hero word must export at one weight wherever both are highlighted.
 function buildLcHighlightWeightCases() {
   const hindiCase = CASES.find((testCase) => testCase.id === 'left-lc-hindi-highlight-weight');
-  return buildLcSidebarCases().map((testCase) => ({
+  return buildLcSidebarCases().filter((testCase) => testCase.phaseHasKeyword).map((testCase) => ({
     ...testCase,
     id: `${testCase.id}-highlight-weight`,
     text: hindiCase.text,
@@ -2088,6 +2094,12 @@ try {
       const highlightedWords = audits.flatMap((audit) => audit.highlightedWords || []);
       if (highlightedWords.length < (testCase.minHighlightedWords || 1)) {
         fail(`${testCase.id} exported too few highlighted words to compare: ${JSON.stringify(highlightedWords)}`);
+      }
+      if (
+        testCase.expectedHighlightedWords
+        && JSON.stringify(highlightedWords.map((word) => word.text)) !== JSON.stringify(testCase.expectedHighlightedWords)
+      ) {
+        fail(`${testCase.id} highlighted the wrong words: ${JSON.stringify(highlightedWords)}`);
       }
       if (audits.some((audit) => audit.highlightedWeightsMatch === false)) {
         fail(`${testCase.id} exported highlighted words at different weights: ${JSON.stringify(highlightedWords)}`);

@@ -19,7 +19,9 @@ import {
   AudioLines
 } from 'lucide-react';
 import {
+  attachCaptionEmotions,
   autoLayoutCaptions,
+  captionsNeedingEmotion,
   getCaptionLayoutMode,
   getCaptionLayoutMotion,
   setCaptionLayout,
@@ -59,6 +61,7 @@ function CaptionEditor({
   isTranslating = false,
   captionStyle,
   waveformData,
+  onAnalyzeCaptionEmotions,
 }) {
   const [showAutoTip, setShowAutoTip] = useState(false);
   const [query, setQuery] = useState('');
@@ -256,8 +259,32 @@ function CaptionEditor({
     return { waveformData, duration, captionStyle: captionStyle || {}, frame: { width: 360, height } };
   };
 
-  const runAutoLayout = () => {
-    const { captions: next, counts } = autoLayoutCaptions(captions || [], directorOptions());
+  // Auto layout reads the script with AI first (only lines with no current
+  // reading are sent; readings are kept on the captions), then lays out.
+  // Without AI (signed out, offline, quota) it uses timing and volume rules.
+  const latestCaptionsRef = useRef(captions);
+  latestCaptionsRef.current = captions;
+  const [isAutoLayoutRunning, setIsAutoLayoutRunning] = useState(false);
+  const runAutoLayout = async () => {
+    if (isAutoLayoutRunning) return;
+    setIsAutoLayoutRunning(true);
+    let readings = null;
+    let aiFailed = false;
+    const pending = captionsNeedingEmotion(captions || []);
+    if (onAnalyzeCaptionEmotions && pending.length) {
+      setCaptionEditMessage('Reading the script…');
+      try {
+        const data = await onAnalyzeCaptionEmotions(pending);
+        if (data?.success && Array.isArray(data.lines)) readings = data.lines;
+        else if (data) aiFailed = true;
+      } catch {
+        aiFailed = true;
+      }
+    }
+    // Apply to the latest captions: edits made while the script was being read are kept.
+    const base = latestCaptionsRef.current || [];
+    const source = readings ? attachCaptionEmotions(base, readings, pending) : base;
+    const { captions: next, counts } = autoLayoutCaptions(source, directorOptions());
     setCaptions(next);
     const parts = [
       counts.cpt && `${counts.cpt} CPT`,
@@ -265,7 +292,9 @@ function CaptionEditor({
       counts.sentence && `${counts.sentence} sentences`,
     ].filter(Boolean);
     const motion = [counts.line && `${counts.line} animated in`, counts.word && `${counts.word} word by word`].filter(Boolean);
-    setCaptionEditMessage(`Auto layout: ${parts.join(', ') || 'no changes'}${motion.length ? ` (${motion.join(', ')})` : ''}${counts.kept ? `. Kept ${counts.kept} you styled.` : '.'} Undo to revert.`);
+    const how = counts.ai ? ` Read ${counts.ai} line${counts.ai === 1 ? '' : 's'} with AI.` : aiFailed ? ' AI reading unavailable, used timing and volume.' : '';
+    setCaptionEditMessage(`Auto layout: ${parts.join(', ') || 'no changes'}${motion.length ? ` (${motion.join(', ')})` : ''}${counts.kept ? `. Kept ${counts.kept} you styled.` : '.'}${how} Undo to revert.`);
+    setIsAutoLayoutRunning(false);
   };
 
   const chooseCaptionLayout = (caption, look) => {
@@ -407,10 +436,12 @@ function CaptionEditor({
             <button
               type="button"
               onClick={runAutoLayout}
-              title="Suggest a look for each caption: sentence, keywords or CPT, with or without motion. Captions you styled are kept."
-              className="inline-flex items-center gap-1 rounded-md border border-[#F5A623]/40 bg-[#F5A623]/[0.06] px-2 py-1 text-[11px] font-semibold text-[#F5A623] hover:bg-[#F5A623]/15"
+              disabled={isAutoLayoutRunning}
+              aria-busy={isAutoLayoutRunning}
+              title="Read the script and suggest a look for each caption: sentence, keywords or CPT, with or without motion. Captions you styled are kept."
+              className="inline-flex items-center gap-1 rounded-md border border-[#F5A623]/40 bg-[#F5A623]/[0.06] px-2 py-1 text-[11px] font-semibold text-[#F5A623] hover:bg-[#F5A623]/15 disabled:cursor-wait disabled:opacity-70"
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              {isAutoLayoutRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               Auto layout
             </button>
           )}
@@ -462,7 +493,8 @@ function CaptionEditor({
                         <span
                           data-caption-layout-badge={getCaptionLayoutMode(caption)}
                           data-caption-layout-motion={getCaptionLayoutMotion(caption)}
-                          title={`${caption.layoutSource === 'auto' ? 'Suggested by Auto layout' : 'Set by you'}${({ line: ', animates in', word: ', word by word' })[getCaptionLayoutMotion(caption)] || ''}`}
+                          data-caption-layout-insight={caption.layoutInsight?.source || undefined}
+                          title={`${caption.layoutSource === 'auto' ? 'Suggested by Auto layout' : 'Set by you'}${({ line: ', animates in', word: ', word by word' })[getCaptionLayoutMotion(caption)] || ''}${caption.layoutSource === 'auto' && caption.layoutInsight?.type ? ` · ${caption.layoutInsight.source === 'ai' ? 'AI read' : 'Read as'}: ${String(caption.layoutInsight.type).replace(/_/g, ' ')}${caption.layoutInsight.emotion ? `, ${caption.layoutInsight.emotion}` : ''}` : ''}`}
                           className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded border border-[#F5A623]/25 bg-[#F5A623]/[0.06] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#F5A623]/90"
                         >
                           {({ sentence: 'Text', keywords: 'Key', cpt: 'CPT' })[getCaptionLayoutMode(caption)]}

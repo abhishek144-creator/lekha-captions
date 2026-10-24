@@ -19,6 +19,9 @@ import lcTemplateHtml2 from '../../assets/lekha-captions-lc-2.html?raw';
 import lcTemplateHtml3 from '../../assets/lekha-captions-lc-3.html?raw';
 import lcTemplateHtml4 from '../../assets/lekha-captions-lc-4.html?raw';
 import lcTemplateHtml5 from '../../assets/lekha-captions-lc-5.html?raw';
+import lcStudioTemplateHtml from '../../assets/lekha-captions-lc-studio.html?raw';
+import lcPicksTemplateHtml from '../../assets/lekha-captions-lc-picks.html?raw';
+import { STUDIO_TEMPLATE_FONT_URL } from './studioTemplateFonts.js';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
 
 function sanitizeTemplateHtml(value = '') {
@@ -29,13 +32,33 @@ function sanitizeTemplateHtml(value = '') {
 }
 
 const sanitizedLegacyTemplateHtml = sanitizeTemplateHtml(legacyTemplateHtml);
-const lcTemplateHtmlSets = [lcTemplateHtml2, lcTemplateHtml3, lcTemplateHtml4, lcTemplateHtml5];
+const lcTemplateHtmlSets = [lcTemplateHtml2, lcTemplateHtml3, lcTemplateHtml4, lcTemplateHtml5, lcStudioTemplateHtml, lcPicksTemplateHtml];
 const sanitizedLcTemplateHtml = lcTemplateHtmlSets.map(sanitizeTemplateHtml);
 const LC_FONT_LINKS = `
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,500;0,600;0,700;0,800;0,900;1,600&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,700&family=Great+Vibes&display=swap" rel="stylesheet">
+  <link href="${STUDIO_TEMPLATE_FONT_URL}" rel="stylesheet">
 `;
+// Studio set (style 4): one muted accent per template, set in its asset.
+const LC_STUDIO_STYLE = 4;
+const readTemplateMap = (html, name) => {
+  const match = String(html).match(new RegExp(`const ${name}=(\\{[^}]*\\});`));
+  try {
+    return match ? JSON.parse(match[1]) : {};
+  } catch {
+    return {};
+  }
+};
+const readStudioMap = (name) => readTemplateMap(lcStudioTemplateHtml, name);
+// The Picks set (T241–T275, lekha-captions-lc-picks.html) works the same way.
+const LC_PICKS_ACCENTS = readTemplateMap(lcPicksTemplateHtml, 'PICKS_ACCENTS');
+const LC_PICKS_FONTS = readTemplateMap(lcPicksTemplateHtml, 'PICKS_FONTS');
+const LC_STUDIO_ACCENTS = { ...readStudioMap('STUDIO_ACCENTS'), ...LC_PICKS_ACCENTS };
+// Each Studio / Picks template's body face. Applying it sets the caption font,
+// which the editor and export resolve per script like every LC template.
+const LC_STUDIO_FONTS = { ...readStudioMap('STUDIO_FONTS'), ...LC_PICKS_FONTS };
+const LC_STUDIO_NOTES = readStudioMap('STUDIO_NOTES');
 const legacyTemplateCss = (() => {
   const matches = [...legacyTemplateHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)];
   return matches.map(m => m[1]).join('\n');
@@ -113,6 +136,18 @@ const LEFT_TEMPLATE_ONE_WORD_NAMES = {
   T211: 'Doubt', T212: 'Start', T213: 'Future', T214: 'Patience', T215: 'Ownership',
   T216: 'Begin', T217: 'Step', T218: 'Kindness', T219: 'Chapter', T220: 'Leap',
   T221: 'Hook', T222: 'Beta', T223: 'Silence', T224: 'Revision', T225: 'Greatness',
+  // Studio set: the owner's names, kept whole.
+  T226: 'Editorial', T227: 'Broadcast', T228: 'Soft Focus', T230: 'Baseline',
+  T233: 'Hairline', T234: 'Ink', T235: 'Lower Third',
+  T236: 'Rule', T237: 'Weight Shift', T238: 'Frame', T239: 'Stagger', T240: 'Sheen',
+  // Picks: the names from the owner's design files.
+  T241: 'The Comma', T242: 'The Beam', T243: 'The Skew', T244: 'The Triad', T245: 'The Staircase',
+  T246: 'The Framework', T247: 'The Tide', T248: 'The Kindling', T249: 'The Meridian', T250: 'The Gravity',
+  T251: 'The Parenthesis', T252: 'The Static', T253: 'The Undertone', T254: 'The Bulletin', T255: 'The Backbeat',
+  T256: 'The Ladder', T257: 'The Ledge', T258: 'The Whisper', T259: 'The Anchor', T260: 'The Setup',
+  T261: 'The Hinge', T262: 'The Column', T263: 'The Cliff', T264: 'The Pivot', T265: 'The Counterweight',
+  T266: 'The Voyage', T267: 'The Lantern', T268: 'The Passage', T269: 'The Northstar', T270: 'The Skyline',
+  T271: 'The Ellipsis', T272: 'The Northline', T273: 'The Meter', T274: 'The Weave', T275: 'The Switchback',
 };
 
 function getOneWordTemplateName(template = {}) {
@@ -378,7 +413,9 @@ const LC_FIRST_SCENE_ACCENTS = Object.freeze({
   T219: '#C9A7FF',
 });
 
-const LC_MERGE_LAYOUTS = new Set(['splice', 'serifbreak', 'baseline', 'weld']);
+const LC_MERGE_LAYOUTS = new Set(['splice', 'serifbreak', 'baseline', 'weld', 'st-flow']);
+// A layout may carry modifier classes after its name ('st-flow st-quote st-al-l').
+const isLcMergeLayout = (layout = '') => LC_MERGE_LAYOUTS.has(String(layout).trim().split(/\s+/)[0]);
 const LC_TIMING = {
   staggerMs: 280,
   bodyDurationMs: 430,
@@ -599,22 +636,24 @@ function buildLcWordSpan(word, {
   anim = '',
   delay = 0,
   duration = LC_TIMING.bodyDurationMs,
+  ease = '',
   on = false,
 } = {}) {
+  const easing = ease || getLcAnimationEase(anim);
   const className = ['w', cls, hero ? 'hero is-emphasis' : '', ul ? 'ul' : '', on ? 'on' : '']
     .filter(Boolean)
     .join(' ');
   const style = [];
   if (hero && heroCol) style.push(`color:${heroCol}`);
   if (anim) {
-    style.push(`animation:${anim} ${duration}ms ${getLcAnimationEase(anim)} ${delay}ms forwards`);
+    style.push(`animation:${anim} ${duration}ms ${easing} ${delay}ms forwards`);
   }
   const attrs = [
     `class="${escapeHtml(className)}"`,
     anim ? `data-anim="${escapeHtml(mapLcAnimation(anim))}"` : '',
     anim ? `data-lc-anim="${escapeHtml(anim)}"` : '',
     anim ? `data-lc-duration="${duration}"` : '',
-    anim ? `data-lc-ease="${escapeHtml(getLcAnimationEase(anim))}"` : '',
+    anim ? `data-lc-ease="${escapeHtml(easing)}"` : '',
     anim ? `data-lc-delay="${delay}"` : '',
     style.length ? `style="${escapeHtml(style.join(';'))}"` : '',
   ].filter(Boolean).join(' ');
@@ -626,11 +665,17 @@ function renderLcFlow(segs = [], ctx, fuse = false) {
   let end = 0;
   const html = [];
   segs.forEach((seg) => {
+    // unit 'line': the segment's words enter together; 'block': the whole
+    // scene enters at once. Default is word by word.
+    const unit = seg.anim ? String(seg.unit || 'word') : 'word';
+    const segmentDelay = unit === 'block' ? 0 : ctx.n * LC_TIMING.staggerMs;
     lcWords(seg.text).forEach((word) => {
       if (!first && !fuse) html.push(' ');
       first = false;
-      const duration = seg.hero ? LC_TIMING.heroDurationMs : LC_TIMING.bodyDurationMs;
-      const delay = ctx.n * LC_TIMING.staggerMs;
+      const duration = Number(seg.dur) > 0
+        ? Number(seg.dur)
+        : (seg.hero ? LC_TIMING.heroDurationMs : LC_TIMING.bodyDurationMs);
+      const delay = unit === 'word' ? ctx.n * LC_TIMING.staggerMs : segmentDelay;
       html.push(buildLcWordSpan(word, {
         cls: seg.spanCls || '',
         hero: !!seg.hero,
@@ -639,13 +684,15 @@ function renderLcFlow(segs = [], ctx, fuse = false) {
         anim: seg.anim || '',
         delay,
         duration,
+        ease: seg.ease || '',
         on: !seg.anim,
       }));
       if (seg.anim) {
-        ctx.n += 1;
+        if (unit === 'word') ctx.n += 1;
         end = Math.max(end, delay + duration);
       }
     });
+    if (seg.anim && unit === 'line') ctx.n += 1;
   });
   return { html: html.join(''), end };
 }
@@ -773,6 +820,7 @@ function renderLcNormalScene(scene = {}, ctx, templateId = '') {
 }
 
 function getLcPalette(templateIndex = 0, templateId = '') {
+  if (LC_STUDIO_ACCENTS[templateId]) return Array(5).fill(LC_STUDIO_ACCENTS[templateId]);
   const palette = [0, 1, 2, 3, 4].map((offset) => (
     LC_MASTER_COLORS[((templateIndex * 3) + (offset * 2)) % LC_MASTER_COLORS.length]
   ));
@@ -789,13 +837,16 @@ function buildLcSceneMarkup(scene = {}, sceneIndex = 0, template = {}) {
   }
 
   const layout = escapeHtml(scene.layout || 'pyramid');
-  if (LC_MERGE_LAYOUTS.has(scene.layout)) {
+  if (isLcMergeLayout(scene.layout)) {
     const segs = (scene.lines || []).map((line) => ({
       text: line.text,
       anim: line.anim,
       hero: line.hero,
       spanCls: [line.cls, line.font].filter(Boolean).join(' '),
       ul: line.ul,
+      dur: line.dur,
+      ease: line.ease,
+      unit: line.unit,
     }));
     const lineMarkup = renderLcFlow(segs, ctx, scene.layout === 'weld').html;
     return `<div class="cpt ${layout}" style="--hc:${heroCol}"><div class="ln">${lineMarkup}</div></div>`;
@@ -819,6 +870,9 @@ function buildLcSceneMarkup(scene = {}, sceneIndex = 0, template = {}) {
       spanCls: '',
       ul: line.ul,
       hero: line.hero,
+      dur: line.dur,
+      ease: line.ease,
+      unit: line.unit,
     }], ctx).html;
     ctx.heroCol = savedHeroCol;
     return `<div class="${lineClass}"${lineStyle ? ` style="${escapeHtml(lineStyle)}"` : ''}>${lineMarkup}</div>`;
@@ -834,8 +888,11 @@ function buildLcCardMarkup(template = {}, templateIndex = 0) {
   )).join('');
   const dots = (template.scenes || []).map((_, sceneIndex) => `<i class="${sceneIndex === 0 ? 'on' : ''}"></i>`).join('');
   const cardClass = `lc-${String(template.id || '').toLowerCase()}`;
+  const setClass = Number(template.style) === LC_STUDIO_STYLE
+    ? ' lc-studio'
+    : (LC_PICKS_ACCENTS[template.id] ? ' lc-picks' : '');
   const tint = palette[0] || LC_MASTER_COLORS[0];
-  return `<div class="card lc-card ${cardClass}" data-lc-template="true" style="--tint:${tint}"><div class="card-top"><div><span class="cid">${escapeHtml(template.id)}</span><span class="cnm"> · ${escapeHtml(template.name)}</span></div><div class="badges"><span class="bg m">LC</span><span class="bg s${template.style}">${template.style} STYLE</span></div></div><div class="stage">${sceneMarkup}</div><div class="dots">${dots}</div></div>`;
+  return `<div class="card lc-card ${cardClass}${setClass}" data-lc-template="true" style="--tint:${tint}"><div class="card-top"><div><span class="cid">${escapeHtml(template.id)}</span><span class="cnm"> · ${escapeHtml(template.name)}</span></div><div class="badges"><span class="bg m">LC</span><span class="bg s${template.style}">${template.style} STYLE</span></div></div><div class="stage">${sceneMarkup}</div><div class="dots">${dots}</div></div>`;
 }
 
 function extractLcCards() {
@@ -878,15 +935,33 @@ const LC_TEMPLATE_CARDS = Array.from(
   }, new Map()).values(),
 );
 
-const LC_STYLE_1_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 1);
-const LC_STYLE_2_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 2);
-const LC_STYLE_3_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 3);
+// The left gallery offers only these (owner, 2026-10-23): Momentum (T189),
+// Timing (T204), every LC 5 template (T211–T225, Chapter T219 included) and
+// the Picks (T241–T275: 15 from The Craft Set, 10 each from The Foundation Set
+// and The Signature Standard). Every other LC card still renders and exports
+// for projects that use it. The Studio set is offered in the right-side
+// Templates tab (below The Voltage) and also renders through the LC pipeline.
+const LEFT_GALLERY_TEMPLATE_IDS = new Set([
+  'T189',
+  'T204',
+  ...Array.from({ length: 15 }, (_, index) => `T${211 + index}`),
+  ...Object.keys(LC_PICKS_ACCENTS),
+]);
+const VISIBLE_LC_TEMPLATE_CARDS = LC_TEMPLATE_CARDS.filter((template) => (
+  LEFT_GALLERY_TEMPLATE_IDS.has(template.id) && template.styleGroup !== LC_STUDIO_STYLE
+));
+const LC_STYLE_1_TEMPLATE_CARDS = VISIBLE_LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 1);
+const LC_STYLE_2_TEMPLATE_CARDS = VISIBLE_LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 2);
+const LC_STYLE_3_TEMPLATE_CARDS = VISIBLE_LC_TEMPLATE_CARDS.filter((template) => template.styleGroup === 3);
+export const STUDIO_TEMPLATE_CARDS = LC_TEMPLATE_CARDS
+  .filter((template) => template.styleGroup === LC_STUDIO_STYLE)
+  .map((template) => ({ ...template, desc: LC_STUDIO_NOTES[template.id] || '' }));
 
 const ALL_TEMPLATE_CARDS = [
   ...LEGACY_TEMPLATE_CARDS,
   ...LC_TEMPLATE_CARDS,
 ];
-const SELECTABLE_TEMPLATE_CARDS = [...LC_TEMPLATE_CARDS];
+const SELECTABLE_TEMPLATE_CARDS = [...VISIBLE_LC_TEMPLATE_CARDS];
 const TOTAL_TEMPLATE_COUNT = SELECTABLE_TEMPLATE_CARDS.length;
 const TEMPLATE_PREVIEW_PROGRESS_EVENT = 'lekha-sidebar-template-preview-progress';
 const TEMPLATE_PREVIEW_JUMP_EVENT = 'lekha-sidebar-template-preview-jump';
@@ -929,6 +1004,7 @@ export function buildTemplateStyle(template) {
     template_effect: detectTemplatePreviewEffect(template),
     template_markup: template.cardMarkup || '',
     ...baseStyle,
+    ...(LC_STUDIO_FONTS[template.id] ? { font_family: LC_STUDIO_FONTS[template.id] } : {}),
     // The template's own CSS sets its word sizes, so the Font Size slider
     // zooms the whole template by font_size / template_font_size (preview and
     // export alike). buildTemplateApplication() records the real starting

@@ -37,12 +37,13 @@ import {
 } from '@/lib/editorDocument'
 import { downloadDraft } from '@/lib/localDraftStorage'
 import { buildTemplateApplication, getTemplateRecentEntry } from '@/lib/templateApplication'
+import { attachCaptionEmotions, autoLayoutCaptions, captionsNeedingEmotion } from '@/components/dashboard/captionLayoutDirector'
 import {
   applyWordStyleChange,
   getPopupWordStyle,
   getPopupWordText,
   resetWordFontSize,
-  resetWordPosition,
+  clearPopupWordStyle,
   updatePopupWordStyle,
   wordPopupStyleKey,
   wordPopupTargetId,
@@ -268,6 +269,19 @@ export default function Dashboard() {
   const previewVideoElRef = useRef(null);
   // Stable: the timeline builds its live scrubber once per getter.
   const getPreviewVideoElement = useCallback(() => previewVideoElRef.current, []);
+  // Smart layout: one AI reading of the lines that have none yet (type,
+  // emotion, intensity, keywords). Signed-out sessions use the rules only.
+  const analyzeCaptionEmotions = useCallback(async (lines) => {
+    const token = await getEffectiveAuthToken(currentUser);
+    if (!token || !lines?.length) return null;
+    return apiRequest('/api/caption-emotions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lines, id_token: token }),
+      dedupeKey: 'caption-emotions',
+      cancelPrevious: true,
+    });
+  }, [currentUser]);
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
@@ -943,10 +957,12 @@ export default function Dashboard() {
     setCaptions(prev => updatePopupWordStyle(prev, wordPopup, resetWordFontSize));
   };
 
-  const handleResetWordPosition = () => {
+  // Reset in the word popup returns the word to its caption/template look:
+  // position, size, colour and effects together, with or without a template.
+  const handleResetWord = () => {
     if (!wordPopup) return;
     addToHistory();
-    setCaptions(prev => updatePopupWordStyle(prev, wordPopup, resetWordPosition));
+    setCaptions(prev => clearPopupWordStyle(prev, wordPopup));
   };
 
   const handleApplyTemplate = useCallback(async (templateStyle) => {
@@ -973,8 +989,43 @@ export default function Dashboard() {
       }));
     }
     setWordPopup(null);
-    pushHistory(application.captions, application.style);
-  }, [captionStyle, captions, duration, pushHistory, waveformData]);
+    if (!application.templateSnapshot) {
+      pushHistory(application.captions, application.style);
+      return;
+    }
+    // Smart mode (docs/caption-template-design-brief.md, section 7): the
+    // layout director reads every caption (what kind of line it is, how it was
+    // spoken) and picks the template look and the highlighted word for it.
+    // Captions whose look the user set keep it. The AI reading of the script
+    // refines this when it arrives; without it (signed out, offline, quota)
+    // the rules decide alone.
+    const frameRect = typeof document !== 'undefined' ? document.querySelector('.lekha-video-frame')?.getBoundingClientRect() : null;
+    const directorOptions = {
+      waveformData,
+      duration,
+      captionStyle: application.style,
+      frame: { width: 360, height: frameRect?.width ? (360 * frameRect.height) / frameRect.width : 640 },
+    };
+    const directed = autoLayoutCaptions(application.captions, directorOptions).captions;
+    pushHistory(directed, application.style);
+    const pending = captionsNeedingEmotion(directed);
+    if (!pending.length) return;
+    const templateKey = (caption) => `${caption?.template_20_id || ''}::${caption?.template_id || ''}`;
+    const appliedKey = templateKey(directed.find((caption) => caption && !caption.isTextElement));
+    try {
+      const data = await analyzeCaptionEmotions(pending);
+      if (!data?.success || !Array.isArray(data.lines)) return;
+      // Only while the same template is still applied; the reading is kept on
+      // the captions either way so Auto layout never pays for it twice.
+      setCaptions((prev) => {
+        const read = attachCaptionEmotions(prev, data.lines, pending);
+        const current = templateKey(read.find((caption) => caption && !caption.isTextElement));
+        return current === appliedKey ? autoLayoutCaptions(read, directorOptions).captions : read;
+      });
+    } catch {
+      // The rules-only layout already applied stays.
+    }
+  }, [analyzeCaptionEmotions, captionStyle, captions, duration, pushHistory, setCaptions, waveformData]);
 
   // Reset returns to the project as it was opened or generated.
   const handleRefresh = () => {
@@ -1060,6 +1111,7 @@ export default function Dashboard() {
             user={currentUser}
             captionStyle={captionStyle}
             waveformData={waveformData}
+            onAnalyzeCaptionEmotions={analyzeCaptionEmotions}
           />
         </Suspense>
       );
@@ -1163,7 +1215,7 @@ export default function Dashboard() {
           if (!isDesktopLayout) setWordPopup(null);
         }}
         onClose={() => setWordPopup(null)}
-        onResetPosition={handleResetWordPosition}
+        onResetWord={handleResetWord}
         onResetFontSize={handleResetWordFontSize}
         onHistoryRecord={recordWordStyleGesture}
       />

@@ -27,17 +27,6 @@ export const applyWordStyleChange = (existingStyle = {}, key, value) => {
   return updatedStyle
 }
 
-// Delete the position keys instead of writing zeros: a stored abs 0,0 reads as
-// "dragged to the top-left corner" in export.
-export const resetWordPosition = (style = {}) => {
-  const {
-    x: _x, y: _y, x_pct: _xPct, y_pct: _yPct,
-    abs_x_pct: _absX, abs_y_pct: _absY,
-    ...rest
-  } = style
-  return rest
-}
-
 export const resetWordFontSize = (style = {}) => {
   const { fontSize: _fontSize, frozenFontSize: _frozenFontSize, ...rest } = style
   return rest
@@ -57,6 +46,20 @@ export const updatePopupWordStyle = (captions, popup, update) => {
         [styleKey]: update(wordStyles[styleKey] || {}),
       },
     }
+  })
+}
+
+// The popup's reset: removes every edit on the word (position, size, colour,
+// gradient, emphasis, animation) so it renders exactly as its caption style
+// or template draws it. The key is deleted rather than set to zeros: a stored
+// abs 0,0 reads as "dragged to the top-left corner" in export.
+export const clearPopupWordStyle = (captions, popup) => {
+  const targetId = wordPopupTargetId(popup)
+  const styleKey = wordPopupStyleKey(popup)
+  return captions.map((caption) => {
+    if (caption.id !== targetId || !caption.wordStyles?.[styleKey]) return caption
+    const { [styleKey]: _removed, ...wordStyles } = caption.wordStyles
+    return { ...caption, wordStyles }
   })
 }
 

@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useState } from 'react'
+import { X } from 'lucide-react'
 
 const BRAND_KIT_MESSAGES = {
   conflict: 'Brand kits changed on another device. Browser edits are preserved. Export your kits in Layers before reloading.',
@@ -15,7 +16,9 @@ export default function EditorStatusBanners({
   onRetryBrandKitSync,
   onReloadBrandKits,
 }) {
-  const brandKitMessage = BRAND_KIT_MESSAGES[brandKitSyncStatus]
+  // Closing hides the banner for this status only; a different status shows it again.
+  const [dismissedBrandKitStatus, setDismissedBrandKitStatus] = useState(null)
+  const brandKitMessage = dismissedBrandKitStatus === brandKitSyncStatus ? null : BRAND_KIT_MESSAGES[brandKitSyncStatus]
   return (
     <>
       {sourceUnavailable && (
@@ -35,10 +38,19 @@ export default function EditorStatusBanners({
         </div>
       )}
       {brandKitMessage && (
-        <div role="status" className="flex flex-wrap gap-3 bg-sky-950 px-4 py-2 text-xs text-sky-100">
+        <div role="status" className="flex flex-wrap items-center gap-3 bg-sky-950 px-4 py-2 text-xs text-sky-100">
           <span>{brandKitMessage}</span>
           <button type="button" onClick={onRetryBrandKitSync} className="underline">Retry sync</button>
           <button type="button" onClick={onReloadBrandKits} className="underline">Reload cloud preferences</button>
+          <button
+            type="button"
+            aria-label="Close brand kit notification"
+            title="Close"
+            onClick={() => setDismissedBrandKitStatus(brandKitSyncStatus)}
+            className="ml-auto rounded p-0.5 text-sky-200 hover:bg-sky-900 hover:text-white"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
     </>

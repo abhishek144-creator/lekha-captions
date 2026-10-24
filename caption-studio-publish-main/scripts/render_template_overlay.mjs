@@ -45,15 +45,18 @@ import {
   getCaptionWordRevealTimes,
   getCaptionWordStartTime,
 } from '../src/components/dashboard/cptMotion.js';
+import { googleFontFamilyParam } from './render_font_axes.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const PACKAGED_RENDER_FONT_FAMILIES = new Set([
   'Baloo 2', 'Baloo Bhai 2', 'Baloo Da 2', 'Baloo Tamma 2', 'Catamaran',
   'Inter', 'Kalam', 'Mandali', 'Manjari', 'Marcellus', 'Montserrat',
-  'Mukta', 'Mukta Mahee', 'Mukta Malar', 'Noto Sans', 'Noto Sans Bengali',
+  // Mukta, Poppins and Rajdhani come from the render font bundle with every
+  // weight (build_render_font_bundle.mjs); the installed files are one weight.
+  'Mukta Mahee', 'Mukta Malar', 'Noto Sans', 'Noto Sans Bengali',
   'Noto Sans Devanagari', 'Noto Sans Kannada', 'Noto Sans Malayalam',
-  'Noto Sans Telugu', 'Poppins', 'Rajdhani', 'Roboto',
+  'Noto Sans Telugu', 'Roboto',
 ].map((family) => family.toLowerCase()));
 let bundledRenderFontCss = '';
 let bundledRenderFontFamilies = new Set();
@@ -175,6 +178,12 @@ async function main() {
   } else if (process.env.RENDER_FONT_BUNDLE_REQUIRED === '1') {
     throw new Error('RENDER_FONT_BUNDLE_PATH is required');
   }
+  payload.__geometry_audit = process.env.TEMPLATE_OVERLAY_GEOMETRY_AUDIT === '1';
+  // The editor's planner reads camelCase layoutSource; the export request
+  // carries it as layout_source.
+  (payload.captions || []).forEach((caption) => {
+    if (caption && caption.layout_source && !caption.layoutSource) caption.layoutSource = caption.layout_source;
+  });
   const canonicalEmphasisByCaptionId = new Map(
     buildEmotionalCaptionPlan(
       payload.captions || [],
@@ -212,13 +221,27 @@ async function main() {
       || payload.style?.secondary_color
       || canonical.emphasisColor
       || '';
+    caption.emphasis_color = templateEmphasisColor;
+    // The editor sends the keywords it shows, planned with the audio loudness
+    // (waveform) the export never receives. Re-planning here without it picked
+    // different keywords than the canvas (e.g. "usually" instead of "boring"),
+    // so the editor's choice wins; the planner only fills captions sent without.
+    const sentIndices = (Array.isArray(caption.imp_word_indices) ? caption.imp_word_indices : [])
+      .map(Number)
+      .filter((index) => Number.isInteger(index) && index >= 0);
+    const sentIndex = Number(caption.imp_word_index);
+    if (sentIndices.length || (Number.isInteger(sentIndex) && sentIndex >= 0)) {
+      caption.imp_word_indices = sentIndices.length ? sentIndices : [sentIndex];
+      caption.imp_word_index = Number.isInteger(sentIndex) && sentIndex >= 0 ? sentIndex : sentIndices[0];
+      return;
+    }
     caption.imp_word_index = canonical.impWordIndex;
     caption.imp_word_indices = canonical.impWordIndices || (
       Number.isFinite(Number(canonical.impWordIndex)) && Number(canonical.impWordIndex) >= 0
         ? [Number(canonical.impWordIndex)]
         : []
     );
-    caption.emphasis_color = templateEmphasisColor;
+    caption.imp_word_chosen = !!canonical.emphasisChosen;
   });
   const firstTemplateCaption = (payload.captions || []).find((caption) => (
     !caption?.is_text_element
@@ -350,6 +373,8 @@ async function main() {
           await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-3.html'), 'utf8'),
           await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-4.html'), 'utf8'),
           await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-5.html'), 'utf8'),
+          await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-studio.html'), 'utf8'),
+          await fs.readFile(path.join(projectRoot, 'src', 'assets', 'lekha-captions-lc-picks.html'), 'utf8'),
         ].map(extractHtmlStyle).join('\n')
       : extractHtmlStyle(sidebarTemplateHtml)
     : '';
@@ -493,7 +518,7 @@ async function main() {
   ].filter(Boolean));
   const remoteExportFontFamilies = [...exportFontFamilies].filter(needsRemoteRenderFont);
   const exportFontQuery = remoteExportFontFamilies
-    .map((fontFamily) => `family=${encodeURIComponent(String(fontFamily)).replace(/%20/g, '+')}`)
+    .map((fontFamily) => googleFontFamilyParam(fontFamily))
     .join('&');
   const exportFontLinks = exportFontQuery
     ? `<link href="https://fonts.googleapis.com/css2?${exportFontQuery}&display=swap" rel="stylesheet">`
@@ -504,7 +529,11 @@ async function main() {
     ${ADVANCED_TEMPLATE_RUNTIME_CSS}
 
     html, body {
-      margin: 0;
+      /* The LC / legacy template sheets loaded into this page carry their
+         gallery's body{padding:28px 22px …}; it shifted every exported caption
+         right and down of the canvas. The overlay page is always edge to edge. */
+      margin: 0 !important;
+      padding: 0 !important;
       width: 100%;
       height: 100%;
       background: transparent !important;
@@ -650,7 +679,10 @@ async function main() {
     .lekha-sidebar-export-template-shell .sw,
     .lekha-sidebar-export-template-shell .wbw-word,
     .lekha-sidebar-export-template-shell .sw-w,
-    .lekha-sidebar-export-template-shell .w,
+    /* LC merged lines (splice, baseline, serifbreak, weld) size each word with
+       its own class (xs/s/m/h/xh); the canvas keeps that size, so it must not
+       be reset to the line's here. */
+    .lekha-sidebar-export-template-shell .w:not(.xs):not(.s):not(.m):not(.h):not(.xh),
     .lekha-sidebar-export-template-shell .plain-s,
     .lekha-sidebar-export-template-shell .wbw,
     .lekha-sidebar-export-template-shell .wbw-line,
@@ -711,6 +743,11 @@ async function main() {
       vertical-align: baseline !important;
       color: var(--sidebar-emphasis-accent, #DDAA03) !important;
       -webkit-text-fill-color: var(--sidebar-emphasis-accent, #DDAA03) !important;
+    }
+    /* Mirrors the preview: words sharing a keyword row are not keywords. */
+    .lekha-sidebar-export-template-shell .ln.hero:not(.box) > .w:not(.is-emphasis) {
+      color: var(--template-primary, #FFFFFF) !important;
+      -webkit-text-fill-color: var(--template-primary, #FFFFFF) !important;
     }
     .lekha-sidebar-export-template-shell [data-paired-emphasis-underline='true'] {
       border-bottom: 0.055em solid currentColor !important;
@@ -3077,7 +3114,7 @@ async function main() {
             || payload.style?.template_id
             || payload.style?.template_20_id
           );
-          return isTemplate && Math.abs(end - segment.end) <= 0.002;
+          return (isTemplate || payload.__geometry_audit) && Math.abs(end - segment.end) <= 0.002;
         });
         const endingCaptionAudits = hasCaptionEndingAtSegment
           ? await page.evaluate((currentPayload, currentTime, segmentEnd) => {
@@ -3131,7 +3168,7 @@ async function main() {
               || currentPayload.style?.template_id
               || currentPayload.style?.template_20_id
             );
-            if (!isTemplate || Math.abs(end - segmentEnd) > 0.002) return null;
+            if ((!isTemplate && !currentPayload.__geometry_audit) || Math.abs(end - segmentEnd) > 0.002) return null;
             const anchor = document.querySelector(`[data-caption-render-index="${activeIndex}"]`);
             if (!anchor) {
               return {
@@ -3253,6 +3290,43 @@ async function main() {
               )),
               highlightedWords,
               highlightedWeightsMatch: new Set(highlightedWords.map((word) => word.fontWeight)).size <= 1,
+              // Opt-in (TEMPLATE_OVERLAY_GEOMETRY_AUDIT=1): each word's centre and
+              // size as a fraction of the frame, to compare with the canvas.
+              wordGeometry: currentPayload.__geometry_audit
+                ? Array.from(anchor.querySelectorAll('[data-word-key]'))
+                  .filter((word) => isVisibleTextParent(word, anchor))
+                  .map((word) => {
+                    const visual = word.querySelector('[data-source-word-visual="true"], [data-word-drag-visual="true"]') || word;
+                    const rect = visual.getBoundingClientRect();
+                    const styles = getComputedStyle(visual);
+                    return {
+                      text: String(visual.textContent || '').trim(),
+                      wordIndex: Number(String(word.dataset.wordKey).slice(String(caption.id).length + 1)),
+                      cx: (rect.left + rect.width / 2) / window.innerWidth,
+                      cy: (rect.top + rect.height / 2) / window.innerHeight,
+                      fs: Number.parseFloat(styles.fontSize) / window.innerWidth,
+                      color: styles.webkitTextFillColor || styles.color,
+                      emphasis: word.classList.contains('is-emphasis'),
+                    };
+                  })
+                : undefined,
+              boxGeometry: currentPayload.__geometry_audit
+                ? ['#overlay-root', ':scope', '.lekha-sidebar-export-template-shell', '.sb.active, .sblock.active', '.cpt, .nline', '.lc-card, .card'].map((selector) => {
+                  const element = selector === ':scope'
+                    ? anchor
+                    : (selector === '#overlay-root' ? document.querySelector(selector) : anchor.querySelector(selector));
+                  if (!element) return null;
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    selector,
+                    transform: getComputedStyle(element).transform,
+                    left: rect.left / window.innerWidth,
+                    right: rect.right / window.innerWidth,
+                    top: rect.top / window.innerHeight,
+                    bottom: rect.bottom / window.innerHeight,
+                  };
+                })
+                : undefined,
               script: caption.__export_script || 'latin',
             };
           }).filter(Boolean);

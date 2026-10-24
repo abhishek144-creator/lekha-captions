@@ -331,6 +331,12 @@ export const APPLIED_TEMPLATE_HOST_OVERRIDES = `
     color: var(--sidebar-emphasis-accent, #DDAA03) !important;
     -webkit-text-fill-color: var(--sidebar-emphasis-accent, #DDAA03) !important;
   }
+  /* A keyword row can also hold the words around the keyword; only the
+     caption's important words carry the accent. */
+  .lekha-applied-template-host .ln.hero:not(.box) > .w:not(.is-emphasis) {
+    color: var(--template-primary, #FFFFFF) !important;
+    -webkit-text-fill-color: var(--template-primary, #FFFFFF) !important;
+  }
   .lekha-applied-template-host [data-paired-emphasis-underline='true'] {
     border-bottom: 0.055em solid currentColor !important;
     padding-bottom: 0.05em !important;

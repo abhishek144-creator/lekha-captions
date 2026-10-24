@@ -217,6 +217,8 @@ AI_SYSTEM_DAILY_LIMIT = max(0, int(os.environ.get("AI_SYSTEM_DAILY_LIMIT", "500"
 # Caption translation is short, line-numbered text; the mini model handles it at a
 # fraction of the full model's price. Override per deployment if quality needs it.
 TRANSLATION_MODEL = os.environ.get("TRANSLATION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+# Caption emotion analysis is a short classification over the transcript.
+CAPTION_EMOTION_MODEL = os.environ.get("CAPTION_EMOTION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
 AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
     0.0, float(os.environ.get("AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD", "0"))
 )
@@ -385,6 +387,10 @@ PROCESS_SHARED_NETWORK_RATE_LIMIT = 300
 DETECT_LANGUAGE_USER_RATE_LIMIT = 10
 DETECT_LANGUAGE_SHARED_NETWORK_RATE_LIMIT = 200
 
+# Caption emotion analysis (smart layout director): one short call per video.
+CAPTION_EMOTION_USER_RATE_LIMIT = 20
+CAPTION_EMOTION_SHARED_NETWORK_RATE_LIMIT = 300
+
 ANALYTICS_RATE_LIMIT = 120  # max client analytics events per hour per IP
 
 SUPPORT_RATE_LIMIT = 5  # max public support submissions per hour per IP
@@ -485,10 +491,10 @@ MAX_PROXY_UPLOAD_BYTES = 8 * 1024 * 1024 if os.environ.get("GCS_MEDIA_BUCKET") e
 ALLOWED_CONTENT_PREFIXES = ("video/", "audio/")
 
 AI_DAILY_LIMITS = {
-    "free": {"process": 3, "translate": 5, "detect_language": 3},
-    "starter": {"process": 10, "translate": 20, "detect_language": 10},
-    "creator": {"process": 30, "translate": 60, "detect_language": 30},
-    "pro": {"process": 100, "translate": 200, "detect_language": 100},
+    "free": {"process": 3, "translate": 5, "detect_language": 3, "caption_emotion": 10},
+    "starter": {"process": 10, "translate": 20, "detect_language": 10, "caption_emotion": 30},
+    "creator": {"process": 30, "translate": 60, "detect_language": 30, "caption_emotion": 60},
+    "pro": {"process": 100, "translate": 200, "detect_language": 100, "caption_emotion": 200},
 }
 
 # Free accounts get a fixed number of transcriptions for the life of the
@@ -516,7 +522,7 @@ TRANSCRIPTION_CACHE_MAX_BYTES = 900_000
 CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS = 2 * 3600 * 1000
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-10-22-fixed-word-slots-v54"
+EXPORT_RENDERER_VERSION = "2026-10-24-cpt-shared-word-slots-v58"
 
 _CLIENT_RENDER_HINT_FIELDS = {
     "word_layouts",

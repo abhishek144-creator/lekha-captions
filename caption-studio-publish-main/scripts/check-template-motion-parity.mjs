@@ -606,9 +606,10 @@ for (const card of basicCards) {
     );
   }
 }
-// The selectable gallery now exposes the LC sections only. Legacy cards remain
-// in the all-card map so saved projects keep their extracted styles and exports.
-if (!sidebarGallerySource.includes('const SELECTABLE_TEMPLATE_CARDS = [...LC_TEMPLATE_CARDS]')) {
+// The selectable gallery now exposes the visible LC sections only (duplicate
+// LC sets are hidden). Legacy and hidden cards remain in the all-card map so
+// saved projects keep their extracted styles and exports.
+if (!sidebarGallerySource.includes('const SELECTABLE_TEMPLATE_CARDS = [...VISIBLE_LC_TEMPLATE_CARDS]')) {
   fail('left template gallery selectable LC catalog changed shape');
 }
 if (!/const ALL_TEMPLATE_CARDS = \[[\s\S]*?\.\.\.LEGACY_TEMPLATE_CARDS,[\s\S]*?\.\.\.LC_TEMPLATE_CARDS,[\s\S]*?\];/.test(sidebarGallerySource)) {

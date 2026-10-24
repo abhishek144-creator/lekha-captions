@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lekha Captions - Picks (T241-T275)</title>
+<!-- Templates picked by the owner's request (2026-10-23) from three design
+     files (Craft: 5 from each of 1/2/3-STYLE; Foundation and Signature: 10
+     each across the styles), converted to the LC DSL read by SidebarTemplateGallery20.jsx
+     (parseLcTemplateSet):
+       The Craft Set (T71-T95): The Comma T87, The Beam T94, The Skew T93,
+         The Triad T95, The Staircase T81
+       The Foundation Set (T96-T130): The Framework T102, The Tide T106,
+         The Kindling T115, The Meridian T108, The Gravity T104
+       The Signature Standard (T101-T135): The Parenthesis T113, The Static
+         T120, The Undertone T107, The Bulletin T128, The Backbeat T131
+       Added T256-T275: Craft The Ladder, The Ledge, The Whisper, The Anchor,
+         The Setup, The Hinge, The Column, The Cliff, The Pivot, The
+         Counterweight; Foundation The Voyage, The Lantern, The Passage, The
+         Northstar, The Skyline; Signature The Ellipsis, The Northline, The
+         Meter, The Weave, The Switchback
+     The source files reuse overlapping IDs, so these carry new ones. Every rule
+     is scoped to .lc-picks so the shared LC classes are untouched; motion stays
+     on word spans (data-lc-anim) so the editor clock and the export drive it. -->
+<style>
+.lc-card.lc-picks .cpt{gap:.08em}
+
+/* Template words take the caption font (!important in the editor host and the
+   export shell); these designed faces are kept the same way. Devanagari falls
+   back to Mukta / Tiro Devanagari Hindi. */
+.lc-card.lc-picks .ln.pk-osw .w,.lc-card.lc-picks .w.pk-osw{font-family:'Oswald',Mukta,sans-serif!important;font-weight:600}
+.lc-card.lc-picks .ln.pk-it .w{font-style:italic}
+.lc-card.lc-picks .ln.pk-ser .w{font-family:'Instrument Serif','Tiro Devanagari Hindi',Mukta,serif!important;font-style:italic;font-weight:400;letter-spacing:0}
+.lc-card.lc-picks .ln.pk-mono .w{font-family:'IBM Plex Mono',Mukta,monospace!important;font-weight:500}
+.lc-card.lc-picks .ln.pk-play .w{font-family:'Playfair Display','Tiro Devanagari Hindi',Mukta,serif!important;font-style:italic;font-weight:500;letter-spacing:0}
+.lc-card.lc-picks .ln.pk-syne .w{font-family:'Syne',Mukta,sans-serif!important;font-weight:800;letter-spacing:.01em}
+.lc-card.lc-picks .ln.pk-bebas .w{font-family:'Bebas Neue',Mukta,sans-serif!important;font-weight:400;letter-spacing:.08em}
+.lc-card.lc-picks .ln.pk-q .w{font-family:'Questrial',Mukta,sans-serif!important;font-weight:400;letter-spacing:.04em}
+.lc-card.lc-picks .ln.pk-corm .w{font-family:'Cormorant Garamond','Tiro Devanagari Hindi',Mukta,serif!important;font-style:italic;font-weight:600;letter-spacing:0}
+.lc-card.lc-picks .ln.pk-ral-lt .w{font-family:'Raleway',Mukta,sans-serif!important;font-style:italic;font-weight:500}
+.lc-card.lc-picks .ln.pk-ral-bk .w{font-family:'Raleway',Mukta,sans-serif!important;font-weight:900;text-transform:uppercase;letter-spacing:.02em}
+
+/* Voices */
+.lc-card.lc-picks .ln.pk-mut{color:rgba(255,255,255,.92)}
+.lc-card.lc-picks .ln.pk-track{letter-spacing:.42em;text-transform:uppercase}
+.lc-card.lc-picks .ln.pk-label{letter-spacing:.16em;text-transform:lowercase;color:rgba(255,255,255,.9)}
+.lc-card.lc-picks .ln.pk-echo{color:#d6ccff;margin-top:.12em}
+.lc-card.lc-picks .ln.pk-dim{color:#e8c860;margin-top:.14em}
+.lc-card.lc-picks .ln.pk-caps{text-transform:uppercase;letter-spacing:.12em}
+.lc-card.lc-picks .ln.pk-paren::before{content:'( '}
+.lc-card.lc-picks .ln.pk-paren::after{content:' )'}
+
+/* Compositions */
+.lc-card.lc-picks .cpt.pk-comma{width:100%;align-items:stretch;gap:.22em}
+.lc-card.lc-picks .cpt.pk-comma .ln:nth-child(1){text-align:left}
+.lc-card.lc-picks .cpt.pk-comma .ln:nth-child(2){text-align:right}
+.lc-card.lc-picks .cpt.pk-beam{width:fit-content;max-width:100%;margin:0 auto;align-items:flex-start}
+.lc-card.lc-picks .cpt.pk-beam .ln:nth-child(2){align-self:flex-end}
+.lc-card.lc-picks .cpt.pk-diag{width:100%;align-items:flex-start;text-align:left}
+.lc-card.lc-picks .cpt.pk-diag .ln:nth-child(2){margin-left:12%}
+.lc-card.lc-picks .cpt.pk-diag .ln:nth-child(3){margin-left:26%}
+.lc-card.lc-picks .cpt.pk-diag-r{width:100%;align-items:flex-end;text-align:right}
+.lc-card.lc-picks .cpt.pk-diag-r .ln:nth-child(2){margin-right:12%}
+.lc-card.lc-picks .cpt.pk-diag-r .ln:nth-child(3){margin-right:26%}
+.lc-card.lc-picks .cpt.pk-climb{width:100%;flex-direction:column-reverse;align-items:flex-start;text-align:left}
+.lc-card.lc-picks .cpt.pk-climb .ln:nth-child(2){margin-left:12%}
+.lc-card.lc-picks .cpt.pk-climb .ln:nth-child(3){margin-left:26%}
+.lc-card.lc-picks .cpt.pk-cascade{width:100%;align-items:stretch}
+.lc-card.lc-picks .cpt.pk-cascade .ln:nth-child(1){text-align:left}
+.lc-card.lc-picks .cpt.pk-cascade .ln:nth-child(2){text-align:center}
+.lc-card.lc-picks .cpt.pk-cascade .ln:nth-child(3){text-align:right}
+.lc-card.lc-picks .cpt.pk-zigzag{width:100%;align-items:stretch}
+.lc-card.lc-picks .cpt.pk-zigzag .ln:nth-child(odd){text-align:left}
+.lc-card.lc-picks .cpt.pk-zigzag .ln:nth-child(even){text-align:right}
+.lc-card.lc-picks .cpt.pk-stack{gap:0}
+.lc-card.lc-picks .cpt.pk-stack .ln{line-height:.98}
+.lc-card.lc-picks .cpt.pk-indent-r{width:100%;align-items:flex-end;text-align:right}
+.lc-card.lc-picks .cpt.pk-indent-r .ln:nth-child(2){margin-right:10%}
+.lc-card.lc-picks .cpt.pk-indent-r .ln:nth-child(3){margin-right:20%}
+.lc-card.lc-picks .cpt.pk-indent-l{width:100%;align-items:flex-start;text-align:left}
+.lc-card.lc-picks .cpt.pk-indent-l .ln:nth-child(2){margin-left:14%}
+.lc-card.lc-picks .cpt.pk-tail{width:fit-content;max-width:100%;margin:0 auto;align-items:center}
+.lc-card.lc-picks .cpt.pk-tail .ln:nth-child(3){align-self:flex-end}
+.lc-card.lc-picks .cpt.pk-pivot{width:fit-content;max-width:100%;margin:0 auto;align-items:center}
+.lc-card.lc-picks .cpt.pk-pivot .ln:nth-child(1){align-self:flex-start}
+.lc-card.lc-picks .cpt.pk-pivot .ln:nth-child(3){align-self:flex-end}
+.lc-card.lc-picks .cpt.pk-hinge{width:fit-content;max-width:100%;margin:0 auto;align-items:flex-start;text-align:left}
+.lc-card.lc-picks .cpt.pk-hinge .ln:nth-child(3){align-self:flex-end}
+
+/* Devanagari and other complex scripts: no capitals or tracking. */
+.lekha-applied-template-host[data-applied-template-complex-script='true'] .lc-card.lc-picks .w,
+.lekha-sidebar-export-template-shell[data-template-complex-script='true'] .lc-card.lc-picks .w{text-transform:none!important;letter-spacing:0!important}
+
+/* Body faces applied as the caption font (read by the export font tools). */
+.lc-picks-font-manifest-unused{font-family:'Inter'}
+.lc-picks-font-manifest-unused{font-family:'Sora'}
+.lc-picks-font-manifest-unused{font-family:'Space Mono'}
+.lc-picks-font-manifest-unused{font-family:'Oswald'}
+.lc-picks-font-manifest-unused{font-family:'Tiro Devanagari Hindi'}
+.lc-picks-font-manifest-unused{font-family:'Mukta'}
+
+/* Motions the LC library does not have (every keyframe ends fully visible). */
+@keyframes pkKick{0%{opacity:0;transform:translateX(-.5em)}70%{opacity:1;transform:translateX(.1em)}100%{opacity:1;transform:none}}
+@keyframes pkBloom{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:none}}
+@keyframes pkFlicker{0%{opacity:0}18%{opacity:1}26%{opacity:.25}34%{opacity:1}46%{opacity:.4}58%{opacity:1}100%{opacity:1}}
+@keyframes pkSlideSlow{from{opacity:0;transform:translateX(-.4em)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<script type="text/plain" id="lekha-lc-picks-templates">
+const TPLS=[
+
+/* ---------- from The Craft Set ---------- */
+T('T241','The Comma',3,[
+  C('pk-comma', L('m','when it hurts,','fade'), L('h pk-ser','keep walking.','tilt',{hero:1})),
+  N('pain is information.',{mode:'anim',bodyAnim:'rise',hero:'information.',heroAnim:'wipe'}),
+  C('pk-comma', L('m','when it is easy,','slider'), L('h pk-ser','stay humble.','tilt',{hero:1})),
+  N('both seasons end.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'end.'}),
+  N('walk anyway.',{mode:'block',blockAnim:'press'})
+]),
+T('T242','The Beam',3,[
+  C('pk-beam', L('xs pk-mono pk-track pk-mut','too many open tabs.','fade'), L('xh','CLOSE THEM.','press',{hero:1})),
+  N('focus is subtraction.',{mode:'anim',bodyAnim:'fade',hero:'subtraction.',heroAnim:'type'}),
+  C('pk-beam', L('xs pk-mono pk-track pk-mut','one goal at a time.','fade'), L('xh','FINISH.','press',{hero:1})),
+  N('finished beats brilliant.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'brilliant.'}),
+  N('close the loop.',{mode:'block',blockAnim:'wipe'})
+]),
+T('T243','The Skew',3,[
+  C('spine', L('s pk-mut','momentum','rise'), L('xh pk-osw pk-it','LOVES','slider',{hero:1}), L('m','the moving.','slider')),
+  N('objects in motion stay winning.',{mode:'anim',bodyAnim:'rise',hero:'motion',heroAnim:'slider'}),
+  C('rail', L('s pk-mut','start ugly,','fade'), L('xh pk-osw pk-it','FIX IT','stretch',{hero:1}), L('m','in flight.','slidel')),
+  N('perfection is procrastination.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'procrastination.'}),
+  C('pyramid', L('xh pk-osw pk-it','MOVE.','stamp',{hero:1}))
+]),
+T('T244','The Triad',3,[
+  C('pk-diag', L('s pk-mut','time to','fade'), L('xh pk-osw','BECOME','press',{hero:1}), L('h pk-ser','who you said.','tilt')),
+  N('you made a promise once.',{mode:'block',blockAnim:'fade'}),
+  C('pk-diag-r', L('s pk-ser pk-mut','keep it','fade'), L('xh pk-osw','QUIETLY,','roll',{hero:1}), L('xs pk-mono pk-mut','every morning.','slidel')),
+  N('promises are paid in mornings.',{mode:'anim',bodyAnim:'rise',hero:'paid',heroAnim:'flick'}),
+  N('your routine is the receipt.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'receipt.'})
+]),
+T('T245','The Staircase',2,[
+  C('pk-diag', L('s pk-mut','every','fade'), L('m','single','rise'), L('xh','DAY.','stamp',{hero:1})),
+  N('greatness is boring up close.',{mode:'block',blockAnim:'wipe'}),
+  C('pk-climb', L('s pk-mut','reps','fade'), L('m','build','rise'), L('xh','KINGS.','press',{hero:1})),
+  N('fall in love with the reps.',{mode:'anim',bodyAnim:'rise',hero:'reps.',heroAnim:'pop'}),
+  N('the crowd only sees the highlight.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'highlight.'})
+]),
+
+/* ---------- from The Foundation Set ---------- */
+T('T246','The Framework',3,[
+  C('pk-cascade', L('m','systems','slidel'), L('m','set the','slidel'), L('h','pace.','stamp',{hero:1})),
+  N('goals set the direction.',{mode:'anim',bodyAnim:'roll',hero:'direction.',heroAnim:'swing'}),
+  N('motivation fades.',{mode:'static',hero:'fades.'}),
+  C('spine', L('m','structure','rise'), L('m','stays','rise'), L('h','faithful.','flick',{hero:1})),
+  N('build the machine.',{mode:'block',blockAnim:'roll',styledHero:1,keywordStyle:'mark',hero:'machine.'})
+]),
+T('T247','The Tide',2,[
+  N('rhythm beats rage.',{mode:'anim',bodyAnim:'rise',hero:'rage.',heroAnim:'stamp'}),
+  C('pk-zigzag', L('m','show up','slidel'), L('m','recede','slider'), L('h','return stronger.','roll',{hero:1})),
+  N('the shore never argues with the sea.',{mode:'static',hero:'sea.'}),
+  N('be gently relentless.',{mode:'block',blockAnim:'slider',styledHero:1,keywordStyle:'mark',hero:'relentless.'})
+]),
+T('T248','The Kindling',2,[
+  N('start ugly.',{mode:'anim',bodyAnim:'stamp',hero:'ugly.',heroAnim:'wipe'}),
+  C('pk-stack', L('s','small','pop'), L('s','sparks','pop'), L('s','feed','pop'), L('xh','EMPIRES.','flick',{hero:1})),
+  N('perfection is damp wood.',{mode:'static',hero:'damp'}),
+  N('strike the match.',{mode:'block',blockAnim:'skew',styledHero:1,keywordStyle:'underline',hero:'match.'})
+]),
+T('T249','The Meridian',2,[
+  N('the middle is the test.',{mode:'block',blockAnim:'rise',styledHero:1,keywordStyle:'underline',hero:'test.'}),
+  C('pk-indent-r', L('m','halfway is where','drop'), L('m','most people','drop'), L('h','quit.','roll',{hero:1})),
+  N('you are not them.',{mode:'anim',bodyAnim:'wipeup',hero:'them.',heroAnim:'flick'}),
+  N('maps call it the meridian.',{mode:'static',hero:'meridian.'})
+]),
+T('T250','The Gravity',3,[
+  N('attention is currency.',{mode:'block',blockAnim:'pop',hero:'currency.'}),
+  N('spend it like it is rare.',{mode:'anim',bodyAnim:'skew',hero:'rare.',heroAnim:'wipe'}),
+  C('pyramid', L('m','one goal','stamp'), L('m','one season','stamp'), L('h','one obsession.','flick',{hero:1})),
+  N('everything else is noise.',{mode:'static',hero:'noise.'}),
+  C('pk-indent-l', L('m','gravity is just','slidel'), L('h','undivided attention.','stamp',{hero:1}))
+]),
+
+/* ---------- from The Signature Standard ---------- */
+T('T251','The Parenthesis',1,[
+  C('pyramid', L('m','say less.','rise'), L('s pk-paren pk-dim','mean all of it','fade')),
+  N('volume is not conviction.',{mode:'plain'}),
+  N('silence negotiates better.',{mode:'anim',bodyAnim:'track',hero:'negotiates',heroAnim:'pop'}),
+  N('let it speak.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'speak.'})
+]),
+T('T252','The Static',2,[
+  C('pyramid', L('m','the line went quiet.','pkFlicker',{dur:900,ease:'linear'}), L('m','we did not.','pkFlicker',{hero:1,dur:900,ease:'linear'})),
+  N('someone kept transmitting.',{mode:'plain'}),
+  C('pyramid', L('xs pk-track pk-mut','coordinates: known.','fade'), L('m','intentions, not.','pkFlicker',{hero:1,dur:900,ease:'linear'})),
+  N('trust the pattern, not the promise.',{mode:'anim',bodyAnim:'fade',hero:'pattern,',heroAnim:'flick'}),
+  N('stay tuned.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'tuned.'})
+]),
+T('T253','The Undertone',1,[
+  C('pyramid', L('m pk-play','some songs never leave.','fade'), L('s pk-play pk-echo','they just lower their voice.','fade')),
+  N('play it once more.',{mode:'plain'}),
+  N('let the year come back.',{mode:'anim',bodyAnim:'drop',hero:'year',heroAnim:'pop'}),
+  N('softly, this time.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'time.'})
+]),
+T('T254','The Bulletin',2,[
+  C('whisper', L('xs pk-mono pk-label','posted, 06:00','fade'), L('m pk-syne','kindness, unretracted.','pkKick',{hero:1,dur:550})),
+  N('corrections welcome. none filed.',{mode:'plain'}),
+  C('whisper', L('xs pk-mono pk-label','page one:','fade'), L('m pk-syne','someone tried.','wipe',{hero:1})),
+  N('print the small victories.',{mode:'anim',bodyAnim:'rise',hero:'small',heroAnim:'pop'}),
+  N('above the fold.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'fold.'})
+]),
+T('T255','The Backbeat',2,[
+  C('pyramid', L('m pk-bebas','the pocket is a place.','roll'), L('m pk-bebas','live there.','roll',{hero:1})),
+  N('one and three keep the rent low.',{mode:'plain'}),
+  C('pyramid', L('xs pk-bebas pk-track pk-mut','count it in','fade'), L('h pk-bebas','the room follows.','roll',{hero:1})),
+  N('groove forgives everything but rushing.',{mode:'anim',bodyAnim:'pop',hero:'forgives',heroAnim:'roll'}),
+  N('sit back.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'back.'})
+]),
+
+/* ---------- The Craft Set, 1-STYLE ---------- */
+T('T256','The Ladder',1,[
+  C('spine', L('s','stop waiting for','fade'), L('xh','PERMISSION.','stamp',{hero:1})),
+  N('nobody is coming to save you.',{mode:'block',blockAnim:'fade'}),
+  N('you already have everything you need.',{mode:'anim',bodyAnim:'rise',hero:'need.',heroAnim:'flick'}),
+  N('start before you feel ready.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'ready.'}),
+  C('rail', L('s pk-mut','the ladder is','fade'), L('h','YOURS.','stamp',{hero:1}))
+]),
+T('T257','The Ledge',1,[
+  C('rail', L('s pk-mut','quiet, daily','rise'), L('xh','DISCIPLINE.','press',{hero:1})),
+  N('motivation fades by tuesday.',{mode:'block',blockAnim:'rise'}),
+  N('systems carry you through friday.',{mode:'anim',bodyAnim:'slidel',hero:'friday.',heroAnim:'roll'}),
+  C('spine', L('s pk-mut','the body','fade'), L('xh','SHOWS UP.','roll',{hero:1})),
+  N('that is the whole secret.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'secret.'})
+]),
+T('T258','The Whisper',1,[
+  C('whisper', L('xs pk-mono pk-mut','listen,','fade'), L('h pk-ser','silence teaches.','tilt',{hero:1})),
+  N('the noise wants your attention.',{mode:'block',blockAnim:'fade'}),
+  N('your peace is expensive.',{mode:'anim',bodyAnim:'drop',hero:'peace',heroAnim:'wipe'}),
+  N('guard it like treasure.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'treasure.'}),
+  C('rail', L('xs pk-mono pk-mut','again,','fade'), L('h pk-ser','listen.','tilt',{hero:1}))
+]),
+T('T259','The Anchor',1,[
+  C('pk-tail', L('s pk-mut','your','fade'), L('xh','FOCUS','drop',{hero:1}), L('s','decides everything.','slidel')),
+  N('attention is the new currency.',{mode:'block',blockAnim:'wipe'}),
+  N('spend it on what builds you.',{mode:'anim',bodyAnim:'rise',hero:'builds',heroAnim:'stamp'}),
+  N('cut the rest without apology.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'apology.'})
+]),
+T('T260','The Setup',1,[
+  C('spine', L('xs pk-mono pk-track pk-mut','the hardest part','fade'), L('xh','IS STARTING.','press',{hero:1})),
+  N('the first step is the filter.',{mode:'block',blockAnim:'drop'}),
+  N('most people never begin.',{mode:'anim',bodyAnim:'fade',hero:'begin.',heroAnim:'roll'}),
+  N('beginning makes you rare.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'rare.'}),
+  C('rail', L('xs pk-mono pk-track pk-mut','so start','fade'), L('h','TODAY.','elastic',{hero:1}))
+]),
+
+/* ---------- The Craft Set, 2-STYLE ---------- */
+T('T261','The Hinge',2,[
+  C('pk-hinge', L('s','to build','rise'), L('h','SOMETHING REAL','stamp',{hero:1}), L('h pk-ser','takes time.','tilt')),
+  N('shortcuts collapse quietly.',{mode:'block',blockAnim:'fade'}),
+  C('rail', L('m pk-ser','you need','fade'), L('h','PATIENCE.','swing',{hero:1,box:1})),
+  N('rushing ruins the recipe.',{mode:'anim',bodyAnim:'slider',hero:'rushing',heroAnim:'press'}),
+  N('let it cook.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'cook.'})
+]),
+T('T262','The Column',2,[
+  C('rail', L('s','stop trying to impress','fade'), L('xh','EVERYONE.','rise',{hero:1})),
+  N('half of them are not watching.',{mode:'block',blockAnim:'rise'}),
+  C('spine', L('s','start trying to','slider'), L('h','RESPECT','pop',{hero:1}), L('m pk-ser pk-mut','yourself.','tilt')),
+  N('self-respect changes your posture.',{mode:'anim',bodyAnim:'drop',hero:'self-respect',heroAnim:'wipe'}),
+  N('and posture changes rooms.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'rooms.'})
+]),
+T('T263','The Cliff',2,[
+  C('rail', L('xh','COURAGE','stamp',{hero:1}), L('m pk-mut','is a','fade'), L('h pk-ser','decision.','tilt')),
+  N('fear never fully leaves.',{mode:'block',blockAnim:'fade'}),
+  C('spine', L('h','DO IT','pop',{hero:1}), L('h pk-ser','scared,','roll'), L('m pk-mut','anyway.','slider')),
+  N('action shrinks fear.',{mode:'anim',bodyAnim:'rise',hero:'shrinks',heroAnim:'press'}),
+  N('waiting only feeds it.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'feeds'})
+]),
+T('T264','The Pivot',2,[
+  C('pk-pivot', L('s pk-mut','your','fade'), L('xh','HABITS','rise',{hero:1}), L('s pk-mut','are voting.','fade')),
+  N('every choice is a ballot.',{mode:'block',blockAnim:'rise'}),
+  C('pk-pivot', L('s pk-mut','the','fade'), L('xh','FUTURE','elastic',{hero:1}), L('s pk-mut','is counting.','slidel')),
+  N('vote like it matters.',{mode:'anim',bodyAnim:'drop',hero:'matters.',heroAnim:'stamp'}),
+  N('because it does.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'does.'})
+]),
+
+/* ---------- The Craft Set, 3-STYLE ---------- */
+T('T265','The Counterweight',3,[
+  C('pk-beam', L('xh','LOUD','stamp',{hero:1}), L('s pk-mut','is not the same as right.','slidel')),
+  N('noise is a strategy for the empty.',{mode:'anim',bodyAnim:'fade',hero:'strategy',heroAnim:'roll'}),
+  C('pk-beam', L('s pk-ser pk-mut','quiet work','rise'), L('xh','WINS.','press',{hero:1})),
+  N('depth needs no volume.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'volume.'}),
+  N('stay deep.',{mode:'block',blockAnim:'unfold'})
+]),
+
+/* ---------- The Foundation Set ---------- */
+T('T266','The Voyage',1,[
+  C('pk-diag', L('m','ships are not built','slidel'), L('m','for the','slidel'), L('h','harbor.','wipe',{hero:1})),
+  N('storms are tuition.',{mode:'static',hero:'tuition.'}),
+  N('sail anyway.',{mode:'anim',bodyAnim:'wipe',hero:'anyway.',heroAnim:'pop'}),
+  N('distance pays in perspective.',{mode:'static',hero:'perspective.'})
+]),
+T('T267','The Lantern',1,[
+  C('pyramid', L('m','hold','fade'), L('m','your light','fade'), L('h','steady for someone.','wipe',{hero:1})),
+  N('dark rooms are only unlit.',{mode:'static',hero:'unlit.'}),
+  N('be the proof.',{mode:'anim',bodyAnim:'rise',hero:'proof.',heroAnim:'flick'}),
+  N('light travels farther than doubt.',{mode:'static',hero:'farther'})
+]),
+T('T268','The Passage',1,[
+  C('pk-indent-r', L('m','doors close so','wipe'), L('m','hallways can','wipe'), L('h','appear.','pop',{hero:1})),
+  N('grieve, then go.',{mode:'static',hero:'go.'}),
+  N('the next room is listening.',{mode:'anim',bodyAnim:'slidel',hero:'listening.',heroAnim:'type'}),
+  N('carry only the lesson.',{mode:'static',hero:'lesson.'})
+]),
+T('T269','The Northstar',2,[
+  N('purpose is a direction, not an address.',{mode:'anim',bodyAnim:'rise',hero:'direction,',heroAnim:'type'}),
+  C('pk-stack', L('m','when lost','wipe'), L('m','look up','wipe'), L('h','not around.','flick',{hero:1})),
+  N('stars do not hurry.',{mode:'static',hero:'hurry.'}),
+  N('follow yours.',{mode:'block',blockAnim:'slidel',hero:'yours.'})
+]),
+T('T270','The Skyline',3,[
+  C('spine', L('m','every skyline','rise'), L('m','started','rise'), L('h','underground.','roll',{hero:1})),
+  N('foundations are invisible work.',{mode:'anim',bodyAnim:'pop',hero:'invisible',heroAnim:'swing'}),
+  N('nobody claps for concrete.',{mode:'static',hero:'concrete.'}),
+  C('pk-climb', L('m','pour','wipeup'), L('m','rise','wipeup'), L('h','repeat.','flick',{hero:1})),
+  N('the view is patient.',{mode:'block',blockAnim:'slidel',styledHero:1,keywordStyle:'mark',hero:'patient.'})
+]),
+
+/* ---------- The Signature Standard ---------- */
+T('T271','The Ellipsis',1,[
+  C('pk-indent-l', L('s pk-q pk-mut','you kept waiting for a sign...','pkSlideSlow',{unit:'line'}), L('m pk-q','this is it.','pkKick',{hero:1,dur:550,unit:'line'})),
+  N('no thunder. no spotlight.',{mode:'plain'}),
+  N('just a quiet yes.',{mode:'anim',bodyAnim:'fade',hero:'quiet',heroAnim:'pop'}),
+  N('begin anyway.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'anyway.'})
+]),
+T('T272','The Northline',2,[
+  C('spine', L('s pk-ral-lt pk-mut','maps end.','swing'), L('m pk-ral-bk','curiosity does not.','swing',{hero:1})),
+  N('pack light. wonder heavy.',{mode:'plain'}),
+  C('spine', L('s pk-ral-lt pk-mut','no signal,','swing'), L('m pk-ral-bk','full presence.','wipeup',{hero:1})),
+  N('horizons negotiate with walkers only.',{mode:'anim',bodyAnim:'rise',hero:'negotiate',heroAnim:'pop'}),
+  N('keep walking.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'walking.'})
+]),
+T('T273','The Meter',3,[
+  C('spine', L('xs pk-mono pk-caps pk-mut','recorded, never aired:','fade'), L('m pk-mono','the witness stayed.','wipe',{hero:1})),
+  N('some archives breathe.',{mode:'plain'}),
+  C('spine', L('s pk-mono pk-mut','names, redacted.','wipe'), L('m pk-mono','courage was not.','wipe',{hero:1})),
+  N('the record remembers.',{mode:'anim',bodyAnim:'fade',hero:'remembers.',heroAnim:'wipe'}),
+  N('even when we forget.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'forget.'}),
+  C('spine', L('s pk-mono','end of tape.','fade'), L('xs pk-mono pk-caps pk-mut','not of story.','fade'))
+]),
+T('T274','The Weave',3,[
+  C('pk-indent-l', L('m pk-corm','your name threads through','pkSlideSlow',{unit:'line'}), L('m pk-corm','every plan i make.','pkSlideSlow',{unit:'line'})),
+  N('i stopped untangling it.',{mode:'plain'}),
+  C('pyramid', L('m pk-corm','two threads,','fade'), L('h pk-corm','one tension, one cloth.','rise',{hero:1})),
+  N('love is woven, not declared.',{mode:'anim',bodyAnim:'rise',hero:'woven,',heroAnim:'pop'}),
+  N('stay threaded.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'threaded.'}),
+  C('pyramid', L('h pk-corm','knot by gentle knot.','pkBloom',{hero:1}))
+]),
+T('T275','The Switchback',3,[
+  C('pk-zigzag', L('m pk-osw pk-caps','up the grade,','slidel',{unit:'line'}), L('m pk-osw pk-caps','against the wind,','slider',{unit:'line'}), L('m pk-osw pk-caps','past the doubt.','slidel',{hero:1,unit:'line'})),
+  N('legs argue. you preside.',{mode:'plain'}),
+  C('pk-zigzag', L('s pk-osw pk-caps pk-mut','mile ten:','slidel'), L('m pk-osw pk-caps','negotiations failed.','slider',{hero:1})),
+  N('the summit audits effort.',{mode:'anim',bodyAnim:'rise',hero:'audits',heroAnim:'pop'}),
+  N('pay in full.',{mode:'wbw',styledHero:1,keywordStyle:'underline',hero:'full.'}),
+  C('pyramid', L('s pk-mut','then descend','fade'), L('m','victorious, quietly.','rise',{hero:1}))
+])
+];
+const PICKS_ACCENTS={"T241":"#f1e5ba","T242":"#ffab4a","T243":"#ffe23a","T244":"#7dffc4","T245":"#ff9ad5","T246":"#4dd6ff","T247":"#7ec8ff","T248":"#ffa94d","T249":"#ffd34d","T250":"#b78cff","T251":"#d4af37","T252":"#00e5ff","T253":"#c4b5fd","T254":"#ffd166","T255":"#a78bfa","T256":"#6fa8ff","T257":"#ccff20","T258":"#9be7c4","T259":"#ff8a5c","T260":"#ffb36b","T261":"#ffd84a","T262":"#7dd3fc","T263":"#ff8a8e","T264":"#a7f3d0","T265":"#d9f99d","T266":"#93c5fd","T267":"#fcd34d","T268":"#c084fc","T269":"#fbbf24","T270":"#f59e0b","T271":"#3ddc97","T272":"#ffb547","T273":"#5ad1ff","T274":"#ff9db8","T275":"#4dd0e1"};
+const PICKS_FONTS={"T241":"Inter","T242":"Inter","T243":"Inter","T244":"Inter","T245":"Inter","T246":"Sora","T247":"Sora","T248":"Sora","T249":"Sora","T250":"Sora","T251":"Sora","T252":"Space Mono","T253":"Playfair Display","T254":"Syne","T255":"Bebas Neue","T256":"Inter","T257":"Inter","T258":"Inter","T259":"Inter","T260":"Inter","T261":"Inter","T262":"Inter","T263":"Inter","T264":"Inter","T265":"Inter","T266":"Sora","T267":"Sora","T268":"Sora","T269":"Sora","T270":"Sora","T271":"Sora","T272":"Sora","T273":"Space Mono","T274":"Sora","T275":"Oswald"};
+</script>
+</body>
+</html>

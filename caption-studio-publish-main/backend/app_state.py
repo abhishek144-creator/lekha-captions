@@ -81,6 +81,7 @@ _promo_rate: Dict[str, list] = {}
 _translate_rate: Dict[str, list] = {}
 _process_rate: Dict[str, list] = {}
 _detect_language_rate: Dict[str, list] = {}
+_caption_emotion_rate: Dict[str, list] = {}
 _analytics_rate: Dict[str, list] = {}
 _support_rate: Dict[str, list] = {}
 
@@ -113,6 +114,7 @@ _RATE_LIMIT_NAMESPACES = (
     (_translate_rate, "translate"),
     (_process_rate, "process"),
     (_detect_language_rate, "detect-language"),
+    (_caption_emotion_rate, "caption-emotion"),
     (_analytics_rate, "analytics"),
     (_support_rate, "support"),
 )

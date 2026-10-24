@@ -1,0 +1,1088 @@
+[
+ {
+  "name": "Editorial",
+  "best": "Essays, commentary, talking-head opinion",
+  "id": "editorial",
+  "motion": "fade",
+  "kfx": "italic",
+  "motionText": "Gentle fade up",
+  "keyText": "Turns into an italic serif in soft gold",
+  "theme": {
+   "fb": "Inter",
+   "wb": 500,
+   "fk": "Inter",
+   "wk": 500,
+   "fq": "'Playfair Display'",
+   "fs": "5.6cqw",
+   "c1": "#f5f2ec",
+   "c2": "#e9d8b4",
+   "hif": "Mukta",
+   "hik": "'Tiro Devanagari Hindi', Mukta"
+  },
+  "scene": "linear-gradient(170deg, #3d4148, #16181c)",
+  "skin": "#c99a7a",
+  "shirt": "#2a2d33",
+  "lines": [
+   {
+    "comp": "display",
+    "pos": 30,
+    "align": "left",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 76,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "quote",
+    "pos": 40,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "split",
+    "pos": 58,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "label",
+    "pos": 74,
+    "align": "left",
+    "unit": "block",
+    "label": [
+     "The point",
+     "मुद्दा"
+    ]
+   }
+  ],
+  "en": [
+   "Most advice online is *noise not wisdom",
+   "The useful kind is usually *boring to hear",
+   "Do the obvious thing *longer than anyone else",
+   "That is the whole *secret really",
+   "Consistency beats *intensity every time"
+  ],
+  "hi": [
+   "ऑनलाइन ज़्यादातर सलाह *शोर है ज्ञान नहीं",
+   "काम की सलाह अक्सर सुनने में *उबाऊ होती है",
+   "जो ज़ाहिर है वही *ज़्यादा देर तक करो",
+   "बस यही है पूरा *राज़",
+   "निरंतरता हर बार *तीव्रता को हराती है"
+  ]
+ },
+ {
+  "name": "Broadcast",
+  "best": "Documentary, history, explainers",
+  "id": "doc",
+  "motion": "cut",
+  "kfx": "none",
+  "motionText": "Broadcast cut, no movement",
+  "keyText": "Pale subtitle yellow",
+  "theme": {
+   "fb": "Inter",
+   "wb": 500,
+   "fk": "Inter",
+   "wk": 600,
+   "fs": "5.2cqw",
+   "c1": "#ffffff",
+   "c2": "#f2e6b8",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(175deg, #6b6155, #2b2723 70%)",
+  "skin": "#a8765a",
+  "shirt": "#3a352f",
+  "lines": [
+   {
+    "comp": "label",
+    "pos": 16,
+    "align": "left",
+    "unit": "block",
+    "label": [
+     "Mumbai, 1993",
+     "मुंबई, 1993"
+    ]
+   },
+   {
+    "comp": "inline",
+    "pos": 82,
+    "align": "center",
+    "unit": "block"
+   },
+   {
+    "comp": "split",
+    "pos": 50,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "label",
+    "pos": 80,
+    "align": "center",
+    "unit": "block",
+    "label": [
+     "Narrator",
+     "सूत्रधार"
+    ]
+   },
+   {
+    "comp": "display",
+    "pos": 46,
+    "align": "center",
+    "unit": "line"
+   }
+  ],
+  "en": [
+   "In the summer of 1993 the mills went *silent",
+   "Thousands of workers lost their *jobs overnight",
+   "Nobody saw it *coming",
+   "My father was one of *them",
+   "This is the story of what *happened next"
+  ],
+  "hi": [
+   "1993 की गर्मियों में मिलें *खामोश हो गईं",
+   "हज़ारों मज़दूरों की *नौकरी रातों रात गई",
+   "किसी को इसका *अंदाज़ा नहीं था",
+   "मेरे पिता भी उनमें *थे",
+   "यह कहानी है उसके बाद क्या *हुआ"
+  ]
+ },
+ {
+  "name": "Soft Focus",
+  "best": "Wellness, yoga, slow living",
+  "id": "soft",
+  "motion": "blur",
+  "kfx": "light",
+  "motionText": "Soft blur sharpening into focus",
+  "keyText": "Pale sage, medium weight inline, light when it stands alone",
+  "theme": {
+   "fb": "'Work Sans'",
+   "wb": 400,
+   "fk": "'Work Sans'",
+   "wk": 500,
+   "fs": "5.6cqw",
+   "c1": "#fbf7f1",
+   "c2": "#e3f0dc",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(180deg, #8f9a8a, #5c6858 55%, #2c3229)",
+  "skin": "#d4a587",
+  "shirt": "#e9e4d8",
+  "lines": [
+   {
+    "comp": "split",
+    "pos": 40,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 74,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "display",
+    "pos": 30,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 62,
+    "align": "right",
+    "unit": "char"
+   },
+   {
+    "comp": "label",
+    "pos": 78,
+    "align": "center",
+    "unit": "block",
+    "label": [
+     "Breathe",
+     "साँस लो"
+    ]
+   }
+  ],
+  "en": [
+   "Start the morning without your *phone",
+   "Just ten minutes of *quiet and light",
+   "Notice your breath slowing *down",
+   "Let the day come to you *gently",
+   "Small rituals make a *calm life"
+  ],
+  "hi": [
+   "सुबह की शुरुआत *फ़ोन के बिना करो",
+   "बस दस मिनट *शांति और रोशनी",
+   "महसूस करो साँस *धीमी हो रही है",
+   "दिन को *आराम से आने दो",
+   "छोटी आदतें बनाती हैं *सुकून भरी ज़िंदगी"
+  ]
+ },
+ {
+  "name": "Read-along",
+  "best": "Podcasts, interviews, long-form",
+  "id": "read",
+  "motion": "lit",
+  "kfx": "bold",
+  "motionText": "Full line on screen, spoken words brighten",
+  "keyText": "Heavier weight with a fine underline",
+  "theme": {
+   "fb": "Mulish",
+   "wb": 700,
+   "fk": "Mulish",
+   "wk": 800,
+   "fs": "6cqw",
+   "c1": "#ffffff",
+   "c2": "#ffffff",
+   "hif": "Mukta"
+  },
+  "scene": "radial-gradient(90% 70% at 70% 30%, #5e4a3e, #1a1411)",
+  "skin": "#a8765a",
+  "shirt": "#3a2a22",
+  "lines": [
+   {
+    "comp": "inline",
+    "pos": 72,
+    "align": "center"
+   },
+   {
+    "comp": "display",
+    "pos": 38,
+    "align": "left"
+   },
+   {
+    "comp": "label",
+    "pos": 74,
+    "align": "left",
+    "label": [
+     "Guest",
+     "मेहमान"
+    ]
+   },
+   {
+    "comp": "split",
+    "pos": 56,
+    "align": "center"
+   },
+   {
+    "comp": "quote",
+    "pos": 44,
+    "align": "left"
+   }
+  ],
+  "en": [
+   "I almost quit three times in the *first year",
+   "What kept me going was one *customer email",
+   "She said our app gave her *time back",
+   "That one line became our *mission",
+   "We still read every single *email today"
+  ],
+  "hi": [
+   "पहले साल में मैंने तीन बार लगभग *छोड़ दिया",
+   "मुझे जिस चीज़ ने रोका वो था एक *ग्राहक का ईमेल",
+   "उन्होंने लिखा हमारी ऐप ने उन्हें *समय लौटाया",
+   "वही एक लाइन बन गई हमारा *मिशन",
+   "हम आज भी हर *ईमेल पढ़ते हैं"
+  ]
+ },
+ {
+  "name": "Baseline",
+  "best": "Real estate, architecture, interiors",
+  "id": "baseline",
+  "motion": "rise",
+  "kfx": "light",
+  "motionText": "Text rises from behind each line",
+  "keyText": "Large and light in warm stone",
+  "theme": {
+   "fb": "Montserrat",
+   "wb": 500,
+   "fk": "Montserrat",
+   "wk": 600,
+   "fs": "4.4cqw",
+   "tt": "uppercase",
+   "ls": "0.18em",
+   "c1": "#ffffff",
+   "c2": "#dccdb6",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(180deg, #8c8478, #57514a 55%, #2a2622)",
+  "skin": "#c99a7a",
+  "shirt": "#2f2c28",
+  "lines": [
+   {
+    "comp": "label",
+    "pos": 28,
+    "align": "left",
+    "unit": "word",
+    "label": [
+     "Bandra West",
+     "बांद्रा वेस्ट"
+    ]
+   },
+   {
+    "comp": "split",
+    "pos": 54,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 76,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "display",
+    "pos": 34,
+    "align": "right",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 80,
+    "align": "left",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "Three bedroom residence with *sea views",
+   "Double height *living room",
+   "Natural light from sunrise to *sunset",
+   "Designed around *quiet",
+   "Private viewings open this *weekend"
+  ],
+  "hi": [
+   "समुद्र के नज़ारे वाला तीन बेडरूम *घर",
+   "डबल हाइट *लिविंग रूम",
+   "सुबह से शाम तक *प्राकृतिक रोशनी",
+   "चारों तरफ़ *शांति के लिए बना",
+   "इस *वीकेंड निजी विज़िट खुली हैं"
+  ]
+ },
+ {
+  "name": "Tracking",
+  "best": "Fashion, beauty campaigns",
+  "id": "track",
+  "motion": "track",
+  "kfx": "light",
+  "motionText": "Wide letter-spacing settles into place",
+  "keyText": "Light weight in blush",
+  "theme": {
+   "fb": "Raleway",
+   "wb": 500,
+   "fk": "Raleway",
+   "wk": 500,
+   "fs": "4.6cqw",
+   "tt": "uppercase",
+   "ls": "0.2em",
+   "c1": "#ffffff",
+   "c2": "#ead7cc",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(170deg, #7d6a64, #4a3c39 55%, #211a19)",
+  "skin": "#d6a48a",
+  "shirt": "#cfc4bd",
+  "lines": [
+   {
+    "comp": "split",
+    "pos": 46,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "label",
+    "pos": 78,
+    "align": "center",
+    "unit": "line",
+    "label": [
+     "Autumn / Winter",
+     "शरद / शीत"
+    ]
+   },
+   {
+    "comp": "display",
+    "pos": 30,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 72,
+    "align": "right",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 50,
+    "align": "center",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "The new collection is all about *texture",
+   "Raw silk soft wool and *linen",
+   "Cut for *movement",
+   "Made in small batches in *Jaipur",
+   "Available from *Friday"
+  ],
+  "hi": [
+   "नया कलेक्शन पूरी तरह *टेक्सचर पर है",
+   "कच्चा सिल्क मुलायम ऊन और *लिनन",
+   "आसानी से *चलने के लिए कटा",
+   "जयपुर में छोटे बैच में *बना",
+   "उपलब्ध है *शुक्रवार से"
+  ]
+ },
+ {
+  "name": "Block Reveal",
+  "best": "Tech, startups, product updates",
+  "id": "block",
+  "motion": "block",
+  "kfx": "none",
+  "motionText": "A colour block wipes across and leaves the text",
+  "keyText": "Muted blue, bold",
+  "theme": {
+   "fb": "'Space Grotesk'",
+   "wb": 500,
+   "fk": "'Space Grotesk'",
+   "wk": 700,
+   "fs": "5.6cqw",
+   "c1": "#f4f6fa",
+   "c2": "#8ea9ff",
+   "hif": "Mukta"
+  },
+  "scene": "radial-gradient(90% 70% at 30% 20%, #2d3446, #0d0f15 70%)",
+  "skin": "#b4836a",
+  "shirt": "#1c2230",
+  "lines": [
+   {
+    "comp": "display",
+    "pos": 32,
+    "align": "left",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 74,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "label",
+    "pos": 70,
+    "align": "left",
+    "unit": "line",
+    "label": [
+     "Version 2.0",
+     "वर्ज़न 2.0"
+    ]
+   },
+   {
+    "comp": "split",
+    "pos": 50,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 80,
+    "align": "center",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "We rebuilt the editor from *scratch",
+   "It now opens in under *one second",
+   "Offline mode works on every *device",
+   "And it is *free",
+   "Update rolling out *today"
+  ],
+  "hi": [
+   "हमने एडिटर शुरू से *दोबारा बनाया",
+   "अब यह *एक सेकंड से कम में खुलता है",
+   "ऑफलाइन मोड हर *डिवाइस पर चलता है",
+   "और यह *फ्री है",
+   "अपडेट आज से *शुरू"
+  ]
+ },
+ {
+  "name": "Hairline",
+  "best": "Corporate, LinkedIn, finance",
+  "id": "hair",
+  "motion": "slide",
+  "kfx": "hair",
+  "motionText": "Short slide from the left, with a fine rule drawn under the block",
+  "keyText": "Black weight, no colour",
+  "theme": {
+   "fb": "Lato",
+   "wb": 400,
+   "fk": "Lato",
+   "wk": 900,
+   "fs": "5.8cqw",
+   "c1": "#ffffff",
+   "c2": "#a3c9ba",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(170deg, #4b5a6e, #1b2230)",
+  "skin": "#c99a7a",
+  "shirt": "#22314d",
+  "lines": [
+   {
+    "comp": "label",
+    "pos": 70,
+    "align": "left",
+    "unit": "word",
+    "label": [
+     "Q3 results",
+     "तीसरी तिमाही"
+    ]
+   },
+   {
+    "comp": "split",
+    "pos": 46,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 78,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "display",
+    "pos": 32,
+    "align": "left",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 76,
+    "align": "right",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "Revenue grew *28% this quarter",
+   "Driven mostly by *retention",
+   "Churn fell for the third quarter in a *row",
+   "We are hiring across *engineering",
+   "Full report is in the *description"
+  ],
+  "hi": [
+   "इस तिमाही रेवेन्यू *28% बढ़ा",
+   "मुख्य वजह रही *रिटेंशन",
+   "लगातार तीसरी तिमाही में चर्न *घटा",
+   "हम *इंजीनियरिंग में भर्ती कर रहे हैं",
+   "पूरी रिपोर्ट *डिस्क्रिप्शन में है"
+  ]
+ },
+ {
+  "name": "Ink",
+  "best": "Storytelling, books, poetry",
+  "id": "ink",
+  "motion": "wipe",
+  "kfx": "smallcaps",
+  "motionText": "Written on with a left-to-right wipe",
+  "keyText": "Small capitals in clay",
+  "theme": {
+   "fb": "'Libre Baskerville'",
+   "wb": 400,
+   "fk": "'Libre Baskerville'",
+   "wk": 400,
+   "fq": "'Libre Baskerville'",
+   "fs": "5cqw",
+   "c1": "#f3eee6",
+   "c2": "#e0a983",
+   "hif": "'Tiro Devanagari Hindi', Mukta"
+  },
+  "scene": "linear-gradient(175deg, #5a4a3e, #1f1813 70%)",
+  "skin": "#b98566",
+  "shirt": "#2b221c",
+  "lines": [
+   {
+    "comp": "quote",
+    "pos": 40,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 74,
+    "align": "center",
+    "unit": "char"
+   },
+   {
+    "comp": "split",
+    "pos": 52,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "display",
+    "pos": 30,
+    "align": "left",
+    "unit": "line"
+   },
+   {
+    "comp": "label",
+    "pos": 76,
+    "align": "center",
+    "unit": "word",
+    "label": [
+     "Chapter two",
+     "अध्याय दो"
+    ]
+   }
+  ],
+  "en": [
+   "My grandmother kept every letter in a *tin box",
+   "Seventy years of *handwriting",
+   "Some were never *sent",
+   "One was addressed to *me",
+   "I opened it last *winter"
+  ],
+  "hi": [
+   "दादी हर चिट्ठी एक *टीन के डिब्बे में रखती थीं",
+   "सत्तर साल की *लिखावट",
+   "कुछ कभी *भेजी नहीं गईं",
+   "एक मेरे *नाम थी",
+   "मैंने उसे पिछली *सर्दियों में खोला"
+  ]
+ },
+ {
+  "name": "Lower Third",
+  "best": "Interviews, panels, news",
+  "id": "lower",
+  "motion": "panel",
+  "kfx": "none",
+  "motionText": "A dark panel wipes in and the text slides out of it",
+  "keyText": "Terracotta",
+  "theme": {
+   "fb": "Roboto",
+   "wb": 500,
+   "fk": "Oswald",
+   "wk": 600,
+   "fl": "Oswald",
+   "fs": "5.2cqw",
+   "c1": "#ffffff",
+   "c2": "#e07a5f",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(170deg, #6c7682, #2a3038)",
+  "skin": "#b98a6c",
+  "shirt": "#1f2a3a",
+  "lines": [
+   {
+    "comp": "label",
+    "pos": 76,
+    "align": "left",
+    "unit": "line",
+    "label": [
+     "Ananya Rao · Founder",
+     "अनन्या राव · संस्थापक"
+    ]
+   },
+   {
+    "comp": "inline",
+    "pos": 78,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "split",
+    "pos": 70,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "display",
+    "pos": 24,
+    "align": "left",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 78,
+    "align": "right",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "We started with two people and one *laptop",
+   "Today the team is *forty strong",
+   "Our first customer was a *school",
+   "Hire for *curiosity first",
+   "Skills can be taught *later"
+  ],
+  "hi": [
+   "हमने दो लोगों और एक *लैपटॉप से शुरुआत की",
+   "आज टीम में *चालीस लोग हैं",
+   "हमारा पहला ग्राहक एक *स्कूल था",
+   "सबसे पहले *जिज्ञासा देखकर भर्ती करो",
+   "हुनर बाद में *सिखाया जा सकता है"
+  ]
+ },
+ {
+  "name": "Rule",
+  "best": "Weddings, events, invitations",
+  "id": "rule",
+  "motion": "rule",
+  "kfx": "caps",
+  "motionText": "A gold rule grows and the lines slide out from behind it",
+  "keyText": "Spaced capitals in gold",
+  "theme": {
+   "fb": "'Cormorant Garamond'",
+   "wb": 500,
+   "fk": "'Cormorant Garamond'",
+   "wk": 600,
+   "fl": "Marcellus",
+   "fs": "6.6cqw",
+   "c1": "#fff8ee",
+   "c2": "#d8b98a",
+   "hif": "'Tiro Devanagari Hindi', Mukta"
+  },
+  "scene": "linear-gradient(175deg, #a5806c, #6b4840 60%, #2e1b1a)",
+  "skin": "#8e5f48",
+  "shirt": "#e6d6c8",
+  "lines": [
+   {
+    "comp": "label",
+    "pos": 36,
+    "align": "left",
+    "unit": "line",
+    "label": [
+     "12 · 12 · 2026",
+     "12 · 12 · 2026"
+    ]
+   },
+   {
+    "comp": "split",
+    "pos": 56,
+    "align": "left",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 74,
+    "align": "right",
+    "unit": "line"
+   },
+   {
+    "comp": "display",
+    "pos": 34,
+    "align": "right",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 72,
+    "align": "left",
+    "unit": "word"
+   }
+  ],
+  "en": [
+   "Two families one *celebration",
+   "Join us in *Udaipur",
+   "Three days of music food and *family",
+   "Bring your dancing *shoes",
+   "We cannot wait to *see you"
+  ],
+  "hi": [
+   "दो परिवार एक *जश्न",
+   "हमारे साथ आइए *उदयपुर में",
+   "तीन दिन संगीत खाना और *परिवार",
+   "अपने नाचने वाले *जूते लाना",
+   "आपसे मिलने का *इंतज़ार है"
+  ]
+ },
+ {
+  "name": "Weight Shift",
+  "best": "Education, science, explainers",
+  "id": "weight",
+  "motion": "weight",
+  "kfx": "none",
+  "motionText": "Each word grows from light to bold as it is spoken",
+  "keyText": "Warm amber",
+  "theme": {
+   "fb": "Nunito",
+   "wb": 800,
+   "fk": "Nunito",
+   "wk": 800,
+   "fs": "6cqw",
+   "c1": "#ffffff",
+   "c2": "#ffd58a",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(165deg, #34465a, #121a24)",
+  "skin": "#c08f6f",
+  "shirt": "#2c3e57",
+  "lines": [
+   {
+    "comp": "inline",
+    "pos": 70,
+    "align": "center"
+   },
+   {
+    "comp": "label",
+    "pos": 34,
+    "align": "left",
+    "label": [
+     "Why it works",
+     "ऐसा क्यों"
+    ]
+   },
+   {
+    "comp": "split",
+    "pos": 54,
+    "align": "center"
+   },
+   {
+    "comp": "display",
+    "pos": 30,
+    "align": "left"
+   },
+   {
+    "comp": "inline",
+    "pos": 76,
+    "align": "right"
+   }
+  ],
+  "en": [
+   "Your brain saves memories while you *sleep",
+   "Deep sleep moves them to *long term storage",
+   "So studying late can *backfire",
+   "Sleep is part of *learning",
+   "Review before bed then *rest"
+  ],
+  "hi": [
+   "तुम सोते हो तब दिमाग यादें *सहेजता है",
+   "गहरी नींद उन्हें *लंबी याद में भेजती है",
+   "इसलिए देर रात पढ़ना *उल्टा पड़ सकता है",
+   "नींद *सीखने का हिस्सा है",
+   "सोने से पहले दोहराओ फिर *आराम"
+  ]
+ },
+ {
+  "name": "Frame",
+  "best": "Coaching, tips, how-to",
+  "id": "frame",
+  "motion": "scale",
+  "kfx": "frame",
+  "motionText": "Quiet scale-in",
+  "keyText": "A thin outline traces around it",
+  "theme": {
+   "fb": "Questrial",
+   "wb": 400,
+   "fk": "Questrial",
+   "wk": 400,
+   "fs": "6cqw",
+   "c1": "#ffffff",
+   "c2": "#f0c987",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(160deg, #3f5048, #161e1b)",
+  "skin": "#c08f6f",
+  "shirt": "#e8e3d6",
+  "lines": [
+   {
+    "comp": "label",
+    "pos": 30,
+    "align": "left",
+    "unit": "word",
+    "label": [
+     "Tip 01",
+     "टिप 01"
+    ]
+   },
+   {
+    "comp": "inline",
+    "pos": 74,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "split",
+    "pos": 52,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "display",
+    "pos": 34,
+    "align": "right",
+    "unit": "word"
+   },
+   {
+    "comp": "inline",
+    "pos": 78,
+    "align": "left",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "Write tomorrow's top *three tasks tonight",
+   "Start with the *hardest one",
+   "Phone stays in *another room",
+   "Work in *ninety minute blocks",
+   "Then take a real *break"
+  ],
+  "hi": [
+   "कल के *तीन ज़रूरी काम आज रात लिखो",
+   "सबसे *मुश्किल वाले से शुरू करो",
+   "फ़ोन *दूसरे कमरे में रखो",
+   "काम करो *नब्बे मिनट के ब्लॉक में",
+   "फिर असली *ब्रेक लो"
+  ]
+ },
+ {
+  "name": "Stagger",
+  "best": "Travel, vlogs, road trips",
+  "id": "stagger",
+  "motion": "lineup",
+  "kfx": "none",
+  "motionText": "Lines lift in one after another",
+  "keyText": "Warm sand",
+  "theme": {
+   "fb": "'Josefin Sans'",
+   "wb": 600,
+   "fk": "'Josefin Sans'",
+   "wk": 700,
+   "fs": "6cqw",
+   "c1": "#ffffff",
+   "c2": "#f6d7a7",
+   "hif": "Mukta"
+  },
+  "scene": "linear-gradient(180deg, #9bb3c4, #5d7181 45%, #2b2e30)",
+  "skin": "#a07462",
+  "shirt": "#3a3f44",
+  "lines": [
+   {
+    "comp": "display",
+    "pos": 28,
+    "align": "left",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 76,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "label",
+    "pos": 72,
+    "align": "left",
+    "unit": "line",
+    "label": [
+     "Day 03 · Spiti",
+     "दिन 03 · स्पीति"
+    ]
+   },
+   {
+    "comp": "split",
+    "pos": 50,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 80,
+    "align": "right",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "We left Manali before *sunrise",
+   "Eight hours on the road with no *signal",
+   "The valley opened up after *Kunzum pass",
+   "Pure *silence",
+   "Worth every single *kilometre"
+  ],
+  "hi": [
+   "हम सूरज उगने से पहले *मनाली से निकले",
+   "आठ घंटे सड़क पर बिना *नेटवर्क",
+   "कुंज़ुम पास के बाद *घाटी खुली",
+   "बस *सन्नाटा",
+   "हर एक *किलोमीटर के लायक"
+  ]
+ },
+ {
+  "name": "Sheen",
+  "best": "Jewellery, premium products",
+  "id": "sheen",
+  "motion": "drift",
+  "kfx": "sheen",
+  "motionText": "Settles down from above",
+  "keyText": "Champagne serif with a slow light sweep",
+  "theme": {
+   "fb": "'Open Sans'",
+   "wb": 400,
+   "fk": "Cinzel",
+   "wk": 600,
+   "fs": "4.4cqw",
+   "tt": "uppercase",
+   "ls": "0.14em",
+   "c1": "#f4f1ec",
+   "c2": "#e6d3a3",
+   "hif": "Mukta",
+   "hik": "'Tiro Devanagari Hindi', Mukta"
+  },
+  "scene": "linear-gradient(180deg, #1c2330, #07090d)",
+  "skin": "#a8765a",
+  "shirt": "#151a24",
+  "lines": [
+   {
+    "comp": "split",
+    "pos": 50,
+    "align": "center",
+    "unit": "word"
+   },
+   {
+    "comp": "label",
+    "pos": 76,
+    "align": "center",
+    "unit": "line",
+    "label": [
+     "Handcrafted",
+     "हस्तनिर्मित"
+    ]
+   },
+   {
+    "comp": "inline",
+    "pos": 72,
+    "align": "left",
+    "unit": "word"
+   },
+   {
+    "comp": "display",
+    "pos": 30,
+    "align": "center",
+    "unit": "line"
+   },
+   {
+    "comp": "inline",
+    "pos": 80,
+    "align": "right",
+    "unit": "block"
+   }
+  ],
+  "en": [
+   "Introducing the *Noor collection",
+   "Each piece is set *by hand",
+   "Eighteen carat gold with *ethically sourced stones",
+   "Made to be *passed down",
+   "Book a private viewing *today"
+  ],
+  "hi": [
+   "पेश है *नूर कलेक्शन",
+   "हर पीस *हाथ से जड़ा गया",
+   "अठारह कैरेट सोना और *नैतिक रूप से लाए रत्न",
+   "पीढ़ियों तक चलने के लिए *बना",
+   "आज ही निजी विज़िट *बुक करें"
+  ]
+ }
+]

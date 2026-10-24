@@ -126,7 +126,7 @@ const wordAnimations = [
 // placement: 'panel' docks into the desktop inspector column, 'sheet' into the
 // tablet/phone dock above the toolbar, and 'floating' (fullscreen preview
 // only) sits beside the video frame. None of them may cover the preview.
-export default function WordClickPopup({ word, position, onEdit, onClose, onResetPosition, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord, placement = 'floating', onCannotFloat, wordKey = '', inheritedFontSize = 18, inheritedColor = '#ffffff' }) {
+export default function WordClickPopup({ word, position, onEdit, onClose, onResetWord, onResetFontSize, currentStyle, onStyleChange, onHistoryRecord, placement = 'floating', onCannotFloat, wordKey = '', inheritedFontSize = 18, inheritedColor = '#ffffff' }) {
   const dragControls = useDragControls();
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
@@ -248,16 +248,17 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
             </div>
           </div>
           <div className="flex gap-2">
-            {((currentStyle.x !== undefined && currentStyle.x !== 0) || (currentStyle.y !== undefined && currentStyle.y !== 0) || (currentStyle.abs_x_pct !== undefined && currentStyle.abs_x_pct !== 0) || (currentStyle.abs_y_pct !== undefined && currentStyle.abs_y_pct !== 0)) && onResetPosition && (
+            {Object.keys(currentStyle || {}).length > 0 && onResetWord && (
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (onResetPosition) onResetPosition();
+                  onResetWord();
                 }}
                 className="h-6 w-6 text-white hover:text-gray-200 hover:bg-white/10"
-                title="Reset Position"
+                aria-label="Reset word"
+                title="Reset word (position, size, colour and effects)"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </Button>
@@ -1035,6 +1036,12 @@ function useFloatingEditorRect(active) {
     const frameNode = document.querySelector('.lekha-video-frame');
     const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
     if (frameNode && resizeObserver) resizeObserver.observe(frameNode);
+    // Opening or resizing the timeline moves the floor the editor stays above,
+    // without resizing the frame or the window.
+    ['[data-word-editor-floor="true"]', '[data-word-editor-bounds="true"]'].forEach((selector) => {
+      const node = document.querySelector(selector);
+      if (node && resizeObserver) resizeObserver.observe(node);
+    });
     // Entering fullscreen moves the frame without always resizing it.
     if (resizeObserver) resizeObserver.observe(document.body);
     const mutationObserver = frameNode && typeof MutationObserver !== 'undefined'
