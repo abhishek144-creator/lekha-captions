@@ -23,6 +23,7 @@ BUNDLED_FONTS = BACKEND / "flat_fonts"
 JS_RESOLVER = BACKEND.parent / "src" / "components" / "dashboard" / "scriptFontResolver.js"
 
 FAMILIES = sorted(set(LATIN_TO_DEVANAGARI_FONT) | DEVANAGARI_FONT_NAMES) + [
+    "Noto Sans TC", "Noto Sans JP", "Noto Sans KR",
     "", "Roboto", "Courier New", "Orbitron X", "Anton SC", "Ultra", "Roboto Condensed",
     "Cinzel Decorative", "Abril", "Didot", "DM Serif Text", "Georgia", "Brush Script",
 ]
@@ -34,6 +35,11 @@ TEXTS = [
 
 class ScriptFontResolverParityTests(unittest.TestCase):
     """The ASS path must pick the face the editor and DOM renderer pick."""
+
+    def test_han_only_lines_keep_the_selected_regional_font(self):
+        for family in ("Noto Sans TC", "Noto Sans JP", "Noto Sans KR"):
+            with self.subTest(family=family):
+                self.assertEqual(resolve_script_font_family(family, "東京故事"), family)
 
     @unittest.skipUnless(shutil.which("node"), "node is required to run scriptFontResolver.js")
     def test_python_port_matches_script_font_resolver_js(self):

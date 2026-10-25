@@ -1,6 +1,7 @@
 import { resolveScriptFont } from '@/components/dashboard/fontUtils'
 import { buildEmotionalCaptionPlan, EMOTIONAL_TEMPLATE_TIMING } from '@/components/dashboard/emotionalTemplateUtils'
 import { defaultCaptionStyle } from '@/lib/editorDocument'
+import { applyDefaultCaptionFont } from './defaultCaptionFonts.js'
 import { DEFAULT_CAPTION_POSITION_Y } from './captionDefaults.js'
 
 // Properties templates fully control. They are cleared before a template is
@@ -116,6 +117,7 @@ export function buildTemplateApplication({
   captions,
   waveformData,
   duration,
+  language = '',
   now = Date.now(),
 }) {
   const {
@@ -145,14 +147,16 @@ export function buildTemplateApplication({
       emotional_timing: EMOTIONAL_TEMPLATE_TIMING,
     }))
     : null
-  const style = {
+  let style = {
     ...captionStyle,
     ...TEMPLATE_OWNED_RESET,
     ...templateStyleForSnapshot,
     template_snapshot: templateSnapshot,
     template_applied_at: templateSnapshot ? now : null,
   }
-  const scriptFont = resolveTemplateFontForCaptions(style.font_family, captions)
+  if (!templateSnapshot) style = applyDefaultCaptionFont(style, captions, language, true)
+  else style.font_source = 'template'
+  const scriptFont = templateSnapshot ? resolveTemplateFontForCaptions(style.font_family, captions) : style.font_family
   if (scriptFont !== style.font_family) style.font_family = scriptFont
   if (templateSnapshot && style.font_family) templateSnapshot.font_family = style.font_family
   // Left-gallery templates are zoomed by font_size / template_font_size.

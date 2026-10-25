@@ -14,6 +14,7 @@ import TimelineResizeHandle from '@/components/dashboard/TimelineResizeHandle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { extractWaveformData } from '@/components/dashboard/audioUtils';
 import { autoLoadFontForText, loadGoogleFont } from '@/components/dashboard/fontUtils';
+import { applyDefaultCaptionFont, preserveCustomCaptionFont } from '@/lib/defaultCaptionFonts';
 import { recordRecentTemplate } from '@/components/dashboard/templateBrowserUtils';
 import { apiRequest } from '@/lib/apiClient';
 import { notifyApiError } from '@/lib/notifyApiError';
@@ -158,6 +159,14 @@ export default function Dashboard() {
     snapshotEditorState,
     applyDocument,
   } = editorDocument;
+
+  const activeCaptionLanguage = captionTracks.find((track) => track.id === activeCaptionTrackId)?.language || '';
+  useEffect(() => {
+    const next = applyDefaultCaptionFont(captionStyle, captions, activeCaptionLanguage);
+    if (next === captionStyle) return;
+    setCaptionStyle(current => current === captionStyle ? next : current);
+    loadGoogleFont(next.font_family, [400, Number(next.font_weight)]).catch(() => {});
+  }, [captionStyle, captions, activeCaptionLanguage, setCaptionStyle]);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -707,10 +716,13 @@ export default function Dashboard() {
         wordsPerLine: uploadSettings?.wordsPerLine || 'dynamic'
       };
       const sampleText = trackState.captions.map(c => c.text).join(' ');
-      const { fontFamily, script, fontOptions } = await autoLoadFontForText(sampleText);
+      const activeLanguage = trackState.tracks.find(track => track.id === trackState.activeTrackId)?.language;
+      const { fontFamily, fontWeight, script, fontOptions } = await autoLoadFontForText(sampleText, activeLanguage);
       nextCaptionStyle = {
         ...nextCaptionStyle,
         font_family: fontFamily,
+        font_weight: fontWeight,
+        font_source: 'language-default',
         detected_script: script,
         available_fonts: fontOptions?.map(f => f.name) || [],
       };
@@ -915,7 +927,9 @@ export default function Dashboard() {
   const updateCaptions = useCallback((newCaptions, options) => pushHistory(newCaptions, undefined, options), [pushHistory])
   // A native colour picker fires on every move of a drag; one burst of style
   // changes is one undo step instead of dozens (and a flushed history).
-  const updateCaptionStyle = useCallback((newStyle) => pushHistory(undefined, newStyle, { coalesce: 'caption-style' }), [pushHistory])
+  const updateCaptionStyle = useCallback((newStyle) => pushHistory(undefined, previous => preserveCustomCaptionFont(
+    previous, typeof newStyle === 'function' ? newStyle(previous) : newStyle,
+  ), { coalesce: 'caption-style' }), [pushHistory])
   const addToHistory = useCallback(() => pushHistory(undefined, undefined), [pushHistory])
 
   // Word popup edits apply with the functional raw setter (building new
@@ -981,11 +995,13 @@ export default function Dashboard() {
       captions,
       waveformData,
       duration,
+      language: activeCaptionLanguage,
     });
     // Load the font that will actually render (already remapped to a
     // script-appropriate family when the captions are Indic).
     if (application.style.font_family) {
-      loadGoogleFont(application.style.font_family, [300, 400, 500, 600, 700, 800, 900]).catch(() => {});
+      const weights = application.templateSnapshot ? [300, 400, 500, 600, 700, 800, 900] : [400, Number(application.style.font_weight)];
+      loadGoogleFont(application.style.font_family, weights).catch(() => {});
     }
     if (application.templateSnapshot) {
       const recent = getTemplateRecentEntry(application.templateSnapshot);
@@ -1034,7 +1050,7 @@ export default function Dashboard() {
     } catch {
       // The rules-only layout already applied stays.
     }
-  }, [analyzeCaptionEmotions, captionStyle, captions, duration, pushHistory, setCaptions, waveformData]);
+  }, [activeCaptionLanguage, analyzeCaptionEmotions, captionStyle, captions, duration, pushHistory, setCaptions, waveformData]);
 
   // Reset returns to the project as it was opened or generated.
   const handleRefresh = () => {

@@ -446,6 +446,38 @@ try {
   await page.waitForFunction(() => document.body.textContent.includes('Translation supports up to 1000 captions'))
   assert.equal(translationRequests.length, 1, '1,001 captions are refused before calling the provider')
 
+  // Default typography follows the active written language; an explicit font
+  // choice survives switching tracks and reload. No provider calls involved.
+  const fontCaption = (text) => [{ id: 'font-line', text, start_time: 0, end_time: 3, words: [], wordStyles: {} }]
+  await openSeededDraft({
+    ...draft, projectId: 'language-font-defaults', videoUrl: '/launch-video.mp4',
+    captions: fontCaption('नमस्ते दुनिया'), activeCaptionTrackId: 'source',
+    captionTracks: [
+      { id: 'source', language: 'Hindi', label: 'Original Hindi', captions: fontCaption('नमस्ते दुनिया') },
+      { id: 'english', language: 'English', label: 'English', captions: fontCaption('Hello world') },
+    ],
+    captionStyle: { ...draft.captionStyle, font_family: 'Inter', font_source: 'language-default' },
+  })
+  await page.waitForSelector('[aria-label="Font family: Noto Sans Devanagari"]')
+  await page.screenshot({ path: resolve('../.readiness/default-fonts-hindi-browser-20261025.png') })
+  await page.select('#caption-language-track', 'english')
+  await page.waitForSelector('[aria-label="Font family: Inter"]')
+  await page.select('#caption-language-track', 'source')
+  await page.waitForSelector('[aria-label="Font family: Noto Sans Devanagari"]')
+  await page.click('[aria-label="Font family: Noto Sans Devanagari"]')
+  await page.waitForSelector('input[placeholder="Search fonts..."]')
+  await page.type('input[placeholder="Search fonts..."]', 'Mukta')
+  await page.waitForFunction(() => [...document.querySelectorAll('span')].some(el => el.textContent === 'Mukta'))
+  await page.evaluate(() => [...document.querySelectorAll('span')].find(el => el.textContent === 'Mukta').click())
+  await page.waitForSelector('[aria-label="Font family: Mukta"]')
+  await page.select('#caption-language-track', 'english')
+  await page.waitForFunction(() => {
+    const saved = JSON.parse(localStorage.getItem('captionEditorState'))
+    return saved.activeCaptionTrackId === 'english' && saved.captionStyle.font_family === 'Mukta' && saved.captionStyle.font_source === 'custom'
+  })
+  await page.reload()
+  await page.waitForSelector('[aria-label="Font family: Mukta"]')
+
   // Auto layout reads the script with AI once, applies what it read, keeps the
   // reading on the captions (no second call), and falls back to rules on failure.
   const moodDraft = (projectId) => ({

@@ -476,6 +476,8 @@ def resolve_script_font_family(font_family, text):
     family = str(font_family or '').strip()
     if script == 'latin':
         return family or 'Noto Sans'
+    if script == 'chinese' and family in {'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR'}:
+        return family
     primary_family = SCRIPT_PRIMARY_FONTS.get(script) or family or 'Noto Sans'
     if not family:
         return primary_family

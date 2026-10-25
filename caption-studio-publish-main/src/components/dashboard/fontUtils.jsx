@@ -1,6 +1,7 @@
 import {
   detectScript,
 } from './scriptFontResolver'
+import { getDefaultCaptionFont } from '@/lib/defaultCaptionFonts'
 
 export { detectScript }
 
@@ -519,30 +520,18 @@ export function loadGoogleFont(fontName, weights = [400, 700]) {
   return queued;
 }
 
-export async function autoLoadFontForText(text) {
-  const script = detectScript(text);
-  const scriptFonts = scriptFontMap[script];
-
-  // Load the script's primary font (e.g. Noto Sans Bengali for Bengali text)
-  // instead of always falling back to the Latin-only Inter font.
-  if (script !== 'latin' && scriptFonts?.length) {
-    const primary = scriptFonts[0];
-    try {
-      await loadGoogleFont(primary.name, primary.weights);
-      return { fontFamily: primary.name, script, fontOptions: scriptFonts, error: null };
-    } catch (error) {
-      console.warn(`Failed to load ${primary.name} for ${script}, falling back to Inter:`, error);
-      // Fall through to Inter as backup
-    }
-  }
-
-  // Global default: Inter
+export async function autoLoadFontForText(text, language = '') {
+  const font = getDefaultCaptionFont(text, language)
+  const script = font.detected_script
+  const fontOptions = scriptFontMap[script] || [{ name: font.font_family, weights: [400, 700] }]
   try {
-    await loadGoogleFont('Inter', [300, 400, 500, 600, 700, 800]);
-    return { fontFamily: 'Inter', script: 'latin', fontOptions: scriptFontMap.latin, error: null };
+    await loadGoogleFont(font.font_family, [400, Number(font.font_weight)])
+    return { fontFamily: font.font_family, fontWeight: font.font_weight, script, fontOptions, error: null }
   } catch (error) {
-    console.error('Failed to load Inter fallback font:', error);
-    return { fontFamily: 'sans-serif', script: 'latin', fontOptions: scriptFontMap.latin, error: error?.message || 'Font load failed' };
+    // Keep the correct family while the browser uses its native-script
+    // fallback. A network failure must not change the saved/export font to Inter.
+    console.warn(`Failed to load default caption font ${font.font_family}:`, error)
+    return { fontFamily: font.font_family, fontWeight: font.font_weight, script, fontOptions, error: error?.message || 'Font load failed' }
   }
 }
 
@@ -624,6 +613,8 @@ function devanagariFallbackFor(font) {
 export function resolveScriptFont(fontFamily, text) {
   const script = text ? detectScript(text) : 'latin';
   if (script === 'latin') return fontFamily || 'Noto Sans';
+  // Han-only Japanese/Korean lines still use their chosen regional glyphs.
+  if (script === 'chinese' && ['Noto Sans JP', 'Noto Sans KR'].includes(fontFamily)) return fontFamily
   if (!fontFamily) return scriptFontMap[script]?.[0]?.name || 'Noto Sans';
 
   // Devanagari has a hand-curated Latin-family -> Devanagari-family map so a

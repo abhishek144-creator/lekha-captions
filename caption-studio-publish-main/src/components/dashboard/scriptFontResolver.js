@@ -155,6 +155,7 @@ export function resolveScriptFontFamily(fontFamily, text, fontCatalog = {}) {
   const script = detectScript(text)
   const family = String(fontFamily || '').trim()
   if (script === 'latin') return family || 'Noto Sans'
+  if (script === 'chinese' && ['Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR'].includes(family)) return family
 
   const catalogNames = (fontCatalog?.[script] || [])
     .map((font) => typeof font === 'string' ? font : font?.name)
