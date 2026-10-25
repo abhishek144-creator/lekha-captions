@@ -459,7 +459,7 @@ try {
     captionStyle: { ...draft.captionStyle, font_family: 'Inter', font_source: 'language-default' },
   })
   await page.waitForSelector('[aria-label="Font family: Noto Sans Devanagari"]')
-  await page.screenshot({ path: resolve('../.readiness/default-fonts-hindi-browser-20261025.png') })
+  await page.screenshot({ path: resolve(downloadPath, 'default-fonts-hindi.png') })
   await page.select('#caption-language-track', 'english')
   await page.waitForSelector('[aria-label="Font family: Inter"]')
   await page.select('#caption-language-track', 'source')
