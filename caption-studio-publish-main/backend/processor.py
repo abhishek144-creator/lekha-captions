@@ -605,8 +605,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     response_format="verbose_json",
                     timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
                 )
+            transcription_provider_health.record_success("openai")
             return str(getattr(result, "language", "") or "").strip().lower()
         except Exception as detect_error:
+            transcription_provider_health.record_failure("openai")
             print(f"[Warning] Spoken-language detection failed: {detect_error}")
             return ""
         finally:
