@@ -1,6 +1,7 @@
 import { memo, useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import DismissibleNotice from './DismissibleNotice';
 import {
   Split,
   Trash2,
@@ -426,7 +427,7 @@ function CaptionEditor({
           Ctrl K
         </span>
       </div>
-      {captionEditMessage && <p role="status" className="relative z-10 -mt-2 mb-3 text-[11px] text-amber-200">{captionEditMessage}</p>}
+      {captionEditMessage && <DismissibleNotice key={captionEditMessage} closeLabel="Close caption editing notification" onDismiss={() => setCaptionEditMessage('')} className="relative z-10 -mt-2 mb-3 text-[11px] text-amber-200">{captionEditMessage}</DismissibleNotice>}
       <div className="relative z-10 mb-4">
         <div className="flex items-center justify-between gap-2">
           <button type="button" onClick={() => setShowReplace((value) => !value)} className="text-[11px] font-semibold text-sky-200 hover:text-white">

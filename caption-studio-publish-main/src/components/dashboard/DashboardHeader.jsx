@@ -4,6 +4,7 @@ import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import CaptionStudioLogo from './CaptionStudioLogo';
+import DismissibleNotice from './DismissibleNotice';
 import { isSubscriptionExpired } from '@/lib/subscription';
 import {
   Upload,
@@ -75,10 +76,10 @@ export default function DashboardHeader({
         <div className="flex lg:hidden items-center gap-1.5">
           {/* Save lives in the overflow menu here, so confirm it inline. */}
           {(isSaving || saveSuccess) && (
-            <span role="status" className="flex items-center gap-1 text-[11px] font-semibold text-emerald-300">
+            <DismissibleNotice key={isSaving ? 'saving' : 'saved'} closeLabel="Close save status notification" contentClassName="flex items-center gap-1" className="text-[11px] font-semibold text-emerald-300">
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              <span className="max-[359px]:hidden">{isSaving ? 'Saving…' : 'Saved'}</span>
-            </span>
+              <span className="sr-only sm:not-sr-only">{isSaving ? 'Saving…' : 'Saved'}</span>
+            </DismissibleNotice>
           )}
           <Button
             variant="ghost"

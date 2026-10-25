@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { X } from 'lucide-react'
+import DismissibleNotice from './DismissibleNotice'
 
 const BRAND_KIT_MESSAGES = {
   conflict: 'Brand kits changed on another device. Browser edits are preserved. Export your kits in Layers before reloading.',
@@ -10,6 +11,7 @@ const BRAND_KIT_MESSAGES = {
 // Persistent banners for problems that need the customer's action.
 export default function EditorStatusBanners({
   sourceUnavailable,
+  sourceId,
   isRelinking,
   onRelinkSource,
   brandKitSyncStatus,
@@ -22,7 +24,7 @@ export default function EditorStatusBanners({
   return (
     <>
       {sourceUnavailable && (
-        <div role="status" className="flex flex-wrap items-center gap-3 bg-amber-950 px-4 py-2 text-xs text-amber-100">
+        <DismissibleNotice key={sourceId} closeLabel="Close source video notification" className="bg-amber-950 px-4 py-2 text-xs text-amber-100">
           <span>Source video unavailable. Captions remain editable. Relink the original video; verify timing if you choose another version.</span>
           <label className="cursor-pointer underline">
             {isRelinking ? 'Uploading source…' : 'Relink source video'}
@@ -35,7 +37,7 @@ export default function EditorStatusBanners({
               onChange={(event) => { onRelinkSource(event.target.files?.[0]); event.target.value = '' }}
             />
           </label>
-        </div>
+        </DismissibleNotice>
       )}
       {brandKitMessage && (
         <div role="status" className="flex flex-wrap items-center gap-3 bg-sky-950 px-4 py-2 text-xs text-sky-100">
@@ -47,7 +49,7 @@ export default function EditorStatusBanners({
             aria-label="Close brand kit notification"
             title="Close"
             onClick={() => setDismissedBrandKitStatus(brandKitSyncStatus)}
-            className="ml-auto rounded p-0.5 text-sky-200 hover:bg-sky-900 hover:text-white"
+            className="ml-auto inline-flex min-h-6 min-w-6 items-center justify-center rounded p-1 text-sky-200 hover:bg-sky-900 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
           >
             <X className="h-3.5 w-3.5" />
           </button>

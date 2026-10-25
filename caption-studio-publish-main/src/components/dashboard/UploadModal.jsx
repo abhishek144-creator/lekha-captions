@@ -19,6 +19,7 @@ import {
 import { Upload, Film, Sparkles, Globe, Palette, Loader2, Info, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
+import DismissibleNotice from './DismissibleNotice';
 import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 import {
   MAX_VIDEO_UPLOAD_BYTES,
@@ -438,9 +439,9 @@ export default function UploadModal({
               </div>
 
               {fileSizeError && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                <DismissibleNotice key={fileSizeError} closeLabel="Close upload notification" onDismiss={() => setFileSizeError(null)} className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
                   <p className="text-sm text-red-400">{fileSizeError}</p>
-                </div>
+                </DismissibleNotice>
               )}
             </motion.div>
           ) : (

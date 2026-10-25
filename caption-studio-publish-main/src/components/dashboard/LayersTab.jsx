@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Captions, Download, Eye, Layers, Plus, Type, Upload, X } from 'lucide-react';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
+import DismissibleNotice from './DismissibleNotice';
 import {
   createBrandKitDocument,
   extractBrandKitStyle,
@@ -125,7 +126,7 @@ export default function LayersTab({
           </div>
         </div>
         <input aria-label="New brand kit name" value={brandKitName} onChange={(event) => setBrandKitName(event.target.value)} maxLength={60} placeholder="Name your brand kit" className="mb-3 w-full rounded border border-white/15 bg-black p-2 text-xs" />
-        {brandKitMessage && <p className="mb-3 text-[10px] leading-4 text-sky-200" role="status">{brandKitMessage}</p>}
+        {brandKitMessage && <DismissibleNotice key={brandKitMessage} closeLabel="Close brand kit message" onDismiss={() => setBrandKitMessage('')} className="mb-3 text-[10px] leading-4 text-sky-200">{brandKitMessage}</DismissibleNotice>}
         {brandKits.length > 0 && (
           <div className="space-y-2">
             {brandKits.map((kit) => (

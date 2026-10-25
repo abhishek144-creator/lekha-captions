@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { downloadDraft } from '@/lib/localDraftStorage'
+import DismissibleNotice from './DismissibleNotice'
 
 // The "Start Creating Captions" screen. A same-browser recovery copy takes
 // precedence over the account draft: it can hold edits the account never
@@ -31,8 +32,10 @@ export default function EditorEmptyState({
           Upload your short-form video (best for 15-180 seconds) and we'll generate professional captions instantly.
         </p>
         {localRecoveryDraft && (
-          <div className="mb-6 rounded border border-yellow-500/30 p-4 text-left" role="status">
-            <p className="mb-3 text-sm text-gray-300">Your previous draft is available on this browser.</p>
+          <div className="mb-6 text-left">
+            <DismissibleNotice closeLabel="Close draft recovery notification" className="mb-3 rounded border border-yellow-500/30 p-3 text-sm text-gray-300">
+              Your previous draft is available on this browser.
+            </DismissibleNotice>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue saved draft</Button>
               <Button variant="outline" className="border-white/20 bg-white text-black hover:bg-gray-100 hover:text-black" onClick={() => downloadDraft(localRecoveryDraft)}>Download draft backup</Button>

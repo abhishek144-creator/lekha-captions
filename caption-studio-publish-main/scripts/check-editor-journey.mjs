@@ -244,6 +244,7 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 3500))
   assert.equal(saveRequests, savesAfterConflict, 'autosave must pause after a revision conflict instead of retrying a stale revision')
   assert.equal(await page.evaluate(() => document.body.textContent.includes('A newer version of this project was saved')), true, 'the conflict notice must remain visible before five seconds')
+  await page.click('[aria-label="Close save conflict notification"]')
   await page.waitForFunction(() => !document.body.textContent.includes('A newer version of this project was saved'), { timeout: 3000 })
   await textClick('Add')
   await new Promise((resolve) => setTimeout(resolve, 3000))
@@ -389,6 +390,19 @@ try {
   await textClick('Continue account draft')
   await page.waitForFunction(() => document.body.textContent.includes('cloud recovery caption') && document.body.textContent.includes('Source video unavailable'))
   assert.ok(await page.$('input[aria-label="Relink source video"]'), 'expired media retains captions and the relink flow')
+  await page.click('[aria-label="Close source video notification"]')
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('Source video unavailable')), false, 'the source warning can be closed')
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('cloud recovery caption')), true, 'closing the warning keeps captions editable')
+  const exportsBeforeMissingSource = exports
+  await textClick('Export')
+  await page.waitForSelector('[role="dialog"]')
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] button')].some(button => button.textContent.includes('720p HD')))
+  await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent.includes('720p HD')).click())
+  assert.equal(exports, exportsBeforeMissingSource, 'closing a warning must not permit exporting unavailable source media')
+  await page.waitForFunction(() => document.body.textContent.includes('Relink the source video before rendering'))
+  await page.click('[aria-label="Dismiss notification"]')
+  await textClick('Close')
+  await page.waitForFunction(() => !document.querySelector('[role=dialog]'))
   expiredAccountMedia = false
 
   holdRecoveryMedia = true

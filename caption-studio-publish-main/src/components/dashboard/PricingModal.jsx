@@ -11,6 +11,7 @@ import { Check, Crown, Zap, Star, Loader2 } from 'lucide-react'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/AuthContext'
 import { toast } from '@/components/ui/use-toast'
+import DismissibleNotice from './DismissibleNotice'
 import { apiRequest } from '@/lib/apiClient'
 import { notifyApiError } from '@/lib/notifyApiError'
 import planCatalog from '../../../shared/planCatalog.json'
@@ -530,10 +531,10 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
         </div>
 
         {message && (
-          <div className="mt-3 p-3 rounded-xl bg-[#F5A623]/10 border border-[#F5A623]/20 flex items-center gap-3">
+          <DismissibleNotice key={message} closeLabel="Close plan notification" contentClassName="flex min-w-0 flex-1 items-center gap-3" className="mt-3 p-3 rounded-xl bg-[#F5A623]/10 border border-[#F5A623]/20 text-[#F5A623]">
             <Zap className="w-4 h-4 text-[#F5A623] shrink-0" />
             <p className="text-sm text-[#F5A623] font-medium">{message}</p>
-          </div>
+          </DismissibleNotice>
         )}
 
         <div className="mt-5 grid gap-4 md:grid-cols-3">
@@ -677,9 +678,9 @@ export default function PricingModal({ isOpen, onClose, onSelectPlan, user, mess
             </Button>
           </div>
           {promoStatus && (
-            <p className={`mt-2 text-sm ${promoStatus.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+            <DismissibleNotice key={promoStatus.message} closeLabel="Close promo notification" onDismiss={() => setPromoStatus(null)} className={`mt-2 text-sm ${promoStatus.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
               {promoStatus.message}
-            </p>
+            </DismissibleNotice>
           )}
         </div>
 

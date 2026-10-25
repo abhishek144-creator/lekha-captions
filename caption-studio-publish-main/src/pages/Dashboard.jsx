@@ -99,6 +99,8 @@ const GENERATING_SCREEN_MIN_MS = 10000;
 const SARVAM_SPOKEN_LANGUAGES = new Set([
   'hindi', 'bengali', 'kannada', 'malayalam', 'marathi', 'odia',
   'punjabi', 'tamil', 'telugu', 'gujarati', 'assamese',
+  'urdu', 'nepali', 'konkani', 'kashmiri', 'sindhi', 'sanskrit',
+  'santali', 'manipuri', 'bodo', 'maithili', 'dogri', 'hinglish',
 ]);
 const COLLAPSED_TIMELINE_HEIGHT = 42;
 const EXPANDED_TIMELINE_HEIGHT = 204;
@@ -714,6 +716,13 @@ export default function Dashboard() {
       };
       setCaptionStyle(nextCaptionStyle);
       captionsReady = true;
+      if (processData.transcription_source === 'sarvam') {
+        toast({ title: 'Captions ready', description: 'Transcribed with Sarvam.' });
+      } else if (processData.transcription_source === 'whisper_failover') {
+        toast({ title: 'Captions ready', description: 'Sarvam was unavailable. Transcribed with Whisper instead.' });
+      } else if (processData.transcription_source === 'whisper') {
+        toast({ title: 'Captions ready', description: 'Transcribed with Whisper.' });
+      }
 
       const nextProjectId = newProjectId || projectId || `local_${Date.now()}`;
       setProjectId(nextProjectId);
@@ -1345,6 +1354,7 @@ export default function Dashboard() {
         onDownloadDraft={captions.length > 0 ? () => downloadDraft(snapshotEditorState()) : null}
       />
       <EditorStatusBanners
+        sourceId={fileId || projectId}
         sourceUnavailable={sourceUnavailable || (!videoUrl && captions.length > 0)}
         isRelinking={isRelinking}
         onRelinkSource={relinkSource}

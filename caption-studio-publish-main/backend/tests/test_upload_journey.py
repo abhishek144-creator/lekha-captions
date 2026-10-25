@@ -74,6 +74,10 @@ def _write_output(command, **_kwargs):
 
 class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        health_patch = patch('processor.transcription_provider_health')
+        self.health = health_patch.start()
+        self.addCleanup(health_patch.stop)
+        self.health.allow_request.return_value = True
         self.processor = VideoProcessor(fonts_dir="flat_fonts")
         self.processor.client = MagicMock()
         self.words = [
@@ -96,12 +100,53 @@ class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.get("transcription_source"), "sarvam")
         transcribe = sarvam.return_value.speech_to_text.transcribe
         self.assertEqual(transcribe.call_args.kwargs["language_code"], "hi-IN")
-        # whisper-1: the 30-second language sample (no word timestamps), then
-        # word timings that place Sarvam's words (owner-approved 2026-10-09).
-        self.assertEqual(len(self.whisper_calls()), 2)
+        # Whisper may identify the language, but successful Indian transcription
+        # must not trigger another Whisper call for word alignment.
+        self.assertEqual(len(self.whisper_calls()), 1)
         self.assertNotIn("timestamp_granularities", self.whisper_calls()[0].kwargs)
-        self.assertEqual(self.whisper_calls()[1].kwargs["timestamp_granularities"], ["word"])
-        self.assertEqual(self.whisper_calls()[1].kwargs["language"], "hi")
+
+    @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
+    async def test_all_indian_languages_use_sarvam_without_whisper_alignment(self):
+        languages = {
+            'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
+            'malayalam': 'ml-IN', 'marathi': 'mr-IN', 'odia': 'od-IN',
+            'punjabi': 'pa-IN', 'tamil': 'ta-IN', 'telugu': 'te-IN',
+            'gujarati': 'gu-IN', 'assamese': 'as-IN', 'urdu': 'ur-IN',
+            'nepali': 'ne-IN', 'konkani': 'kok-IN', 'kashmiri': 'ks-IN',
+            'sindhi': 'sd-IN', 'sanskrit': 'sa-IN', 'santali': 'sat-IN',
+            'manipuri': 'mni-IN', 'bodo': 'brx-IN', 'maithili': 'mai-IN',
+            'dogri': 'doi-IN', 'hinglish': 'hi-IN',
+        }
+        for language, code in languages.items():
+            with self.subTest(language=language), patch('processor.run_media_command', side_effect=_write_output), patch('processor.SarvamAI') as sarvam, patch.object(self.processor, '_transcribe_with_sarvam', return_value=self.words) as transcribe:
+                result = await self.processor.generate_captions_only('video.mp4', target_language=language)
+                self.assertEqual(result.get('transcription_source'), 'sarvam')
+                self.assertEqual(transcribe.call_args.args[2], code)
+                sarvam.assert_called_once()
+        self.assertEqual(len(self.whisper_calls()), 0)
+        # A successful Sarvam request must not reserve an unused OpenAI probe.
+        self.assertNotIn(unittest.mock.call('openai'), self.health.allow_request.call_args_list)
+
+    @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
+    async def test_sarvam_errors_empty_results_and_open_circuit_fall_back_to_whisper(self):
+        for failure in ('exception', 'empty', 'circuit'):
+            with self.subTest(failure=failure):
+                self.processor.client.reset_mock()
+                self.processor.client.audio.transcriptions.create.return_value = SimpleNamespace(language='hindi', words=self.words)
+                self.health.allow_request.side_effect = lambda provider: provider != 'sarvam' or failure != 'circuit'
+                with patch('processor.run_media_command', side_effect=_write_output), patch('processor.SarvamAI'), patch.object(self.processor, '_transcribe_with_sarvam', side_effect=RuntimeError('unavailable') if failure == 'exception' else None, return_value=[]):
+                    result = await self.processor.generate_captions_only('video.mp4', target_language='hindi')
+                self.assertTrue(result.get('success'))
+                self.assertEqual(result.get('transcription_source'), 'whisper_failover')
+                self.assertEqual(len(self.whisper_calls()), 1)
+
+    @patch.dict(os.environ, {"SARVAM_API_KEY": ""})
+    async def test_missing_sarvam_configuration_is_an_explicit_whisper_fallback(self):
+        self.processor.client.audio.transcriptions.create.return_value = SimpleNamespace(language='hindi', words=self.words)
+        with patch('processor.run_media_command', side_effect=_write_output):
+            result = await self.processor.generate_captions_only('video.mp4', target_language='hindi')
+        self.assertEqual(result.get('transcription_source'), 'whisper_failover')
+        self.assertEqual(len(self.whisper_calls()), 1)
 
     @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
     async def test_auto_english_speech_stays_on_whisper(self):
@@ -118,6 +163,18 @@ class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.get("success"))
         sarvam.assert_not_called()
         self.assertEqual(len(self.whisper_calls()), 2)
+
+    @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
+    async def test_international_language_goes_directly_to_whisper(self):
+        self.processor.client.audio.transcriptions.create.return_value = SimpleNamespace(
+            language='french', words=[{'word': 'bonjour', 'start': 0.0, 'end': 0.4}],
+        )
+        with patch('processor.run_media_command', side_effect=_write_output), patch('processor.SarvamAI') as sarvam:
+            result = await self.processor.generate_captions_only('video.mp4', target_language='french')
+        self.assertEqual(result.get('transcription_source'), 'whisper')
+        sarvam.assert_not_called()
+        self.assertEqual(len(self.whisper_calls()), 1)
+        self.assertEqual(self.whisper_calls()[0].kwargs['language'], 'fr')
 
     @patch.dict(os.environ, {"SARVAM_API_KEY": ""})
     async def test_no_detection_cost_without_sarvam(self):

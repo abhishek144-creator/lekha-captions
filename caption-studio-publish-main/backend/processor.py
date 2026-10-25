@@ -50,9 +50,6 @@ AUDIO_EXTRACTION_TIMEOUT_SECONDS = max(
 # request; longer audio is sent as consecutive pieces cut at pauses in speech.
 SARVAM_MAX_SEGMENT_SECONDS = 29.0
 SARVAM_MIN_SEGMENT_SECONDS = 10.0
-# Whisper language codes for the Sarvam languages whisper also recognizes
-# (it has no Odia), used only to steer its word timings.
-WHISPER_INDIC_CODES = {"hi", "bn", "kn", "ml", "mr", "pa", "ta", "te", "gu", "as"}
 _SILENCE_RE = re.compile(r"silence_(start|end): (-?\d+(?:\.\d+)?)")
 
 
@@ -412,10 +409,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
     def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code, speech_words=None):
         """Timed words for the whole file, one Sarvam request per <=29 s piece.
 
-        `speech_words` are word timings from whisper for the same audio (text
-        unused). They place each word where speech actually is and pick cut
-        points between words; without them pauses come from silencedetect and
-        each phrase is split evenly.
+        The production Sarvam path uses native phrase timestamps and local
+        silence detection, splitting each phrase into estimated word timings.
+        Optional supplied speech timings remain supported for trusted callers;
+        this path never requests a separate Whisper alignment transcript.
         """
         speech_words = speech_words or []
 
@@ -649,7 +646,11 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
                 'malayalam': 'ml-IN', 'marathi': 'mr-IN', 'odia': 'od-IN',
                 'punjabi': 'pa-IN', 'tamil': 'ta-IN', 'telugu': 'te-IN',
-                'gujarati': 'gu-IN', 'assamese': 'as-IN'
+                'gujarati': 'gu-IN', 'assamese': 'as-IN',
+                'urdu': 'ur-IN', 'nepali': 'ne-IN', 'konkani': 'kok-IN',
+                'kashmiri': 'ks-IN', 'sindhi': 'sd-IN', 'sanskrit': 'sa-IN',
+                'santali': 'sat-IN', 'manipuri': 'mni-IN', 'bodo': 'brx-IN',
+                'maithili': 'mai-IN', 'dogri': 'doi-IN', 'hinglish': 'hi-IN',
             }
 
             # Whisper ISO 639-1 language codes for non-Indian languages
@@ -715,14 +716,12 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             try:
                 if api_error_msg is not None:
                     raise Exception(api_error_msg)
-                if is_indian_lang and sarvam_api_key:
+                if is_indian_lang:
                     active_provider = "sarvam"
+                    if not sarvam_api_key:
+                        raise RuntimeError("Sarvam is not configured")
                     if not transcription_provider_health.allow_request("sarvam"):
                         raise RuntimeError("Sarvam circuit is open")
-                    # Assuming 'file_name' and 'logger' are available or can be mocked for this context
-                    # For this specific change, we'll just add the print statements.
-                    # If `logger` or `file_name` are not defined, this will cause an error.
-                    # As per instructions, only add the print statement.
                     print("-" * 50)
                     print(f"[Transcribe] Using Sarvam API (saaras:v3) for {target_language} speech...")
                     print("-" * 50)
@@ -732,16 +731,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     )
                     lang_code = sarvam_langs[target_language.lower()]
 
-                    # Sarvam times whole phrases (often a whole request, music
-                    # included); whisper's word timings say where speech is.
-                    whisper_code = lang_code.split("-")[0]
-                    speech_words = self._whisper_speech_timings(
-                        audio_p, whisper_code if whisper_code in WHISPER_INDIC_CODES else "",
-                    )
-                    print(f"[Transcribe] Whisper word timings for alignment: {len(speech_words)}")
-
                     try:
-                        words = self._transcribe_with_sarvam(sarvam_client, audio_p, lang_code, speech_words)
+                        # Use Sarvam's phrase timestamps and local pause-based
+                        # splitting; no second Whisper transcription for alignment.
+                        words = self._transcribe_with_sarvam(sarvam_client, audio_p, lang_code)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
                             transcription_provider_health.record_success("sarvam")
@@ -805,13 +798,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     transcription_provider_health.record_failure(active_provider)
                 print(f"[Warning] Transcription provider error: {api_error}")
 
-            failover_enabled = os.environ.get("TRANSCRIPTION_PROVIDER_FAILOVER", "1").strip().lower() in {
-                "1", "true", "yes", "on"
-            }
-            sarvam_failed = bool(is_indian_lang and sarvam_api_key and api_error_msg)
+            sarvam_failed = bool(is_indian_lang and api_error_msg)
             audio_ready = bool(audio_p and os.path.exists(audio_p) and os.path.getsize(audio_p) > 0)
-            openai_available = transcription_provider_health.allow_request("openai")
-            if not words and self.client and audio_ready and openai_available and (api_error_msg is None or (sarvam_failed and failover_enabled)):
+            needs_fallback = not words and self.client and audio_ready and (api_error_msg is None or sarvam_failed)
+            if needs_fallback and transcription_provider_health.allow_request("openai"):
                 try:
                     if sarvam_failed:
                         print("[Transcribe] Sarvam failed; using configured OpenAI failover.")

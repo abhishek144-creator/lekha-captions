@@ -6,6 +6,7 @@ import {
   splitCaptionAtBoundary,
 } from './captionEditingUtils'
 import { createLiveScrubber } from './liveScrub'
+import DismissibleNotice from './DismissibleNotice'
 
 // Timeline editor: a real time scale (pixels per second) that scrolls
 // natively, a ruler with round ticks, a draggable playhead, text-box lanes,
@@ -574,7 +575,7 @@ export default function CaptionTimeline({
         >
           <Magnet className="h-3.5 w-3.5" /><span className="hidden md:inline">Snap</span>
         </button>
-        {notice && <span role="status" className="ml-1 truncate text-[10px] text-amber-200">{notice}</span>}
+        {notice && <DismissibleNotice key={notice} closeLabel="Close timeline notification" onDismiss={() => setNotice('')} contentClassName="min-w-0 truncate" className="ml-1 min-w-0 text-[10px] text-amber-200">{notice}</DismissibleNotice>}
         <div className="ml-auto flex items-center gap-1">
           <span className="hidden text-[9px] text-slate-600 lg:inline">{captions?.length || 0} elements</span>
           <button type="button" onClick={() => zoomTo(pps / 1.5)} className={toolButton} title="Zoom out (-)" aria-label="Zoom out">
