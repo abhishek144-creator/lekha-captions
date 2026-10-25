@@ -36,7 +36,7 @@ class TranscriptionJobs:
         doc = self.refs(uid, job_id)[0].get()
         return doc.to_dict() if doc.exists else None
 
-    def create(self, uid, settings):
+    def create(self, uid, settings, operation_reference=""):
         # Also dedupe a fresh browser request after reload, not only transport retries.
         job_id = hashlib.sha256(json.dumps([self.environment, uid, settings], sort_keys=True).encode()).hexdigest()
         ref, lock, outbox, fence = self.refs(uid, job_id)
@@ -49,12 +49,23 @@ class TranscriptionJobs:
             active = lock.get(transaction=tx)
             if existing.exists:
                 previous = existing.to_dict() or {}
+                references = list(previous.get("request_references") or [])
+                new_reference = bool(operation_reference and operation_reference not in references)
+                # Polls and transport retries reuse a request reference. Remember
+                # observers that join a pending job too, so a reload cannot turn
+                # its next poll into an automatic retry after worker failure.
+                if new_reference and previous.get("status") in {"queued", "running", "failed"}:
+                    if len(references) >= 64:
+                        raise HTTPException(429, "Too many requests for this transcription. Contact support.")
+                    references.append(operation_reference)
                 # A FAILED job reached a known safe rejection (for example an
                 # unavailable provider).  A fresh user request must be able to
                 # retry it without forcing another video upload.  UNKNOWN is
                 # deliberately not retried: the provider may already have
                 # processed it and charging it again would be unsafe.
-                if previous.get("status") == "failed":
+                if previous.get("status") == "failed" and new_reference:
+                    if active.exists and (active.to_dict() or {}).get("status") not in TERMINAL:
+                        raise HTTPException(409, "Another transcription is active for this account")
                     now = time.time()
                     retried = {
                         **previous,
@@ -62,12 +73,14 @@ class TranscriptionJobs:
                         "updated_at": now,
                         "error": None,
                         "retry_count": int(previous.get("retry_count") or 0) + 1,
+                        "request_references": references,
                     }
                     tx.update(ref, {
                         "status": "queued",
                         "updated_at": now,
                         "error": None,
                         "retry_count": retried["retry_count"],
+                        "request_references": references,
                     })
                     tx.set(lock, {"job_id": job_id, "status": "queued"})
                     tx.set(outbox, {
@@ -78,11 +91,14 @@ class TranscriptionJobs:
                         "last_dispatch": 0,
                     })
                     return {"job_id": job_id, **retried}
+                if new_reference and previous.get("status") in {"queued", "running"}:
+                    tx.update(ref, {"request_references": references})
                 return {"job_id": job_id, **previous}
             if active.exists and (active.to_dict() or {}).get("status") not in TERMINAL:
                 raise HTTPException(409, "Another transcription is active for this account")
             now = time.time()
             job = {"schema_version": 1, "environment": self.environment, "uid": uid, "settings": settings, "status": "queued",
+                   "request_references": [operation_reference] if operation_reference else [],
                    "created_at": now, "updated_at": now, "expire_at": datetime.now(timezone.utc) + timedelta(days=7)}
             tx.create(ref, job)
             tx.set(lock, {"job_id": job_id, "status": "queued"})

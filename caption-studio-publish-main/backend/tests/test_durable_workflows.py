@@ -205,6 +205,7 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "unknown")
         self.assertIsNone(self.jobs.claim("a", job["job_id"]))
         self.assertEqual(self.jobs.create("a", self.settings)["status"], "unknown")
+        self.assertEqual(self.jobs.create("a", self.settings, operation_reference="new-user-request")["status"], "unknown")
 
     def test_completed_result_survives_new_store_and_duplicate_worker(self):
         job = self.jobs.create("a", self.settings)
@@ -232,7 +233,7 @@ class DurableWorkflowTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
     def test_confirmed_worker_failure_is_retryable_without_reupload(self):
-        job = self.jobs.create("a", self.settings)
+        job = self.jobs.create("a", self.settings, operation_reference="first-request")
         with (patch.object(main.firebase_admin_setup, "get_db", return_value=self.db), patch.object(main.request_security, "_assert_account_not_deleting"),
               patch.object(main.processing_api, "_process_video_inline", new_callable=AsyncMock,
                            side_effect=HTTPException(502, "provider unavailable"))):
@@ -240,7 +241,7 @@ class DurableWorkflowTests(unittest.TestCase):
                 main.processing_api.run_transcription_job_task("a", job["job_id"])
 
         self.assertEqual(self.jobs.get("a", job["job_id"])["status"], "failed")
-        retry = self.jobs.create("a", self.settings)
+        retry = self.jobs.create("a", self.settings, operation_reference="new-user-retry")
         self.assertEqual(retry["status"], "queued")
         self.assertEqual(retry["retry_count"], 1)
 
@@ -286,6 +287,62 @@ class DurableWorkflowTests(unittest.TestCase):
             response = TestClient(main.app).post("/api/process", json=self.settings)
             self.assertEqual(response.status_code, 409)
             self.assertNotIn("PROCESS_IN_PROGRESS", response.text)
+
+    def test_failed_http_poll_is_terminal_until_a_new_user_request(self):
+        with (patch.object(main.settings, "_IS_PRODUCTION", True), patch.object(main.firebase_admin_setup, "get_db", return_value=self.db),
+              patch.object(main.operator_controls, "_assert_service_available"), patch.object(main.media_records, "_assert_upload_owner"),
+              patch.object(main.request_security, "_authenticate_media_request", return_value={"uid": "a"}),
+              patch.object(TranscriptionJobs, "dispatch") as dispatch):
+            client = TestClient(main.app)
+            request = {**self.settings, "idempotency_key": "first-user-request"}
+            first = client.post("/api/process", json=request)
+            self.assertEqual(first.status_code, 202)
+            job_id = first.json()["job_id"]
+            self.jobs.claim("a", job_id)
+            self.jobs.finish("a", job_id, "failed", error="Transcription could not complete")
+            dispatch.reset_mock()
+            for _ in range(3):
+                poll = client.post("/api/process", json=request)
+                self.assertEqual(poll.status_code, 409)
+                self.assertNotIn("PROCESS_IN_PROGRESS", poll.text)
+            dispatch.assert_not_called()
+            self.assertEqual(self.jobs.get("a", job_id)["status"], "failed")
+            retry = client.post("/api/process", json={**request, "idempotency_key": "new-user-retry"})
+            self.assertEqual(retry.status_code, 202)
+            self.assertEqual(retry.json()["job_id"], job_id)
+            self.assertEqual(self.jobs.get("a", job_id)["retry_count"], 1)
+            dispatch.assert_called_once()
+
+    def test_reloaded_observer_cannot_restart_a_failed_job_by_polling(self):
+        job = self.jobs.create("a", self.settings, operation_reference="original-request")
+        self.jobs.claim("a", job["job_id"])
+        self.jobs.create("a", self.settings, operation_reference="reloaded-observer")
+        self.jobs.finish("a", job["job_id"], "failed")
+        for reference in ("original-request", "reloaded-observer", ""):
+            self.assertEqual(self.jobs.create("a", self.settings, operation_reference=reference)["status"], "failed")
+        self.assertNotIn("transcription_outbox/" + job["job_id"], self.db.data)
+
+    def test_new_retry_does_not_displace_another_active_transcription(self):
+        failed = self.jobs.create("a", self.settings, operation_reference="original")
+        self.jobs.claim("a", failed["job_id"])
+        self.jobs.finish("a", failed["job_id"], "failed")
+        active = self.jobs.create("a", {**self.settings, "language": "Hindi"}, operation_reference="other-video")
+        with self.assertRaises(HTTPException):
+            self.jobs.create("a", self.settings, operation_reference="new-retry")
+        self.assertEqual(self.jobs.get("a", failed["job_id"])["status"], "failed")
+        self.assertEqual(self.db.data["users/a/operation_locks/transcription"]["job_id"], active["job_id"])
+
+    def test_request_tracking_stays_bounded_without_forgetting_old_polls(self):
+        job = self.jobs.create("a", self.settings, operation_reference="original")
+        for index in range(63):
+            self.jobs.create("a", self.settings, operation_reference=f"observer-{index}")
+        self.jobs.claim("a", job["job_id"])
+        self.jobs.finish("a", job["job_id"], "failed")
+        self.assertEqual(self.jobs.create("a", self.settings, operation_reference="original")["status"], "failed")
+        with self.assertRaises(HTTPException) as limit:
+            self.jobs.create("a", self.settings, operation_reference="excess-retry")
+        self.assertEqual(limit.exception.status_code, 429)
+        self.assertNotIn("transcription_outbox/" + job["job_id"], self.db.data)
 
     def test_draft_duplicate_receipt_does_not_increment_revision(self):
         self.assertEqual(save_draft(self.db, "a", self.draft, 0)["revision"], 1)

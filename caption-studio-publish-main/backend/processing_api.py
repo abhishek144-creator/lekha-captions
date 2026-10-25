@@ -49,7 +49,7 @@ async def process_video(req: api_models.ProcessRequest, request: Request, respon
     job_settings = {"file_id": req.file_id, "language": req.language,
                 "min_words": req.min_words, "max_words": req.max_words}
     jobs = TranscriptionJobs(firebase_admin_setup.get_db())
-    job = await asyncio.to_thread(jobs.create, uid, job_settings)
+    job = await asyncio.to_thread(jobs.create, uid, job_settings, operation_reference=req.idempotency_key)
     if job["status"] == "completed":
         return {**job["payload"], "idempotent_replay": True}
     if job["status"] in {"failed", "unknown", "cancelled"}:
