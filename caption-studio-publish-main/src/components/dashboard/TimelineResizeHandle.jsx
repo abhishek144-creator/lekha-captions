@@ -37,6 +37,7 @@ export default function TimelineResizeHandle({ timelineHeight, setTimelineHeight
 
   return (
     <div
+      data-editor-panel="true"
       role="separator"
       aria-orientation="horizontal"
       aria-label="Resize timeline. Double-click to collapse."

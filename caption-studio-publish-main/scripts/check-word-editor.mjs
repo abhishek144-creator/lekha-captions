@@ -64,7 +64,7 @@ async function openPopup(page, wordIndex = 1) {
   await sleep(500)
 }
 
-const modes = (process.env.MODE || 'layout,fullscreen,color,sync').split(',')
+const modes = (process.env.MODE || 'layout,fullscreen,timeline,color,sync').split(',')
 let failures = 0
 const recordResult = (ok) => { if (!ok) failures += 1 }
 try {
@@ -96,6 +96,39 @@ try {
         await page.close()
       }
     }
+  }
+  if (mode === 'timeline') {
+    const page = await open(1813, 1020, null)
+    await openPopup(page)
+    const before = await page.$eval('[data-word-popup-panel]', panel => ({ height: parseFloat(panel.style.maxHeight), placement: panel.dataset.placement }))
+    await page.click('button[title="Expand timeline"]')
+    await page.waitForSelector('[role="separator"][aria-label^="Resize timeline"]')
+    const separator = await page.$('[role="separator"][aria-label^="Resize timeline"]')
+    const handle = await separator.boundingBox()
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handle.x + handle.width / 2, handle.y - 160, { steps: 8 })
+    await page.mouse.up()
+    await sleep(400)
+    const result = await page.evaluate(() => {
+      const panel = document.querySelector('[data-word-popup-panel]')
+      const timeline = document.querySelector('[data-word-editor-floor]')
+      const p = panel.getBoundingClientRect()
+      const t = timeline.getBoundingClientRect()
+      const x = (Math.max(p.left, t.left) + Math.min(p.right, t.right)) / 2
+      const y = Math.max(p.top, t.top) + 10
+      return {
+        height: parseFloat(panel.style.maxHeight), placement: panel.dataset.placement,
+        extendsBehindTimeline: p.bottom > t.top + 40,
+        timelineOnTop: Boolean(document.elementFromPoint(x, y)?.closest('[data-timeline-root]')),
+      }
+    })
+    const ok = before.placement === 'floating' && result.placement === 'floating'
+      && Math.abs(before.height - result.height) < 2 && result.extendsBehindTimeline && result.timelineOnTop
+    recordResult(ok)
+    console.log(`${ok ? 'OK  ' : 'FAIL'} timeline keeps the full floating editor behind its layer: ${JSON.stringify({ before, result })}`)
+    await page.screenshot({ path: 'test-artifacts/popup-expanded-timeline.png' })
+    await page.close()
   }
   if (mode === 'color') {
     for (const kind of (process.env.KINDS || 'plain').split(',')) {
