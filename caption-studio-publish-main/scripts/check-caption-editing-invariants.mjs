@@ -68,7 +68,7 @@ for (const caption of [backToBack.original, backToBack.copy]) {
 }
 
 const resized = invalidateWordTimingOutsideCaption({ ...source, start_time: 1.5 })
-assert.deepEqual(resized.words, [])
+assert.deepEqual(resized.words, source.words, 'a trim must preserve source word clocks instead of redistributing the surviving words')
 assert.equal(resized.word_alignment_status, 'needs_review')
 
 const indic = reconcileCaptionText({

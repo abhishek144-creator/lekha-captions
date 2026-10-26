@@ -329,10 +329,10 @@ export function normalizeBasicImpWordIndices(impWordIndex = -1, impWordIndices =
   const values = Array.isArray(impWordIndices) ? impWordIndices : [];
   const normalized = values
     .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value >= 0)
+    .filter((value) => Number.isInteger(value) && value >= 0)
     .map((value) => Math.trunc(value));
   const single = Number(impWordIndex);
-  if (Number.isFinite(single) && single >= 0) normalized.push(Math.trunc(single));
+  if (Number.isInteger(single) && single >= 0) normalized.push(Math.trunc(single));
   return new Set([...new Set(normalized)]);
 }
 

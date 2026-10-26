@@ -418,8 +418,8 @@ export default function VideoPlayer({
   const cptRevealTimeRef = useRef(Number(currentTime) || 0);
 
   // CPT authoring is a fully visible editing state. Once playback starts, use
-  // the video clock to advance cumulative visibility by at most one word per
-  // painted frame, without running any entrance animation.
+  // the video clock to advance cumulative visibility on each
+  // painted frame (including seeks and faster playback), without running any entrance animation.
   useEffect(() => {
     if (!isPlaying) {
       if (cptRevealRafRef.current) {
@@ -453,7 +453,7 @@ export default function VideoPlayer({
           const previousIndex = previousIndexes[caption.id];
           const nextIndex = movedBackward
             ? targetIndex
-            : advanceCaptionWordRevealIndex(previousIndex, targetIndex);
+            : advanceCaptionWordRevealIndex(previousIndex, targetIndex, true);
           nextIndexes[caption.id] = nextIndex;
           if (nextIndex !== previousIndex) changed = true;
         });
@@ -596,6 +596,35 @@ export default function VideoPlayer({
       setCurrentTime(videoRef.current.currentTime);
     }
   }, [setCurrentTime]);
+
+  // Caption selection, timeline and overlay follow the native media clock at
+  // paint cadence. timeupdate alone may be only 4 Hz, skipping short words.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return undefined
+    let frame
+    const sync = () => setCurrentTime(video.currentTime)
+    const tick = () => {
+      sync()
+      if (!video.paused && !video.ended) frame = requestAnimationFrame(tick)
+    }
+    const play = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(tick)
+    }
+    video.addEventListener('play', play)
+    video.addEventListener('seeked', sync)
+    video.addEventListener('pause', sync)
+    video.addEventListener('ratechange', sync)
+    if (!video.paused) play()
+    return () => {
+      cancelAnimationFrame(frame)
+      video.removeEventListener('play', play)
+      video.removeEventListener('seeked', sync)
+      video.removeEventListener('pause', sync)
+      video.removeEventListener('ratechange', sync)
+    }
+  }, [videoUrl, setCurrentTime])
 
   const handleLoadedMetadata = useCallback(() => {
     if (videoRef.current) {

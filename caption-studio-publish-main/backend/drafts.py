@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 import uuid
+import math
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -27,8 +28,18 @@ def normalize_draft(value):
     allowed = {
         "captions", "captionStyle", "captionTracks", "activeCaptionTrackId",
         "projectId", "projectName", "settings", "duration", "fileId", "originalFileName",
+        "audioAnalysis",
     }
     draft = {key: data for key, data in value.items() if key in allowed}
+    analysis = draft.pop('audioAnalysis', None)
+    if isinstance(analysis, dict):
+        samples = analysis.get('samples')
+        duration = analysis.get('duration')
+        if (analysis.get('fileId') == draft.get('fileId') and draft.get('fileId')
+                and isinstance(samples, list) and 0 < len(samples) <= 12000
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and 0 <= v <= 1 for v in samples)
+                and isinstance(duration, (int, float)) and not isinstance(duration, bool) and math.isfinite(duration) and 0 < duration <= 600):
+            draft['audioAnalysis'] = {'fileId': draft['fileId'], 'duration': duration, 'samples': samples}
     if not isinstance(draft.get("settings") or {}, dict):
         raise HTTPException(422, "Invalid draft settings")
     draft["settings"] = {key: data for key, data in (draft.get("settings") or {}).items()

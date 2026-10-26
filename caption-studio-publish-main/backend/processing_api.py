@@ -5,6 +5,7 @@ import hashlib
 import json
 import time
 import uuid
+import threading
 from fastapi import APIRouter, HTTPException, Request, Response
 from google.cloud import firestore
 
@@ -36,6 +37,47 @@ except ImportError:  # Direct execution from backend/ remains supported.
 
 
 router = APIRouter()
+_audio_analysis_slots = threading.BoundedSemaphore(1)
+
+
+@router.post('/api/audio-analysis')
+async def audio_analysis(req: api_models.MediaUrlRequest):
+    """Recover older project waveforms without repeating paid transcription."""
+    uid = (await asyncio.to_thread(request_security._authenticate_media_request, req.id_token, req.org_id))['uid']
+    if not media_records._validate_file_id(req.file_id):
+        raise HTTPException(400, 'Invalid file_id')
+    await asyncio.to_thread(media_records._assert_upload_owner, req.file_id, uid)
+    allowed, _, _ = await asyncio.to_thread(request_guards._check_rate, app_state._process_rate, f'audio:{uid}', 12)
+    if not allowed:
+        raise HTTPException(429, 'Audio analysis is busy. Please try again later.')
+    def recover():
+        # One bounded local decode per API process. The slot belongs to this
+        # worker thread until FFmpeg exits, even if the HTTP caller disconnects.
+        if not _audio_analysis_slots.acquire(blocking=False):
+            raise HTTPException(429, 'Audio analysis is busy. Please try again shortly.')
+        try:
+            source = media_records._safe_find_upload(req.file_id)
+            if not source:
+                raise HTTPException(404, 'Source video unavailable')
+            media_records._ensure_upload_clean(req.file_id, uid, source)
+            try:
+                from .audio_analysis import analyze_media
+            except ImportError:
+                from audio_analysis import analyze_media
+            metadata = media_records._probe_media(source)
+            duration = float((metadata.get('format') or {}).get('duration') or 0)
+            if not 0 < duration <= settings.GLOBAL_MAX_UPLOAD_DURATION_SECONDS + 0.5:
+                raise HTTPException(422, 'Invalid media duration')
+            try:
+                analysis = analyze_media(source, duration)
+            except Exception as error:
+                observability._json_log('warning', 'audio_analysis_failed', error_type=type(error).__name__)
+                raise HTTPException(422, 'Could not decode source audio') from error
+            return {'success': True, 'audio_analysis': analysis}
+        finally:
+            _audio_analysis_slots.release()
+    return await asyncio.to_thread(recover)
+
 
 @router.post("/api/process")
 async def process_video(req: api_models.ProcessRequest, request: Request, response: Response):
@@ -48,6 +90,8 @@ async def process_video(req: api_models.ProcessRequest, request: Request, respon
     await asyncio.to_thread(media_records._assert_upload_owner, req.file_id, uid)
     job_settings = {"file_id": req.file_id, "language": req.language,
                 "min_words": req.min_words, "max_words": req.max_words}
+    if req.cleanup_mode != "clean":
+        job_settings["cleanup_mode"] = req.cleanup_mode
     jobs = TranscriptionJobs(firebase_admin_setup.get_db())
     job = await asyncio.to_thread(jobs.create, uid, job_settings, operation_reference=req.idempotency_key)
     if job["status"] == "completed":
@@ -185,7 +229,7 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
 
     try:
         media_hash = await asyncio.to_thread(media_records._compute_media_hash, input_path)
-        cache_path = media_records._build_process_cache_path(media_hash, req.language, req.min_words, req.max_words)
+        cache_path = media_records._build_process_cache_path(media_hash, req.language, req.min_words, req.max_words, req.cleanup_mode)
     except Exception:
         media_hash = ""
         cache_path = ""
@@ -216,6 +260,7 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
         "language": req.language,
         "min_words": req.min_words,
         "max_words": req.max_words,
+        **({"cleanup_mode": req.cleanup_mode} if req.cleanup_mode != "clean" else {}),
     }, sort_keys=True).encode("utf-8")).hexdigest()
     if process_idem_key:
         cached_process = request_guards._idem_get(process_idem_key)
@@ -256,6 +301,7 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
                 target_language=req.language,
                 min_words=req.min_words,
                 max_words=req.max_words,
+                cleanup_mode=req.cleanup_mode,
             ))
 
         try:

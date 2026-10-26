@@ -12,9 +12,9 @@ describe('parseWordsPerLine', () => {
   it('reads ranges, single counts and the dynamic default', () => {
     expect(parseWordsPerLine('1-2')).toEqual({ minWords: 1, maxWords: 2 })
     expect(parseWordsPerLine('3')).toEqual({ minWords: 3, maxWords: 3 })
-    expect(parseWordsPerLine('dynamic')).toEqual({ minWords: 5, maxWords: 6 })
-    expect(parseWordsPerLine(undefined)).toEqual({ minWords: 5, maxWords: 6 })
-    expect(parseWordsPerLine('abc')).toEqual({ minWords: 5, maxWords: 6 })
+    expect(parseWordsPerLine('dynamic')).toEqual({ minWords: 0, maxWords: 0 })
+    expect(parseWordsPerLine(undefined)).toEqual({ minWords: 0, maxWords: 0 })
+    expect(parseWordsPerLine('abc')).toEqual({ minWords: 0, maxWords: 0 })
   })
 })
 
@@ -28,6 +28,16 @@ describe('captionsFromTranscript', () => {
 })
 
 describe('mergeCaptionPairs', () => {
+  it('does not recombine sentences across pauses for double-line captions', () => {
+    const source = [
+      { text: 'Stay here.', start_time: 0, end_time: 1, language: 'english' },
+      { text: 'Then continue', start_time: 1.1, end_time: 2 },
+      { text: 'after the pause.', start_time: 5, end_time: 6 },
+    ]
+    expect(mergeCaptionPairs(source, 'p').map(c => [c.text, c.start_time, c.end_time])).toEqual(source.map(c => [c.text, c.start_time, c.end_time]))
+    expect(mergeCaptionPairs(source, 'p')[0].language).toBe('english')
+  })
+
   it('joins consecutive captions onto two lines and keeps a trailing single', () => {
     const merged = mergeCaptionPairs([
       { id: 'a', text: 'one', start_time: 0, end_time: 1, words: [{ word: 'one' }] },

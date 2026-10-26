@@ -7,7 +7,7 @@ place and every caller sees it.
 import math
 import re
 from pydantic import BaseModel, Field, model_validator
-from typing import Any, Dict, List, Optional
+from typing import Literal, Any, Dict, List, Optional
 
 
 try:
@@ -19,6 +19,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
 
 
 class CaptionItem(BaseModel):
+    language: str = Field(default="", max_length=60)
     model_config = {"populate_by_name": True}
 
     id: Any
@@ -205,6 +206,7 @@ class SupportRequest(BaseModel):
 
 
 class ProcessRequest(BaseModel):
+    cleanup_mode: Literal["clean", "verbatim"] = "clean"
     file_id: str = Field(min_length=36, max_length=36)
     language: str = Field(default="English", max_length=50)
     min_words: int = Field(default=0, ge=0, le=20)

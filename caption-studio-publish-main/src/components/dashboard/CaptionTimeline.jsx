@@ -230,7 +230,7 @@ export default function CaptionTimeline({
       return peak
     })
     const max = Math.max(0.001, ...bars)
-    return bars.map((value) => Math.max(0.06, value / max))
+    return bars.map((value) => value > 0 ? Math.max(0.02, value / max) : 0)
   }, [waveformData])
 
   // ---------- scrubbing ----------
@@ -479,7 +479,7 @@ export default function CaptionTimeline({
         className="w-full h-[38px] rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 px-4 flex items-center justify-center gap-4 text-[9px] uppercase tracking-[0.22em] text-slate-500 shadow-[0_10px_28px_-20px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-white/15 hover:bg-[#111] transition-colors"
         title="Expand timeline"
       >
-        <span>48 kHz - Stereo</span>
+        <span>Source audio</span>
         <span className="h-3 w-px bg-white/10" />
         <span className="inline-flex items-center self-center text-slate-300 text-xs leading-none">^</span>
         <span className="font-bold text-white">Timeline</span>
@@ -672,7 +672,9 @@ export default function CaptionTimeline({
                 style={{ left: PAD_X, top: audioTop + 4, width: totalDuration * pps, height: AUDIO_HEIGHT - 8 }}
                 viewBox={`0 0 ${waveformBars.length} 100`}
                 preserveAspectRatio="none"
-                aria-hidden="true"
+                data-audio-waveform="true"
+                role="img"
+                aria-label="Source audio waveform"
               >
                 {waveformBars.map((value, index) => (
                   <rect key={index} x={index + 0.15} width={0.7} y={50 - value * 48} height={value * 96} fill="rgba(255,255,255,0.32)" />

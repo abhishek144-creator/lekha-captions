@@ -1,3 +1,5 @@
+import { captionTextKey } from '../../lib/captionTextKey.js'
+import languageRules from '../../../shared/captionLanguageRules.json' with { type: 'json' }
 export const EMOTIONAL_TEMPLATE_TIMING = Object.freeze({
   holdMs: 3000,
   exitMs: 420,
@@ -36,10 +38,34 @@ export const EMPHASIS_STOP_WORDS = new Set([
   'अपने', 'यहां', 'वहां', 'रहें', 'हुआ', 'हुई', 'हुए', 'यार', 'मतलब', 'अच्छा', 'हाँ', 'हां',
 ]);
 
+const languageAliases = {
+  english: 'en', hindi: 'hi', hinglish: 'hi', tamil: 'ta', telugu: 'te', bengali: 'bn',
+  marathi: 'mr', gujarati: 'gu', kannada: 'kn', malayalam: 'ml', punjabi: 'pa', urdu: 'ur',
+  french: 'fr', spanish: 'es', german: 'de', portuguese: 'pt', arabic: 'ar', russian: 'ru',
+}
+const inferredScriptLanguage = text => {
+  /** @type {[RegExp, string][]} */
+  const scripts = [[/\p{Script=Devanagari}/u, 'hi'], [/\p{Script=Tamil}/u, 'ta'], [/\p{Script=Telugu}/u, 'te'], [/\p{Script=Bengali}/u, 'bn'], [/\p{Script=Gujarati}/u, 'gu'], [/\p{Script=Kannada}/u, 'kn'], [/\p{Script=Malayalam}/u, 'ml'], [/\p{Script=Gurmukhi}/u, 'pa'], [/\p{Script=Arabic}/u, 'ur'], [/\p{Script=Cyrillic}/u, 'ru']]
+  for (const [pattern, language] of scripts) {
+    if (pattern.test(text)) return language
+  }
+  return 'en'
+}
+export function getEmphasisStopWords(text = '', language = '') {
+  const code = String(language).toLowerCase().split(/[-_]/)[0]
+  const key = languageAliases[code] || code || inferredScriptLanguage(text)
+  const selected = languageRules.functionWords[key] || languageRules.functionWords[inferredScriptLanguage(text)]
+  // Keep the original English/Hindi discourse exclusions only in those
+  // languages. Unioning every language made English "die" a German article.
+  const words = new Set(selected.toLowerCase().split(/\s+/))
+  if (key === 'en' || key === 'hi') EMPHASIS_STOP_WORDS.forEach(word => words.add(word))
+  return words
+}
+
 export function normalizeEmphasisWord(word = '') {
   return String(word)
     .normalize('NFKC')
-    .toLocaleLowerCase()
+    .toLowerCase()
     .replace(/^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu, '');
 }
 
@@ -47,63 +73,44 @@ export function countLettersAndNumbers(word = '') {
   return Array.from(word.matchAll(/[\p{L}\p{M}\p{N}]/gu)).length;
 }
 
-function selectSemanticEmphasis(words = [], audioImpWordIndex = -1) {
-  const normalizedWords = words.map(normalizeEmphasisWord);
-  for (let index = 0; index < normalizedWords.length - 1; index += 1) {
-    if (normalizedWords[index] === '\u0926\u0938' && normalizedWords[index + 1] === '\u0932\u0915') {
-      return {
-        impWordIndex: index,
-        impWordIndices: [index, index + 1],
-        emphasisColor: '',
-      };
-    }
-  }
+const semanticActions = new Set(languageRules.contentActions.split(/\s+/))
+const emotionalWords = new Set(languageRules.emotionalWords.split(/\s+/))
+const nounLeads = new Set(languageRules.nounLeads.split(/\s+/))
+const nounTails = new Set(languageRules.nounTails.split(/\s+/))
+const actionLeads = new Set(languageRules.actionLeads.split(/\s+/))
+const actionTails = new Set(languageRules.actionTails.split(/\s+/))
+const isActionWord = word => semanticActions.has(word) || (/^[a-z]+$/u.test(word || '') && ['s', 'ed', 'ing'].some(suffix => word.endsWith(suffix) && semanticActions.has(word.slice(0, -suffix.length))))
+const clauseStarters = new Set(languageRules.clauseStarters.split(/\s+/))
 
-  /** @type {{ index: number, score: number, word: string } | null} */
-  let best = null;
-  /** @type {{ index: number, word: string, length: number } | null} */
-  let fallback = null;
-  words.forEach((rawWord, index) => {
-    const word = normalizeEmphasisWord(rawWord);
-    if (!word) return;
-
-    const length = countLettersAndNumbers(word);
-    const isNumber = /^\p{N}+(?:[.,]\p{N}+)*$/u.test(word);
-    if (
-      !fallback
-      || length > fallback.length
-      || (index === audioImpWordIndex && fallback.index !== audioImpWordIndex)
-    ) {
-      fallback = { index, word, length };
-    }
-    if (EMPHASIS_STOP_WORDS.has(word)) return;
-    if (!isNumber && length < 3) return;
-
-    let score = Math.min(4.5, length * 0.72);
-    if (isNumber) score += 2.2;
-    if (index === audioImpWordIndex) score += 0.55;
-    if (index > 0 && index < words.length - 1) score += 0.2;
-
-    if (!best || score > best.score) best = { index, score, word };
-  });
-
-  // Emphasis color is intentionally left empty: each template supplies its own
-  // single theme color (via its imp-* class / sidebar accent, pinned in
-  // resolveAdvancedTemplateEmphasisColor). This keeps one consistent highlight
-  // color per template instead of a per-word rotating palette.
-  if (!best || best.score < 2.35) {
-    if (!fallback) return { impWordIndex: -1, emphasisColor: '' };
-    return {
-      impWordIndex: fallback.index,
-      impWordIndices: [fallback.index],
-      emphasisColor: '',
-    };
-  }
-  return {
-    impWordIndex: best.index,
-    impWordIndices: [best.index],
-    emphasisColor: '',
-  };
+// A conservative local reading when no stored semantic analysis exists.
+// Length alone cannot earn emphasis. Numbers, names, main actions, emotional
+// terms and noun-phrase relations provide positive evidence in the sentence.
+export function selectSemanticEmphasis(words = [], language = '') {
+  const stopWords = getEmphasisStopWords(words.join(' '), language)
+  const normalized = words.map(normalizeEmphasisWord)
+  const candidates = normalized.map((word, index) => {
+    if (!word || stopWords.has(word)) return { index, score: -1 }
+    let score = 0
+    if (/\p{N}/u.test(word)) score += 5
+    if (isActionWord(word)) score += 3.5
+    if (emotionalWords.has(word)) score += 3.5
+    if (index > 0 && /^\p{Lu}\p{Ll}/u.test(words[index])) score += 3.5
+    // Last content token of a noun phrase, rather than its determiner or
+    // leading adjective. Indic postpositions bind to the preceding noun.
+    if (nounTails.has(normalized[index + 1])) score += 3.2
+    if (isActionWord(normalized[index + 1])) score += 4
+    // A direct object supplies what the action changes ("builds habits").
+    // This is a grammatical signal, not a rule to alternate highlighted words.
+    if (isActionWord(normalized[index - 1])) score += 4.2
+    if (actionLeads.has(normalized[index - 1]) || actionTails.has(normalized[index + 1])) score += 3.2
+    const lead = normalized.slice(Math.max(0, index - 3), index).some(token => nounLeads.has(token))
+    if (lead && (!normalized[index + 1] || stopWords.has(normalized[index + 1]) || isActionWord(normalized[index + 1]))) score += 3
+    if (index > 0 && clauseStarters.has(normalized[index - 1])) score += 2.5
+    if (/[!！]$/.test(words[index])) score += 1
+    return { index, score }
+  }).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (normalized[a.index] < normalized[b.index] ? -1 : normalized[a.index] > normalized[b.index] ? 1 : 0) || a.index - b.index)
+  const chosen = candidates[0]?.index ?? -1
+  return { impWordIndex: chosen, impWordIndices: chosen < 0 ? [] : [chosen], emphasisColor: '' }
 }
 
 export function quantile(values, amount) {
@@ -238,8 +245,9 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
     const words = String(caption?.text || '').trim().split(/\s+/).filter(Boolean);
     // A look chosen by the layout director or the user (captionLayoutDirector.js)
     // fixes this caption's mode and keywords; the audio guess must not replace it.
-    if (caption?.layoutSource === 'auto' || caption?.layoutSource === 'user') {
-      const chosen = Array.isArray(caption.imp_word_indices) ? caption.imp_word_indices.map(Number).filter(Number.isFinite) : [];
+    const manual = Object.entries(caption.wordStyles || {}).filter(([, style]) => style?.isEmphasis).map(([key]) => Number(key.slice(String(caption.id).length + 1)))
+    if (caption?.layoutSource === 'auto' || caption?.layoutSource === 'user' || manual.length || caption.imp_word_indices?.length || Number(caption.imp_word_index) >= 0) {
+      const chosen = [...new Set([...(caption.imp_word_indices || []), ...(Number(caption.imp_word_index) >= 0 ? [caption.imp_word_index] : []), ...manual])].map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < words.length);
       return {
         captionId: caption.id,
         mode: caption.emotional_mode || mode,
@@ -251,7 +259,12 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
         audio: { rms: audio.rms, peak: audio.peak, silenceRatio: audio.silenceRatio, rising: audio.rising },
       };
     }
-    const emphasis = selectSemanticEmphasis(words, audio.impWordIndex);
+    const ai = caption.aiEmotion?.textKey === captionTextKey(caption.text) ? caption.aiEmotion : null
+    const stopWords = getEmphasisStopWords(caption.text, caption.language)
+    const aiIndices = (Array.isArray(ai?.keywords) ? ai.keywords : []).filter(index => Number.isInteger(index) && index >= 0 && index < words.length && !stopWords.has(normalizeEmphasisWord(words[index]))).slice(0, 2)
+    const emphasis = ai
+      ? { impWordIndex: aiIndices[0] ?? -1, impWordIndices: aiIndices, emphasisColor: '' }
+      : selectSemanticEmphasis(words, caption.language);
 
     return {
       captionId: caption.id,

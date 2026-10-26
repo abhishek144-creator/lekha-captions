@@ -307,10 +307,9 @@ def _upload_security_service() -> UploadSecurityService:
     )
 
 
-def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int) -> str:
-    # v4: Sarvam owns Indian transcription/timing; Whisper is detection/failover
-    # only. Do not reuse earlier results produced by the mixed-provider path.
-    key = f"v4:{media_hash}:{language.lower()}:{min_words}:{max_words}"
+def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int, cleanup_mode: str = "clean") -> str:
+    # v5: source PCM waveform, natural segmentation and configurable cleanup.
+    key = f"v5:{media_hash}:{language.lower()}:{min_words}:{max_words}:{cleanup_mode}"
     key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return os.path.join(settings.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
 

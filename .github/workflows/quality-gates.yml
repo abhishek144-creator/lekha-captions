@@ -41,6 +41,8 @@ jobs:
           cache-dependency-path: caption-studio-publish-main/package-lock.json
       - run: npm ci
       - run: npm run release:check
+      - name: Install media tools for source-audio browser regression
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm run test:editor:local
       - run: npm run security:audit
 

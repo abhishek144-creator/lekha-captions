@@ -843,6 +843,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           return {
             id: cap.id,
             text: cap.text,
+            language: cap.language || '',
             start_time: cap.start_time,
             end_time: cap.end_time,
             __templateIndex: exportTemplateIndex,
