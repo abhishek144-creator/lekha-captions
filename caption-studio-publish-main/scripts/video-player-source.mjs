@@ -20,6 +20,7 @@ export const VIDEO_PLAYER_SOURCE_FILES = [
   "src/components/dashboard/PlaybackControls.jsx",
   "src/components/dashboard/PreviewScrubber.jsx",
   "src/components/dashboard/SelectedWordOutline.jsx",
+  "src/components/dashboard/previewOverlayRoot.js",
 ]
 
 export function readVideoPlayerSource(projectRoot) {

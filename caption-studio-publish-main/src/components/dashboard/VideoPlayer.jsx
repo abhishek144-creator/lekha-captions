@@ -8,6 +8,7 @@ import { Play, X, Move, RotateCw, RotateCcw } from 'lucide-react';
 import { clearPopupWordStyle } from '@/lib/wordStyleEdits';
 import CanvasToolRail from './CanvasToolRail';
 import SelectedWordOutline from './SelectedWordOutline';
+import { getPreviewOverlayRoot, PREVIEW_GUIDES_Z_INDEX, PREVIEW_WORD_BOX_Z_INDEX } from './previewOverlayRoot';
 import PlaybackControls from './PlaybackControls';
 import PreviewScrubber from './PreviewScrubber';
 
@@ -1560,7 +1561,7 @@ export default function VideoPlayer({
             top: `${cptGuideFrameRect.top}px`,
             width: `${cptGuideFrameRect.width}px`,
             height: `${cptGuideFrameRect.height}px`,
-            zIndex: 100004,
+            zIndex: PREVIEW_GUIDES_Z_INDEX,
           }}
         >
           <div className="absolute inset-[6%] rounded-sm border border-[#dce85f]/45" />
@@ -1575,7 +1576,7 @@ export default function VideoPlayer({
             </>
           )}
         </div>,
-        document.body
+        getPreviewOverlayRoot()
       )}
       <span
         data-selected-word-box="true"
@@ -1584,7 +1585,7 @@ export default function VideoPlayer({
         style={{
           left: `${selectedDetachedWordViewport.x}px`,
           top: `${selectedDetachedWordViewport.y}px`,
-          zIndex: 100005,
+          zIndex: PREVIEW_WORD_BOX_Z_INDEX,
           transform: `translate(-50%, -50%)${selectedDetachedWord.rotation ? ` rotate(${selectedDetachedWord.rotation}deg)` : ''}`,
           transformOrigin: 'center center',
           fontFamily: selectedWordStyle.fontFamily || captionStyle?.font_family || 'Inter',
@@ -1730,7 +1731,7 @@ export default function VideoPlayer({
         )}
       </span>,
       </>,
-      document.body
+      getPreviewOverlayRoot()
     );
     })()
     : null;
