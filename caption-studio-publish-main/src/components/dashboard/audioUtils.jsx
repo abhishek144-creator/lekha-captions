@@ -8,7 +8,7 @@ const readMediaBytes = async (source) => {
   if (typeof Blob !== 'undefined' && source instanceof Blob) {
     return source.size > WAVEFORM_MAX_BYTES ? null : source.arrayBuffer();
   }
-  const url = typeof source === 'string' ? source : source.src;
+  const url = typeof source === 'string' ? source : (source.currentSrc || source.src || source.querySelector?.('source')?.src);
   if (!url) return null;
   const response = await fetch(url);
   const length = Number(response.headers.get('content-length') || 0);
@@ -16,7 +16,31 @@ const readMediaBytes = async (source) => {
     response.body?.cancel?.().catch?.(() => {});
     return null;
   }
-  return response.arrayBuffer();
+  if (!response.body?.getReader) return response.arrayBuffer()
+  const reader = response.body.getReader()
+  const chunks = []
+  let size = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > WAVEFORM_MAX_BYTES) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+    const bytes = new Uint8Array(size)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return bytes.buffer
+  } finally {
+    reader.releaseLock()
+  }
 };
 
 // Extract waveform data for visualization. `source` is a File/Blob, a media
@@ -34,28 +58,23 @@ export const extractWaveformData = async (source, numSamples = 300) => {
     // Decode audio data
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     
-    // Get the raw audio data (first channel)
-    const rawData = audioBuffer.getChannelData(0);
-    const blockSize = Math.floor(rawData.length / numSamples);
-    const samples = [];
-    
-    for (let i = 0; i < numSamples; i++) {
-      let blockStart = blockSize * i;
-      let sum = 0;
-      
-      // Get average amplitude for this block
-      for (let j = 0; j < blockSize; j++) {
-        sum += Math.abs(rawData[blockStart + j]);
+    const channels = Array.from({ length: audioBuffer.numberOfChannels || 1 }, (_, index) => audioBuffer.getChannelData(index))
+    const length = channels[0]?.length || 0
+    if (!length) return null
+    const count = Math.min(length, Math.max(1, Math.min(12000, Math.floor(numSamples) || 300)))
+    const samples = Array.from({ length: count }, (_, index) => {
+      const start = Math.floor(index * length / count)
+      const end = Math.floor((index + 1) * length / count)
+      let peak = 0
+      for (const channel of channels) {
+        let energy = 0
+        for (let offset = start; offset < end; offset += 1) energy += channel[offset] ** 2
+        peak = Math.max(peak, Math.sqrt(energy / (end - start)))
       }
-      
-      samples.push(sum / blockSize);
-    }
-    
-    // Normalize samples to 0-1 range. Guard against a silent track:
-    // dividing by 0 turns every sample into NaN, which breaks the timeline
-    // waveform bars AND the audio-emotion analysis downstream.
-    const maxAmplitude = Math.max(...samples) || 1;
-    const normalizedSamples = samples.map(s => s / maxAmplitude);
+      return peak
+    })
+    const maxAmplitude = Math.max(...samples) || 1
+    const normalizedSamples = samples.map(value => value / maxAmplitude)
 
     return normalizedSamples;
   } catch (error) {

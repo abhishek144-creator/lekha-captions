@@ -75,6 +75,7 @@ import {
   splitCompactIndexedLines,
   normalizeImpWordIndices,
   normalizeTemplateWord,
+  appendSemanticTemplateWords,
   getTargetPhraseImpWordIndices,
   resolveImpWordIndicesForWords,
   extractHtmlStyle,
@@ -219,21 +220,21 @@ export function getSidebarTemplateMotion(style = {}) {
   return 'rise';
 }
 
-export function renderTextWithHero(text, className = '') {
-  const { hero, full } = splitCaptionForTemplate(text);
-  if (!full) return null;
-  const words = full.split(/\s+/).filter(Boolean);
-  const heroIndex = className && hero ? words.findIndex((word) => word === hero) : -1;
+export function renderTextWithHero(text, className = '', selectedIndices = []) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean)
+  if (!words.length) return null
+  const selected = new Set(Array.isArray(selectedIndices) ? selectedIndices : [])
+
   return (
     <>
       {words.map((word, index) => (
         <React.Fragment key={`${word}-${index}`}>
           {index > 0 && ' '}
           <span
-            className={index === heroIndex ? className : 'plain-word'}
+            className={selected.has(index) ? className : 'plain-word'}
             data-w={index}
-            data-imp={index === heroIndex ? 'true' : undefined}
-            data-imp-cls={index === heroIndex ? className : undefined}
+            data-imp={selected.has(index) ? 'true' : undefined}
+            data-imp-cls={selected.has(index) ? className : undefined}
           >
             {word}
           </span>
@@ -243,20 +244,20 @@ export function renderTextWithHero(text, className = '') {
   );
 }
 
-export function renderStillFramesText(text) {
-  return <span className="still-frames-line">{renderTextWithHero(text, 'imp-rose still-frames-highlight')}</span>;
+export function renderStillFramesText(text, selectedIndices = []) {
+  return <span className="still-frames-line">{renderTextWithHero(text, 'imp-rose still-frames-highlight', selectedIndices)}</span>;
 }
 
 export function renderWbwText(text, variant = 'wbw-rise', impClass = 'imp-bold', active = true, options = {}) {
   const { hero, full } = splitCaptionForTemplate(text);
   if (!full) return null;
   const tokens = full.split(/\s+/).filter(Boolean).map(word => ({ word }));
-  const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
+  const heroIndex = hero ? tokens.findIndex((token) => token.word === hero) : -1;
   const resolvedImpWordIndices = options.impWordIndices?.length
     ? resolveImpWordIndicesForWords(tokens, -1, options.impWordIndices)
     : resolveImpWordIndicesForWords(tokens);
   const emphasisIndices = new Set(
-    resolvedImpWordIndices.length ? resolvedImpWordIndices : [heroIndex],
+    resolvedImpWordIndices,
   );
   const lineMotion = String(options.motion || '');
   const lineClassName = String(options.lineClassName || '');
@@ -433,15 +434,7 @@ export function _astResolveTargetImpIndex(sourceImpIndex = -1, sourceCount = 0, 
   if (Number.isFinite(requested) && requested >= 0 && requested < targetCount) {
     return requested;
   }
-  if (sourceImpIndex < 0 || sourceCount <= 0 || targetCount <= 0) return -1;
-  if (sourceCount === 1 || targetCount === 1) return 0;
-  return Math.max(
-    0,
-    Math.min(
-      targetCount - 1,
-      Math.round((sourceImpIndex * (targetCount - 1)) / Math.max(1, sourceCount - 1)),
-    ),
-  );
+  return -1;
 }
 
 export function _astReplaceWBW(container, words, settled, impWordIndex = -1, impWordIndices = []) {
@@ -2110,7 +2103,7 @@ export function rebuildAppliedAdvancedWbwRiseBlock(block, words, impWordIndex = 
   const impClass = getRecreatedAdvancedWbwImpClass(templateId, blockIndex);
   const fallbackImpIndex = Number.isFinite(Number(impWordIndex)) && Number(impWordIndex) >= 0
     ? Math.min(words.length - 1, Number(impWordIndex))
-    : Math.min(1, words.length - 1);
+    : -1;
   const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex, impWordIndices));
   block.textContent = '';
   const line = doc.createElement('span');
@@ -2325,26 +2318,16 @@ export function replaceAppliedAdvancedStyledText(block, words, captionText, impW
 }
 
 
-export function normalizeAppliedAdvancedStyledBlock(block, templateId, blockIndex, captionText = '', previewLineTexts = []) {
+export function normalizeAppliedAdvancedStyledBlock(block, templateId, blockIndex, captionText = '', previewLineTexts = [], impWordIndices = []) {
   const rebuildSplitText = (container, lines, impClass = '') => {
-    if (!container || !Array.isArray(lines) || !lines.length) return;
-    const doc = container.ownerDocument;
-    container.textContent = '';
-    container.appendChild(doc.createTextNode(lines[0] || ''));
-    if (lines[1]) {
-      container.appendChild(doc.createElement('br'));
-      if (impClass) {
-        const span = doc.createElement('span');
-        span.className = `${impClass} is-emphasis`;
-        span.dataset.imp = 'true';
-        span.dataset.impCls = impClass;
-        span.textContent = lines[1];
-        container.appendChild(span);
-      } else {
-        container.appendChild(doc.createTextNode(lines[1]));
-      }
-    }
-  };
+    if (!container || !Array.isArray(lines) || !lines.length) return
+    container.textContent = ''
+    let offset = 0
+    lines.forEach((line, index) => {
+      if (index) container.appendChild(container.ownerDocument.createElement('br'))
+      offset = appendSemanticTemplateWords(container, line, offset, impWordIndices, impClass)
+    })
+  }
 
   if (templateId === 't15' && blockIndex === 0) {
     const line = block.querySelector('.shake-in');
@@ -2384,18 +2367,11 @@ export function normalizeAppliedAdvancedStyledBlock(block, templateId, blockInde
       splitTitle.textContent = '';
       const top = doc.createElement('span');
       top.className = 'split-top';
-      top.textContent = lines[0] || captionText;
+      const offset = appendSemanticTemplateWords(top, lines[0] || captionText, 0, impWordIndices, 'imp-purple');
       splitTitle.appendChild(top);
       const bottom = doc.createElement('span');
       bottom.className = 'split-bot';
-      if (lines[1]) {
-        const imp = doc.createElement('span');
-        imp.className = 'imp-purple is-emphasis';
-        imp.dataset.imp = 'true';
-        imp.dataset.impCls = 'imp-purple';
-        imp.textContent = lines[1];
-        bottom.appendChild(imp);
-      }
+      appendSemanticTemplateWords(bottom, lines[1] || '', offset, impWordIndices, 'imp-purple')
       splitTitle.appendChild(bottom);
       splitTitle.classList.add('lekha-template-fit');
     }
@@ -2527,6 +2503,7 @@ export function buildAppliedAdvancedTemplateInline(
     normalizedBlockIndex,
     captionText,
     previewLineTexts,
+    resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices),
   );
 
   const result = block.outerHTML;
@@ -2536,7 +2513,7 @@ export function buildAppliedAdvancedTemplateInline(
 }
 
 export function renderOriginalTemplateCaption(templateId, text, active = true, blockIndex = 0, previewLineTexts = [], impWordIndex = -1, impWordIndices = []) {
-  const { hero, full } = splitCaptionForTemplate(text);
+  const { hero, full } = splitCaptionForTemplate(text, impWordIndices[0] ?? impWordIndex);
   const blockTypes = ORIGINAL_TEMPLATE_BLOCK_TYPES[templateId] || ['styled'];
   const normalizedBlockIndex = normalizeTemplatePhaseIndex(templateId, blockIndex);
   const blockType = blockTypes[normalizedBlockIndex];
@@ -2545,6 +2522,14 @@ export function renderOriginalTemplateCaption(templateId, text, active = true, b
   const resolvedPreviewLines = resolveTemplatePreviewLines(full, previewLineTexts, 2);
   const upperFull = full.toUpperCase();
   const emphasisIndices = resolveImpWordIndicesForWords(full.split(/\s+/).filter(Boolean), impWordIndex, impWordIndices);
+
+  const fullWords = full.split(/\s+/).filter(Boolean).map(normalizeTemplateWord)
+  const renderHero = (line, className, offsetHint) => {
+    const lineWords = String(line).trim().split(/\s+/).filter(Boolean).map(normalizeTemplateWord)
+    const offset = Number.isInteger(offsetHint) ? offsetHint : fullWords.findIndex((_, index) => lineWords.every((word, local) => fullWords[index + local] === word))
+    return renderTextWithHero(line, className, emphasisIndices.map(index => index - offset).filter(index => offset >= 0 && index >= 0 && index < lineWords.length))
+  }
+  const renderWords = (line, variant, className, isActive, options = {}) => renderWbwText(line, variant, className, isActive, { ...options, impWordIndices: options.impWordIndices ?? emphasisIndices })
 
   const wrap = (blockClass, children, extraStyle = {}) => (
     <>
@@ -2572,169 +2557,169 @@ export function renderOriginalTemplateCaption(templateId, text, active = true, b
       if (normalizedBlockIndex === 1) {
         return wrap('t11-b1', (
           <span className="blur-txt lekha-template-fit">
-            {renderTextWithHero(full, 'imp-italic')}
+            {renderHero(full, 'imp-italic')}
           </span>
         ));
       }
-      if (normalizedBlockIndex === 2) return wrap('t11-b2', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      if (normalizedBlockIndex === 3) return wrap('t11-b3', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      return wrap('t11-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
+      if (normalizedBlockIndex === 2) return wrap('t11-b2', renderWords(full, 'wbw-rise', 'imp-gold', active));
+      if (normalizedBlockIndex === 3) return wrap('t11-b3', renderWords(full, 'wbw-rise', 'imp-gold', active));
+      return wrap('t11-b0', renderWords(full, 'wbw-seq-fade', 'imp-gold', active));
     }
     case 't12':
-      if (normalizedBlockIndex === 1) return wrap('t12-b1', <span className="rise-unit lekha-template-fit">{renderTextWithHero(full, 'imp-purple')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t12-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active, { impWordIndices: emphasisIndices }));
-      if (normalizedBlockIndex === 3) return wrap('t12-b3', renderWbwText(full, 'wbw-slide', 'imp-rose', active, { impWordIndices: emphasisIndices }));
-      return wrap('t12-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-purple', active, { impWordIndices: emphasisIndices }));
+      if (normalizedBlockIndex === 1) return wrap('t12-b1', <span className="rise-unit lekha-template-fit">{renderHero(full, 'imp-purple')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t12-b2', renderWords(full, 'wbw-rise', 'imp-italic', active, { impWordIndices: emphasisIndices }));
+      if (normalizedBlockIndex === 3) return wrap('t12-b3', renderWords(full, 'wbw-slide', 'imp-rose', active, { impWordIndices: emphasisIndices }));
+      return wrap('t12-b0', renderWords(full, 'wbw-seq-fade', 'imp-purple', active, { impWordIndices: emphasisIndices }));
     case 't13':
-      if (normalizedBlockIndex === 1) return wrap('t13-b1', renderWbwText(full, 'wbw-slide', 'imp-bold', active));
-      if (normalizedBlockIndex === 2) return wrap('t13-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t13-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-bold', active));
-      return wrap('t13-b0', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
+      if (normalizedBlockIndex === 1) return wrap('t13-b1', renderWords(full, 'wbw-slide', 'imp-bold', active));
+      if (normalizedBlockIndex === 2) return wrap('t13-b2', renderWords(full, 'wbw-rise', 'imp-bold', active));
+      if (normalizedBlockIndex === 3) return wrap('t13-b3', renderWords(full, 'wbw-seq-fade', 'imp-bold', active));
+      return wrap('t13-b0', renderWords(full, 'wbw-rise', 'imp-bold', active));
     case 't14':
-      if (normalizedBlockIndex === 1) return wrap('t14-b1', <span className="drop-txt lekha-template-fit">{renderTextWithHero(full, 'imp-gold')}</span>);
+      if (normalizedBlockIndex === 1) return wrap('t14-b1', <span className="drop-txt lekha-template-fit">{renderHero(full, 'imp-gold')}</span>);
       if (normalizedBlockIndex === 2) return wrap('t14-b2', <span className="lekha-template-fit">{full}</span>);
-      if (normalizedBlockIndex === 3) return wrap('t14-b3', renderWbwText(full, 'wbw-rise', 'imp-weight', active));
+      if (normalizedBlockIndex === 3) return wrap('t14-b3', renderWords(full, 'wbw-rise', 'imp-weight', active));
       return wrap('t14-b0', (
         <span style={{ perspective: '600px' }} className="lekha-template-fit">
           {lines2.map((line, index) => (
             <span key={line} className="flip-line" style={{ animationDelay: `${index * 0.1}s` }}>
-              {index === lines2.length - 1 ? renderTextWithHero(line, 'w imp-underline in') : line}
+              {index === lines2.length - 1 ? renderHero(line, 'w imp-underline in', lines2.slice(0, index).join(' ').trim().split(/\s+/).filter(Boolean).length) : line}
             </span>
           ))}
         </span>
       ));
     case 't15':
       if (normalizedBlockIndex === 1) return wrap('t15-b1', <span className="pop-txt lekha-template-fit">{upperFull}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t15-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t15-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active));
+      if (normalizedBlockIndex === 2) return wrap('t15-b2', renderWords(full, 'wbw-rise', 'imp-bold', active));
+      if (normalizedBlockIndex === 3) return wrap('t15-b3', renderWords(full, 'wbw-seq-fade', 'imp-rose', active));
       return wrap('t15-b0', (
         <span className="shake-in lekha-template-fit">
-          {lines2[0]}{lines2[1] && <><br />{renderTextWithHero(lines2[1], 'imp-rose')}</>}
+          {lines2[0]}{lines2[1] && <><br />{renderHero(lines2[1], 'imp-rose', lines2[0].trim().split(/\s+/).length)}</>}
         </span>
       ));
     case 't16':
-      if (normalizedBlockIndex === 1) return wrap('t16-b1', renderWbwText(full, 'wbw-rise', 'imp-bold', active, { motion: 't16-neon', lineClassName: 't16-neon-words' }));
-      if (normalizedBlockIndex === 2) return wrap('t16-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active, { motion: 't16-diagonal', lineClassName: 't16-diagonal-words' }));
-      if (normalizedBlockIndex === 3) return wrap('t16-b3', renderWbwText(full, 'wbw-slide', 'imp-bold', active, { motion: 't16-impact', lineClassName: 't16-impact-words' }));
-      return wrap('t16-b0', renderWbwText(full, 'wbw-rise', 'imp-bold', active, { motion: 't16-stack', lineClassName: 't16-stack-words' }));
+      if (normalizedBlockIndex === 1) return wrap('t16-b1', renderWords(full, 'wbw-rise', 'imp-bold', active, { motion: 't16-neon', lineClassName: 't16-neon-words' }));
+      if (normalizedBlockIndex === 2) return wrap('t16-b2', renderWords(full, 'wbw-rise', 'imp-bold', active, { motion: 't16-diagonal', lineClassName: 't16-diagonal-words' }));
+      if (normalizedBlockIndex === 3) return wrap('t16-b3', renderWords(full, 'wbw-slide', 'imp-bold', active, { motion: 't16-impact', lineClassName: 't16-impact-words' }));
+      return wrap('t16-b0', renderWords(full, 'wbw-rise', 'imp-bold', active, { motion: 't16-stack', lineClassName: 't16-stack-words' }));
     case 't17':
-      if (normalizedBlockIndex === 1) return wrap('t17-b1', renderWbwText(full, 'wbw-rise', 'imp-rose', active));
-      if (normalizedBlockIndex === 2) return wrap('t17-b2', renderWbwText(full, 'wbw-slide', 'imp-rose', active));
-      if (normalizedBlockIndex === 3) return wrap('t17-b3', renderWbwText(full, 'wbw-rise', 'imp-rose', active));
-      return wrap('t17-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active));
+      if (normalizedBlockIndex === 1) return wrap('t17-b1', renderWords(full, 'wbw-rise', 'imp-rose', active));
+      if (normalizedBlockIndex === 2) return wrap('t17-b2', renderWords(full, 'wbw-slide', 'imp-rose', active));
+      if (normalizedBlockIndex === 3) return wrap('t17-b3', renderWords(full, 'wbw-rise', 'imp-rose', active));
+      return wrap('t17-b0', renderWords(full, 'wbw-seq-fade', 'imp-rose', active));
     case 't18':
-      if (normalizedBlockIndex === 1) return wrap('t18-b1', <span className="reveal-txt lekha-template-fit">{renderTextWithHero(full, 'imp-purple')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t18-b2', renderWbwText(full, 'wbw-rise', 'imp-purple', active));
-      if (normalizedBlockIndex === 3) return wrap('t18-b3', renderWbwText(full, 'wbw-rise', 'imp-purple', active));
+      if (normalizedBlockIndex === 1) return wrap('t18-b1', <span className="reveal-txt lekha-template-fit">{renderHero(full, 'imp-purple')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t18-b2', renderWords(full, 'wbw-rise', 'imp-purple', active));
+      if (normalizedBlockIndex === 3) return wrap('t18-b3', renderWords(full, 'wbw-rise', 'imp-purple', active));
       return wrap('t18-b0', (
         <span className="split-title lekha-template-fit">
           <span className="split-top">{resolvedPreviewLines[0] || full}</span>
           <span className="split-bot">
-            {resolvedPreviewLines[1] ? renderTextWithHero(resolvedPreviewLines[1], 'imp-purple') : ''}
+            {resolvedPreviewLines[1] ? renderHero(resolvedPreviewLines[1], 'imp-purple') : ''}
           </span>
         </span>
       ));
     case 't19':
-      if (normalizedBlockIndex === 1) return wrap('t19-b1', <span className="rise-unit lekha-template-fit">{renderTextWithHero(upperFull, 'imp-rose')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t19-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t19-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active));
+      if (normalizedBlockIndex === 1) return wrap('t19-b1', <span className="rise-unit lekha-template-fit">{renderHero(upperFull, 'imp-rose')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t19-b2', renderWords(full, 'wbw-rise', 'imp-bold', active));
+      if (normalizedBlockIndex === 3) return wrap('t19-b3', renderWords(full, 'wbw-seq-fade', 'imp-rose', active));
       return wrap('t19-b0', <span className="slash-wrap lekha-template-fit">{upperFull}</span>);
     case 't20':
-      if (normalizedBlockIndex === 1) return wrap('t20-b1', <span className="impact-txt lekha-template-fit">{renderTextWithHero(full, 'imp-green')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t20-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active));
-      if (normalizedBlockIndex === 3) return wrap('t20-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-green', active));
+      if (normalizedBlockIndex === 1) return wrap('t20-b1', <span className="impact-txt lekha-template-fit">{renderHero(full, 'imp-green')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t20-b2', renderWords(full, 'wbw-rise', 'imp-bold', active));
+      if (normalizedBlockIndex === 3) return wrap('t20-b3', renderWords(full, 'wbw-seq-fade', 'imp-green', active));
       return wrap('t20-b0', <span className="impact-slide lekha-template-fit">{upperFull}</span>);
     case 't21':
-      if (normalizedBlockIndex === 1) return wrap('t21-b1', renderWbwText(full, 'wbw-seq-fade', 'imp-space', active));
-      if (normalizedBlockIndex === 2) return wrap('t21-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
-      if (normalizedBlockIndex === 3) return wrap('t21-b3', renderWbwText(full, 'wbw-slide', 'imp-weight', active));
-      return wrap('t21-b0', renderWbwText(full, 'editorial-line wbw-rise', '', active));
+      if (normalizedBlockIndex === 1) return wrap('t21-b1', renderWords(full, 'wbw-seq-fade', 'imp-space', active));
+      if (normalizedBlockIndex === 2) return wrap('t21-b2', renderWords(full, 'wbw-rise', 'imp-italic', active));
+      if (normalizedBlockIndex === 3) return wrap('t21-b3', renderWords(full, 'wbw-slide', 'imp-weight', active));
+      return wrap('t21-b0', renderWords(full, 'editorial-line wbw-rise', '', active));
     case 't22':
-      if (normalizedBlockIndex === 1) return wrap('t22-b1', <span className="wave-txt lekha-template-fit">{renderTextWithHero(full, 'imp-gold')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t22-b2', renderWbwText(full, 'wbw-rise', 'imp-italic', active));
-      if (normalizedBlockIndex === 3) return wrap('t22-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
+      if (normalizedBlockIndex === 1) return wrap('t22-b1', <span className="wave-txt lekha-template-fit">{renderHero(full, 'imp-gold')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t22-b2', renderWords(full, 'wbw-rise', 'imp-italic', active));
+      if (normalizedBlockIndex === 3) return wrap('t22-b3', renderWords(full, 'wbw-seq-fade', 'imp-gold', active));
       return wrap('t22-b0', renderKaraokeText(full));
     case 't23':
       if (normalizedBlockIndex === 1) return wrap('t23-b1', <span className="lekha-template-fit">{full}</span>);
       if (normalizedBlockIndex === 2) return wrap('t23-b2', <span className="lekha-template-fit">{full}</span>);
-      if (normalizedBlockIndex === 3) return wrap('t23-b3', <span className="punch-txt lekha-template-fit">{renderTextWithHero(full, 'imp-bold')}</span>);
+      if (normalizedBlockIndex === 3) return wrap('t23-b3', <span className="punch-txt lekha-template-fit">{renderHero(full, 'imp-bold')}</span>);
       return wrap('t23-b0', <span className="setup-txt lekha-template-fit">{full}</span>);
     case 't24':
-      if (normalizedBlockIndex === 1) return wrap('t24-b1', renderWbwText(full, 'wbw-rise', 'imp-orange', active, { motion: 't24-drift', lineClassName: 't24-drift-line' }));
-      if (normalizedBlockIndex === 2) return wrap('t24-b2', renderWbwText(full, 'wbw-slide', 'imp-orange', active, { motion: 't24-slide', lineClassName: 't24-slide-line' }));
-      if (normalizedBlockIndex === 3) return wrap('t24-b3', renderWbwText(full, 'wbw-rise', 'imp-purple', active, { motion: 't24-stamp', lineClassName: 't24-stamp-line' }));
-      if (normalizedBlockIndex === 4) return wrap('t24-b4', renderWbwText(full, 'wbw-rise', 'imp-orange', active, { motion: 't24-inner', lineClassName: 't24-inner-line' }));
+      if (normalizedBlockIndex === 1) return wrap('t24-b1', renderWords(full, 'wbw-rise', 'imp-orange', active, { motion: 't24-drift', lineClassName: 't24-drift-line' }));
+      if (normalizedBlockIndex === 2) return wrap('t24-b2', renderWords(full, 'wbw-slide', 'imp-orange', active, { motion: 't24-slide', lineClassName: 't24-slide-line' }));
+      if (normalizedBlockIndex === 3) return wrap('t24-b3', renderWords(full, 'wbw-rise', 'imp-purple', active, { motion: 't24-stamp', lineClassName: 't24-stamp-line' }));
+      if (normalizedBlockIndex === 4) return wrap('t24-b4', renderWords(full, 'wbw-rise', 'imp-orange', active, { motion: 't24-inner', lineClassName: 't24-inner-line' }));
       return wrap('t24-b0', (
-        renderWbwText(full, 'wbw-rise', 'imp-orange', active, { motion: 't24-wipe', lineClassName: 't24-wipe-line' })
+        renderWords(full, 'wbw-rise', 'imp-orange', active, { motion: 't24-wipe', lineClassName: 't24-wipe-line' })
       ));
     case 't25':
-      if (normalizedBlockIndex === 1) return wrap('t25-b1', <span className="soft-rise lekha-template-fit">{renderTextWithHero(full, 'imp-italic')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t25-b2', renderWbwText(full, 'wbw-rise', 'imp-rose', active));
-      if (normalizedBlockIndex === 3) return wrap('t25-b3', renderWbwText(full, 'wbw-slide', 'imp-italic', active));
+      if (normalizedBlockIndex === 1) return wrap('t25-b1', <span className="soft-rise lekha-template-fit">{renderHero(full, 'imp-italic')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t25-b2', renderWords(full, 'wbw-rise', 'imp-rose', active));
+      if (normalizedBlockIndex === 3) return wrap('t25-b3', renderWords(full, 'wbw-slide', 'imp-italic', active));
       return wrap('t25-b0', (
         <span className="hand-txt lekha-template-fit">
-          {lines2[0]}{lines2[1] && <><br />{renderTextWithHero(lines2[1], 'imp-rose')}</>}
+          {lines2[0]}{lines2[1] && <><br />{renderHero(lines2[1], 'imp-rose', lines2[0].trim().split(/\s+/).length)}</>}
         </span>
       ));
     case 't26':
-      if (normalizedBlockIndex === 1) return wrap('t26-b1', renderWbwText(upperFull, 'wbw-slide', 'imp-rose', active, { motion: 't26-snap', lineClassName: 't26-snap-line' }));
-      if (normalizedBlockIndex === 2) return wrap('t26-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active, { motion: 't26-kick', lineClassName: 't26-kick-line' }));
-      if (normalizedBlockIndex === 3) return wrap('t26-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active, { motion: 't26-tag', lineClassName: 't26-tag-line' }));
-      return wrap('t26-b0', renderWbwText(upperFull, 'wbw-rise', 'imp-rose', active, { motion: 't26-shutter', lineClassName: 't26-shutter-line' }));
+      if (normalizedBlockIndex === 1) return wrap('t26-b1', renderWords(upperFull, 'wbw-slide', 'imp-rose', active, { motion: 't26-snap', lineClassName: 't26-snap-line' }));
+      if (normalizedBlockIndex === 2) return wrap('t26-b2', renderWords(full, 'wbw-rise', 'imp-bold', active, { motion: 't26-kick', lineClassName: 't26-kick-line' }));
+      if (normalizedBlockIndex === 3) return wrap('t26-b3', renderWords(full, 'wbw-seq-fade', 'imp-rose', active, { motion: 't26-tag', lineClassName: 't26-tag-line' }));
+      return wrap('t26-b0', renderWords(upperFull, 'wbw-rise', 'imp-rose', active, { motion: 't26-shutter', lineClassName: 't26-shutter-line' }));
     case 't27':
       if (normalizedBlockIndex === 1) return wrap('t27-b1', <span className="lekha-template-fit" style={{ fontFamily: "'Exo 2', sans-serif", fontWeight: 700, color: 'rgba(0,229,255,0.8)' }}>{full}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t27-b2', <span className="lekha-template-fit">{renderTextWithHero(full, 'imp-bold')}</span>);
-      if (normalizedBlockIndex === 3) return wrap('t27-b3', renderWbwText(full, 'wbw-rise', 'imp-cyan', active, { impWordIndices: emphasisIndices }));
+      if (normalizedBlockIndex === 2) return wrap('t27-b2', <span className="lekha-template-fit">{renderHero(full, 'imp-bold')}</span>);
+      if (normalizedBlockIndex === 3) return wrap('t27-b3', renderWords(full, 'wbw-rise', 'imp-cyan', active, { impWordIndices: emphasisIndices }));
       return wrap('t27-b0', <span className="center-expand-txt lekha-template-fit">{upperFull}</span>);
     case 't28':
-      if (normalizedBlockIndex === 1) return wrap('t28-b1', <span className="slow-fade lekha-template-fit">{renderTextWithHero(full, 'imp-gold')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t28-b2', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      if (normalizedBlockIndex === 3) return wrap('t28-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
+      if (normalizedBlockIndex === 1) return wrap('t28-b1', <span className="slow-fade lekha-template-fit">{renderHero(full, 'imp-gold')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t28-b2', renderWords(full, 'wbw-rise', 'imp-gold', active));
+      if (normalizedBlockIndex === 3) return wrap('t28-b3', renderWords(full, 'wbw-seq-fade', 'imp-gold', active));
       return wrap('t28-b0', (
         <span className="grain-txt lekha-template-fit">
-          {lines2[0]}{lines2[1] && <><br />{renderTextWithHero(lines2[1], 'imp-gold')}</>}
+          {lines2[0]}{lines2[1] && <><br />{renderHero(lines2[1], 'imp-gold', lines2[0].trim().split(/\s+/).length)}</>}
         </span>
       ));
     case 't29':
-      if (normalizedBlockIndex === 1) return wrap('t29-b1', renderWbwText(full, 'wbw-rise', 'imp-rose', active, { motion: 't29-recoil', lineClassName: 't29-recoil-line' }));
-      if (normalizedBlockIndex === 2) return wrap('t29-b2', renderWbwText(full, 'wbw-slide', 'imp-rose', active, { motion: 't29-charge', lineClassName: 't29-charge-line' }));
-      if (normalizedBlockIndex === 3) return wrap('t29-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-rose', active, { motion: 't29-clamp', lineClassName: 't29-clamp-line' }));
-      return wrap('t29-b0', renderWbwText(full, 'wbw-rise', 'imp-rose', active, { motion: 't29-shutter', lineClassName: 't29-shutter-line' }));
+      if (normalizedBlockIndex === 1) return wrap('t29-b1', renderWords(full, 'wbw-rise', 'imp-rose', active, { motion: 't29-recoil', lineClassName: 't29-recoil-line' }));
+      if (normalizedBlockIndex === 2) return wrap('t29-b2', renderWords(full, 'wbw-slide', 'imp-rose', active, { motion: 't29-charge', lineClassName: 't29-charge-line' }));
+      if (normalizedBlockIndex === 3) return wrap('t29-b3', renderWords(full, 'wbw-seq-fade', 'imp-rose', active, { motion: 't29-clamp', lineClassName: 't29-clamp-line' }));
+      return wrap('t29-b0', renderWords(full, 'wbw-rise', 'imp-rose', active, { motion: 't29-shutter', lineClassName: 't29-shutter-line' }));
     case 't30':
-      if (normalizedBlockIndex > 0) return wrap(`t30-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{normalizedBlockIndex === 3 ? renderTextWithHero(full, 'imp-italic') : full}</span>);
+      if (normalizedBlockIndex > 0) return wrap(`t30-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{normalizedBlockIndex === 3 ? renderHero(full, 'imp-italic') : full}</span>);
       return wrap('t30-b0', (
         <span className="breathe-txt lekha-template-fit">
           {lines2[0]}{lines2[1] && <><br /><span className="imp-italic">{lines2[1]}</span></>}
         </span>
       ));
     case 't31':
-      if (normalizedBlockIndex === 1) return wrap('t31-b1', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
-      if (normalizedBlockIndex === 2) return wrap('t31-b2', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      if (normalizedBlockIndex === 3) return wrap('t31-b3', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      if (normalizedBlockIndex === 4) return wrap('t31-b4', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Playfair Display', serif" }}>{renderTextWithHero(full, 'imp-gold')}</span></span>);
-      return wrap('t31-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-gold', active));
+      if (normalizedBlockIndex === 1) return wrap('t31-b1', renderWords(full, 'wbw-seq-fade', 'imp-gold', active));
+      if (normalizedBlockIndex === 2) return wrap('t31-b2', renderWords(full, 'wbw-rise', 'imp-gold', active));
+      if (normalizedBlockIndex === 3) return wrap('t31-b3', renderWords(full, 'wbw-rise', 'imp-gold', active));
+      if (normalizedBlockIndex === 4) return wrap('t31-b4', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Playfair Display', serif" }}>{renderHero(full, 'imp-gold')}</span></span>);
+      return wrap('t31-b0', renderWords(full, 'wbw-seq-fade', 'imp-gold', active));
     case 't32':
-      if (normalizedBlockIndex === 1) return wrap('t32-b1', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Bodoni Moda', serif", fontStyle: 'italic' }}>{renderTextWithHero(full, 'imp-italic')}</span></span>);
+      if (normalizedBlockIndex === 1) return wrap('t32-b1', <span style={{ perspective: '500px' }} className="lekha-template-fit"><span className="flip-line" style={{ fontFamily: "'Bodoni Moda', serif", fontStyle: 'italic' }}>{renderHero(full, 'imp-italic')}</span></span>);
       if (normalizedBlockIndex === 2) return wrap('t32-b2', <span className="lekha-template-fit">{full}</span>);
-      if (normalizedBlockIndex === 3) return wrap('t32-b3', renderWbwText(full, 'wbw-rise', 'imp-purple', active));
-      if (normalizedBlockIndex === 4) return wrap('t32-b4', renderWbwText(full, 'wbw-seq-fade', 'imp-purple', active));
+      if (normalizedBlockIndex === 3) return wrap('t32-b3', renderWords(full, 'wbw-rise', 'imp-purple', active));
+      if (normalizedBlockIndex === 4) return wrap('t32-b4', renderWords(full, 'wbw-seq-fade', 'imp-purple', active));
       return wrap('t32-b0', (
         <span style={{ fontStyle: 'italic' }} className="lekha-template-fit">
           {lines2.map((line, index) => (
             <span key={`${line}-${index}`} className="ink-line">
-              {index === lines2.length - 1 ? renderTextWithHero(line, 'imp-purple') : line}
+              {renderHero(line, 'imp-purple', lines2.slice(0, index).join(' ').trim().split(/\s+/).filter(Boolean).length)}
             </span>
           ))}
         </span>
       ));
     case 't33':
-      if (normalizedBlockIndex === 1) return wrap('t33-b1', renderWbwText(full, 'wbw-seq-fade', 'imp-cyan', active, { compactLines: true, lineTexts: previewLineTexts, impWordIndices: emphasisIndices }));
+      if (normalizedBlockIndex === 1) return wrap('t33-b1', renderWords(full, 'wbw-seq-fade', 'imp-cyan', active, { compactLines: true, lineTexts: previewLineTexts, impWordIndices: emphasisIndices }));
       if (normalizedBlockIndex === 2) return wrap('t33-b2', renderKaraokeText(full));
-      if (normalizedBlockIndex === 3) return wrap('t33-b3', renderWbwText(full, 'wbw-rise', 'imp-bold', active, { compactLines: true, lineTexts: previewLineTexts, impWordIndices: emphasisIndices }));
+      if (normalizedBlockIndex === 3) return wrap('t33-b3', renderWords(full, 'wbw-rise', 'imp-bold', active, { compactLines: true, lineTexts: previewLineTexts, impWordIndices: emphasisIndices }));
       if (normalizedBlockIndex === 4) return wrap('t33-b4', (
         <span style={{ perspective: '500px' }} className="lekha-template-fit">
           <span className="flip-line" style={{ fontFamily: "'Noto Sans', sans-serif" }}>
-            {renderTextWithHero(full, 'imp-cyan')}
+            {renderHero(full, 'imp-cyan')}
           </span>
         </span>
       ));
@@ -2742,30 +2727,30 @@ export function renderOriginalTemplateCaption(templateId, text, active = true, b
         <span className="doc-line lekha-template-fit">
           {resolvedPreviewLines.map((line, index) => (
             <span className="lekha-template-preview-line" key={`${line}-${index}`}>
-              {line.includes(hero) ? renderTextWithHero(line, 'imp-cyan') : line}
+              {renderHero(line, 'imp-cyan', resolvedPreviewLines.slice(0, index).join(' ').trim().split(/\s+/).filter(Boolean).length)}
             </span>
           ))}
         </span>
       ));
     case 't34':
-      if (normalizedBlockIndex === 1) return wrap('t34-b1', <span className="pow-txt lekha-template-fit">{renderTextWithHero(full, 'imp-cyan')}</span>);
-      if (normalizedBlockIndex === 2) return wrap('t34-b2', renderWbwText(full, 'wbw-rise', 'imp-bold', active, { impWordIndices: emphasisIndices }));
-      if (normalizedBlockIndex === 3) return wrap('t34-b3', renderWbwText(full, 'wbw-slide', 'imp-cyan', active, { impWordIndices: emphasisIndices }));
-      return wrap('t34-b0', renderWbwText(full, 'wbw-seq-fade', 'imp-bold', active, { impWordIndices: emphasisIndices }));
+      if (normalizedBlockIndex === 1) return wrap('t34-b1', <span className="pow-txt lekha-template-fit">{renderHero(full, 'imp-cyan')}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t34-b2', renderWords(full, 'wbw-rise', 'imp-bold', active, { impWordIndices: emphasisIndices }));
+      if (normalizedBlockIndex === 3) return wrap('t34-b3', renderWords(full, 'wbw-slide', 'imp-cyan', active, { impWordIndices: emphasisIndices }));
+      return wrap('t34-b0', renderWords(full, 'wbw-seq-fade', 'imp-bold', active, { impWordIndices: emphasisIndices }));
     case 't35':
-      if (normalizedBlockIndex > 0) return wrap(`t35-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{normalizedBlockIndex === 3 ? renderTextWithHero(full, 'imp-italic') : full}</span>);
-      return wrap('t35-b0', <span className="secret-txt lekha-template-fit">{renderTextWithHero(full, 'imp-italic')}</span>);
+      if (normalizedBlockIndex > 0) return wrap(`t35-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{normalizedBlockIndex === 3 ? renderHero(full, 'imp-italic') : full}</span>);
+      return wrap('t35-b0', <span className="secret-txt lekha-template-fit">{renderHero(full, 'imp-italic')}</span>);
     case 't36':
       return wrap(`t36-b${normalizedBlockIndex}`, renderKaraokeText(full));
     case 't37':
-      if (normalizedBlockIndex === 1) return wrap('t37-b1', renderWbwText(full, 'wbw-rise', 'imp-green', active));
+      if (normalizedBlockIndex === 1) return wrap('t37-b1', renderWords(full, 'wbw-rise', 'imp-green', active));
       if (normalizedBlockIndex === 2) return wrap('t37-b2', <span className="neon-expand lekha-template-fit">{upperFull}</span>);
-      if (normalizedBlockIndex === 3) return wrap('t37-b3', renderWbwText(full, 'wbw-seq', 'imp-green', active));
+      if (normalizedBlockIndex === 3) return wrap('t37-b3', renderWords(full, 'wbw-seq', 'imp-green', active));
       return wrap('t37-b0', <span className="neon-pulse lekha-template-fit">{upperFull}</span>);
     case 't38':
-      if (normalizedBlockIndex === 1) return wrap('t38-b1', renderWbwText(full, 'wbw-slide', 'imp-italic', active));
-      if (normalizedBlockIndex === 2) return wrap('t38-b2', renderWbwText(full, 'wbw-rise', 'imp-gold', active));
-      if (normalizedBlockIndex === 3) return wrap('t38-b3', renderWbwText(full, 'wbw-seq-fade', 'imp-italic', active));
+      if (normalizedBlockIndex === 1) return wrap('t38-b1', renderWords(full, 'wbw-slide', 'imp-italic', active));
+      if (normalizedBlockIndex === 2) return wrap('t38-b2', renderWords(full, 'wbw-rise', 'imp-gold', active));
+      if (normalizedBlockIndex === 3) return wrap('t38-b3', renderWords(full, 'wbw-seq-fade', 'imp-italic', active));
       return wrap('t38-b0', (
         <span className="lekha-template-fit lekha-template-preview-lines">
           {resolvedPreviewLines.map((line, index) => (
@@ -2777,13 +2762,13 @@ export function renderOriginalTemplateCaption(templateId, text, active = true, b
         </span>
       ));
     case 't39':
-      return wrap(`t39-b${normalizedBlockIndex}`, renderWbwText(full, 'wbw-seq-fade', normalizedBlockIndex % 2 ? 'imp-rose' : 'imp-gold', active, {
+      return wrap(`t39-b${normalizedBlockIndex}`, renderWords(full, 'wbw-seq-fade', normalizedBlockIndex % 2 ? 'imp-rose' : 'imp-gold', active, {
         impWordIndices: emphasisIndices,
         motion: 't39-evidence',
       }));
     case 't40':
-      if (normalizedBlockIndex === 2) return wrap('t40-b2', <span className="lekha-template-fit">{renderStillFramesText(full)}</span>);
-      return wrap(`t40-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{renderStillFramesText(full)}</span>);
+      if (normalizedBlockIndex === 2) return wrap('t40-b2', <span className="lekha-template-fit">{renderStillFramesText(full, emphasisIndices)}</span>);
+      return wrap(`t40-b${normalizedBlockIndex}`, <span className="lekha-template-fit">{renderStillFramesText(full, emphasisIndices)}</span>);
     case 't41':
     case 't42':
     case 't43':

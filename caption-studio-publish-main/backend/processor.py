@@ -8,6 +8,7 @@ import requests
 import json
 import shutil
 import array
+import wave
 import difflib
 import math
 import unicodedata
@@ -22,6 +23,7 @@ except ImportError:
 try:
     from .processor_fonts import FontAssetsMixin
     from .processor_media import MediaProbeMixin
+    from .audio_analysis import analyze_pcm, extraction_command
     from .processor_captions import CaptionTextMixin, SENTENCE_END_MARKS
     from .processor_ass import AssSubtitleMixin
     from .processor_templates import TemplateOverlayMixin
@@ -30,6 +32,7 @@ try:
 except ImportError:  # Direct execution from backend/ remains supported.
     from processor_fonts import FontAssetsMixin
     from processor_media import MediaProbeMixin
+    from audio_analysis import analyze_pcm, extraction_command
     from processor_captions import CaptionTextMixin, SENTENCE_END_MARKS
     from processor_ass import AssSubtitleMixin
     from processor_templates import TemplateOverlayMixin
@@ -264,6 +267,31 @@ def _align_chunks_to_speech(chunks, speech_words):
             words.extend(_split_chunk_timestamps([chunk]))
             continue
 
+        # Do not let a single estimated word bridge a long silent interval.
+        # Allocate whole tokens to each voiced phrase before interpolating
+        # inside it. This is still an estimate, never phonetic alignment.
+        runs = []
+        for start, end in spans:
+            if not runs or start - runs[-1][-1][1] >= 0.3:
+                runs.append([])
+            runs[-1].append((start, end))
+        if 1 < len(runs) <= len(tokens):
+            weights = [max(1, len(token)) for token in tokens]
+            cumulative = [0]
+            for weight in weights:
+                cumulative.append(cumulative[-1] + weight)
+            cursor, elapsed = 0, 0
+            for index, run in enumerate(runs):
+                elapsed += sum(end - start for start, end in run)
+                target = cumulative[-1] * elapsed / speech_total
+                cut = (len(tokens) if index == len(runs)-1 else
+                       min(range(cursor+1, len(tokens)-(len(runs)-index-1)+1),
+                           key=lambda boundary: abs(cumulative[boundary]-target)))
+                phrase = {'word': ' '.join(tokens[cursor:cut]), 'start': run[0][0], 'end': run[-1][1]}
+                words.extend(_align_chunks_to_speech([phrase], [{'start': s, 'end': e} for s, e in run]))
+                cursor = cut
+            continue
+
         def real_time(offset, at_end):
             # Map seconds-of-speech to clock time. A word ending exactly at a
             # span's end ends there; one starting there starts in the next span.
@@ -359,7 +387,7 @@ def _extract_sarvam_chunks(response):
     )
     if timestamp_words and len(timestamp_words) == len(starts) == len(ends):
         return [
-            {"word": str(word), "start": float(start), "end": float(end)}
+            {"word": str(word), "start": float(start), "end": float(end), "timing_source": "sarvam_phrase"}
             for word, start, end in zip(timestamp_words, starts, ends)
             if str(word).strip() and float(end) >= float(start)
         ]
@@ -421,7 +449,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 response = sarvam_client.speech_to_text.transcribe(
                     file=f,
                     model="saaras:v3",
-                    mode="transcribe",
+                    mode="verbatim",
                     language_code=lang_code,
                     request_options={"max_retries": 0, "additional_body_parameters": {"with_timestamps": True}}
                 )
@@ -453,7 +481,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         print(f"[Sarvam] {duration:.1f}s of audio sent as {len(segments)} pieces")
         chunks = []
         for index, (seg_start, seg_end) in enumerate(segments):
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as _tf:
                 piece_p = _tf.name
             try:
                 run_media_command(
@@ -462,6 +490,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS,
                 )
                 piece_chunks = [{
+                    **chunk,
                     "word": chunk["word"],
                     "start": round(chunk["start"] + seg_start, 3),
                     "end": round(min(chunk["end"], seg_end - seg_start) + seg_start, 3),
@@ -498,7 +527,21 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         if any(w.get("word") for w in speech_words or []):
             matched = _match_tokens_to_heard_words(tokens, speech_words)
         if matched is None:
-            return _align_chunks_to_speech(chunks, speech_words)
+            if not speech_words:
+                try:
+                    speech_words = analyze_pcm(audio_p)['activity']
+                except (OSError, ValueError, EOFError, wave.Error):
+                    speech_words = []
+            result = []
+            for chunk in chunks:
+                # Native single-word timings must not be redistributed over
+                # an amplitude envelope. Multi-word spans are estimates only.
+                if len(str(chunk['word']).split()) == 1 and chunk.get('timing_source') != 'sarvam_phrase':
+                    result.append(dict(chunk))
+                else:
+                    result.extend({**word, 'timing_source': 'sarvam_phrase_estimate'}
+                                  for word in _align_chunks_to_speech([chunk], speech_words))
+            return result
         try:
             matched = self._drop_quiet_unheard_edges(matched, audio_p)
         except Exception as trim_error:
@@ -615,7 +658,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             except Exception:
                 pass
 
-    async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0):
+    async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0, cleanup_mode="clean"):
         print(f"Processing: {input_p} -> Target: {target_language}, Words: {min_words}-{max_words}")
         try:
             # Try to initialize client if not ready
@@ -632,11 +675,12 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             language_confidence = 0.6
             audio_p = None
             transcription_source = ""
+            audio_analysis = None
 
             try:
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _tf:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as _tf:
                     audio_p = _tf.name
-                run_media_command(["ffmpeg", "-y", "-i", input_p, "-vn", "-ar", "16000", "-ac", "1", audio_p],
+                run_media_command(extraction_command(input_p, audio_p),
                                check=True, capture_output=True, timeout=AUDIO_EXTRACTION_TIMEOUT_SECONDS)
             except Exception as ffmpeg_e:
                 print(f"[Warning] FFmpeg audio extraction failed (might have no audio): {ffmpeg_e}")
@@ -735,6 +779,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                         # Use Sarvam's phrase timestamps and local pause-based
                         # splitting; no second Whisper transcription for alignment.
                         words = self._transcribe_with_sarvam(sarvam_client, audio_p, lang_code)
+                        words = self._clean_transcript_words(words, "verbatim", target_language)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
                             transcription_provider_health.record_success("sarvam")
@@ -839,6 +884,13 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     transcription_provider_health.record_failure("openai")
                     api_error_msg = str(fallback_error)
 
+            if audio_ready:
+                try:
+                    audio_analysis = analyze_pcm(audio_p, self._get_video_duration(input_p))
+                    audio_analysis.pop('activity', None)
+                except (OSError, ValueError, EOFError, wave.Error) as analysis_error:
+                    print(f"[Warning] Audio analysis unavailable: {type(analysis_error).__name__}")
+
             # Clean up temp file (file is now closed)
             try:
                 if audio_p and os.path.exists(audio_p):
@@ -921,17 +973,35 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     "transcription_source": "mock_fallback",
                 }
 
-            grouped_captions = self._group_words_by_speech_pace(words, min_words=min_words, max_words=max_words)
+            if transcription_source in {"whisper", "whisper_failover"}:
+                words = self._restore_transcript_punctuation(words, getattr(transcript, "text", None))
+            verbatim_captions = self._post_process_captions(
+                self._group_words_by_speech_pace(words, min_words=min_words, max_words=max_words))
+            cleaned_words = self._clean_transcript_words(words, cleanup_mode, detected_language)
+            grouped_captions = self._group_words_by_speech_pace(cleaned_words, min_words=min_words, max_words=max_words)
             grouped_captions = self._post_process_captions(grouped_captions)
+            # A take consisting only of hesitations is still a successful
+            # transcript. Keep it editable instead of losing the recognized
+            # source or requiring another paid request to retrieve it.
+            cleanup_notice = ''
+            if not grouped_captions and verbatim_captions:
+                grouped_captions = verbatim_captions
+                cleanup_notice = 'Only hesitations were recognized; original wording was retained.'
             if not grouped_captions:
                 return {
                     "success": False,
                     "error": "No speech with usable word timestamps was detected.",
                     "error_code": "NO_SPEECH_DETECTED",
                 }
+            for caption in grouped_captions + verbatim_captions:
+                caption["language"] = detected_language
             return {
                 "success": True,
                 "captions": grouped_captions,
+                "verbatim_captions": verbatim_captions,
+                "cleanup_mode": cleanup_mode,
+                "cleanup_notice": cleanup_notice,
+                "audio_analysis": audio_analysis,
                 "detected_language": detected_language,
                 "language_confidence": round(max(0.0, min(1.0, language_confidence)), 2),
                 "transcription_source": transcription_source or (

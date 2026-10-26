@@ -89,6 +89,7 @@ export default function UploadModal({
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [language, setLanguage] = useState('auto');
+  const [cleanupMode, setCleanupMode] = useState('clean')
   const [style, setStyle] = useState('single_line');
   const [wordsPerLine, setWordsPerLine] = useState('dynamic');
   const [step, setStep] = useState(1);
@@ -280,6 +281,7 @@ export default function UploadModal({
         language,
         style,
         wordsPerLine,
+        cleanupMode,
         spokenLanguage: detectedSpokenLanguage,
         uploadTask: task,
       });
@@ -598,13 +600,20 @@ export default function UploadModal({
                   >
                     <p className="font-semibold text-[#F5A623]">How Dynamic (Auto) works:</p>
                     <p>Uses available word-level audio timestamps to help synchronize captions for review.</p>
-                    <p>Shows 5-6 word phrases by default so animated templates keep their intended layout.</p>
+                    <p>Follows punctuation, speech pauses and natural phrases instead of a fixed word count.</p>
                     <p>Uses phrase-sized chunks unless punctuation or a long silence creates a natural break.</p>
                     <p>For punchier captions, choose a shorter fixed range before generating.</p>
                   </motion.div>
                 )}
               </div>
 
+              <div>
+                <label htmlFor="caption-cleanup" className="mb-2 block text-sm text-gray-400">Caption wording</label>
+                <select id="caption-cleanup" aria-label="Caption wording" value={cleanupMode} onChange={event => setCleanupMode(event.target.value)} className="w-full rounded-md border border-white/10 bg-zinc-800 p-2 text-sm text-white">
+                  <option value="clean">Clean — remove clear hesitations</option>
+                  <option value="verbatim">Verbatim — keep fillers and repetitions</option>
+                </select>
+              </div>
               <Button
                 onClick={handleSubmit}
                 disabled={isUploading}

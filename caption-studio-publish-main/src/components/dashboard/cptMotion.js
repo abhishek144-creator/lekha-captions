@@ -35,6 +35,16 @@ export function getCaptionWordRevealTimes(caption = {}, wordCount = 1, minSepara
     return Math.max(captionStart, Math.min(latestReveal, Number(value) || captionStart));
   });
 
+  // Valid measured/provider timings are the media clock, including fast words
+  // closer than one output frame. Do not move them to manufacture animation
+  // beats. Repair/spacing below is only for missing or malformed alignment.
+  const timed = Array.isArray(caption.words) ? caption.words : []
+  if (timed.length === count && timed.every((word, index) => (
+    Number.isFinite(word?.start) && Number.isFinite(word?.end)
+    && word.start >= 0 && word.end > word.start
+    && (index === 0 || word.start >= timed[index - 1].end)
+  ))) return timed.map(word => Math.max(captionStart, word.start))
+
   if (count === 1 || duration <= 0) return [rawTimes[0] ?? captionStart];
 
   const availableDuration = Math.max(0, latestReveal - captionStart);
@@ -85,8 +95,9 @@ export function getCaptionWordRevealIndex(caption = {}, currentTime = 0, wordCou
  * media `timeupdate` events can jump hundreds of milliseconds; applying the
  * raw target index would make several words appear in the same paint.
  */
-export function advanceCaptionWordRevealIndex(previousIndex, targetIndex) {
+export function advanceCaptionWordRevealIndex(previousIndex, targetIndex, followMediaClock = false) {
   const target = Math.max(0, Math.floor(Number(targetIndex) || 0));
+  if (followMediaClock) return target
   if (!Number.isFinite(Number(previousIndex))) return 0;
   const previous = Math.max(0, Math.floor(Number(previousIndex) || 0));
   if (target <= previous) return target;

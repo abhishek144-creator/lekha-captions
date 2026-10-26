@@ -66,7 +66,7 @@
     "ci:frontend": "npm run test:unit && npm run test:contracts && npm run lint && npm run typecheck && npm run build:guarded",
     "test:release-metadata": "node scripts/check-release-metadata.mjs && node scripts/check-deployed-release-contracts.mjs",
     "test:project-delivery": "node scripts/check-project-delivery.mjs",
-    "test:editor:local": "node scripts/check-editor-journey.mjs && node scripts/check-upload-journey.mjs && node scripts/check-word-editing-geometry.mjs && node scripts/check-cpt-word-drop.mjs && node scripts/check-word-editor.mjs && node scripts/check-style-panel.mjs && node scripts/check-timeline-templates.mjs && node scripts/check-template-preview-csp.mjs",
+    "test:editor:local": "node scripts/check-editor-journey.mjs && node scripts/check-upload-journey.mjs && node scripts/check-word-editing-geometry.mjs && node scripts/check-cpt-word-drop.mjs && node scripts/check-word-editor.mjs && node scripts/check-style-panel.mjs && node scripts/check-timeline-templates.mjs && node scripts/check-template-preview-csp.mjs && node scripts/check-speech-sync.mjs",
     "test:unit": "vitest run"
   },
   "dependencies": {

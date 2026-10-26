@@ -1,0 +1,31 @@
+{
+  "functionWords": {
+    "en": "a an the and or but because if although while when that which who this these those I me my you your he she it its we us our they them their is am are was were be been being have has had do does did can could will would shall should may might must to of in on at by for from with into onto as than so very really just also some any all here there today now then every each",
+    "hi": "और या लेकिन क्योंकि अगर जब जो कि का की के को में पर पे से तक ने लिए साथ बाद पहले मैं हम तुम आप मेरा मेरी मेरे हमारा हमारी आपका आपकी उसको उसको उनको यह ये वह वे इस उस इन उन है हैं था थी थे हो होगा होगी होंगे रहा रही रहे कर करके किया करना करते करती होता होती होते गया गई गए दिया लिया सकते सकता सकती चाहिए ही भी तो बस अब तब यहाँ वहाँ यहां वहां कैसे क्या क्यों एक कुछ सब वाला वाली वाले पीछे आगे ऊपर नीचे अंदर बाहर",
+    "ta": "நான் நாம் நாங்கள் நீ நீங்கள் அவன் அவள் அவர் அவர்கள் அது இது இவை அவை ஒரு இந்த அந்த என் எங்கள் உங்கள் மற்றும் அல்லது ஆனால் ஏனெனில் என்று என்ற இல் இன் உடன் தான் மட்டும் கூட உள்ளது உள்ள இருக்கிறது இருந்தது இருக்க வேண்டும் இன்று இப்போது பிறகு மிகவும்",
+    "te": "నేను మేము మనం నువ్వు మీరు అతను ఆమె వారు అది ఇది ఇవి అవి ఒక ఈ ఆ నా మా మీ మరియు లేదా కానీ ఎందుకంటే అని లో కి కు తో నుంచి కోసం కూడా మాత్రమే ఉంది ఉన్నాయి ఉన్నాడు ఉన్నారు చేయాలి చాలా ఇప్పుడు ఈరోజు",
+    "bn": "আমি আমরা তুমি আপনি সে তারা এই ওই একটি এবং বা কিন্তু কারণ যে এর কে থেকে জন্য সঙ্গে আছে ছিল হয় হবে খুব এখন শুধু ও না",
+    "mr": "मी आम्ही तू तुम्ही तो ती ते हे हा ही आणि किंवा पण कारण की चा ची चे ला मध्ये वर पासून साठी आहे आहेत होता होते होती होईल खूप आता फक्त पण",
+    "gu": "હું અમે તું તમે તે આ એક અને અથવા પણ કારણ કે નો ની નું ને માં પર થી માટે સાથે છે હતો હતી હતા ખૂબ હવે ફક્ત",
+    "kn": "ನಾನು ನಾವು ನೀನು ನೀವು ಅವನು ಅವಳು ಅವರು ಅದು ಇದು ಒಂದು ಈ ಆ ಮತ್ತು ಅಥವಾ ಆದರೆ ಎಂದು ಏಕೆಂದರೆ ನನ್ನ ನಿಮ್ಮ ಇದೆ ಇತ್ತು ಇದ್ದಾರೆ ಗೆ ನಲ್ಲಿ ಇಂದ ಜೊತೆ ತುಂಬಾ ಈಗ ಮಾತ್ರ",
+    "ml": "ഞാൻ ഞങ്ങൾ നീ നിങ്ങൾ അവൻ അവൾ അവർ അത് ഇത് ഒരു ഈ ആ ഒപ്പം അല്ലെങ്കിൽ പക്ഷേ കാരണം എന്ന് എന്റെ നിങ്ങളുടെ ആണ് ഉണ്ട് ആയിരുന്നു വളരെ ഇപ്പോൾ മാത്രം",
+    "pa": "ਮੈਂ ਅਸੀਂ ਤੂੰ ਤੁਸੀਂ ਉਹ ਇਹ ਇੱਕ ਅਤੇ ਜਾਂ ਪਰ ਕਿਉਂਕਿ ਦਾ ਦੀ ਦੇ ਨੂੰ ਵਿੱਚ ਤੇ ਤੋਂ ਲਈ ਨਾਲ ਹੈ ਹਨ ਸੀ ਹੋਵੇਗਾ ਬਹੁਤ ਹੁਣ ਸਿਰਫ",
+    "ur": "میں ہم تم آپ وہ یہ ایک اور یا لیکن کیونکہ کا کی کے کو سے پر تک نے لیے ساتھ ہے ہیں تھا تھی تھے ہو بھی ہی تو اب یہاں وہاں بہت صرف",
+    "fr": "le la les un une des du de à au aux et ou mais car parce que qui je tu il elle nous vous ils elles est sont était être avoir a ont en sur avec pour par ce cet cette ces mon ton son très aussi maintenant",
+    "es": "el la los las un una unos unas de del al a y o pero porque que quien yo tú él ella nosotros ustedes ellos es son está están era ser estar ha han en con por para su mi tu muy también ahora",
+    "de": "der die das ein eine und oder aber weil dass ich du er sie es wir ihr ist sind war waren sein haben hat in im auf mit für von zu sehr auch jetzt",
+    "pt": "o a os as um uma de do da e ou mas porque que eu tu ele ela nós vocês eles é são está estão era ser em com por para muito também agora",
+    "ar": "أنا نحن أنت أنتم هو هي هم هذا هذه ذلك تلك و أو لكن لأن من في على إلى عن مع أن إن كان كانت يكون هو هي جدا الآن فقط",
+    "ru": "я мы ты вы он она оно они это этот эта и или но потому что в на из от к с для у есть был была были быть очень сейчас только"
+  },
+  "clauseStarters": "because although whereas while unless until लेकिन क्योंकि अगर जब जबकि परंतु मगर इसलिए అయితే ఎందుకంటే కానీ ஆனால் ஏனெனில் இருந்தாலும் এবং কিন্তু কারণ তবে എന്നാൽ പക്ഷേ കാരണം ಆದರೆ ಏಕೆಂದರೆ ಆದರೆ",
+  "bindRight": "a an the to of in on at by for from with into onto not never no can could will would should must may might is am are was were have has had do does did very some any this these my your our their यह इस उस इन उन नहीं मत ना बहुत एक इसको उसको நான் ஒரு இந்த அந்த இல்லை வேண்டாம் నేను ఒక ఈ ఆ కాదు లేదు చాలా",
+  "bindLeft": "का की के को में पर पे से तक ने लिए ही भी है हैं था थी थे हो रहा रही रहे गया गई गए होगा होगी होंगे चाहिए चा ची चे ला मध्ये वर आहे आहेत ને માં પર થી છે ਦਾ ਦੀ ਦੇ ਨੂੰ ਵਿੱਚ ਤੇ ਤੋਂ ਹੈ ਹਨ এর কে থেকে জন্য আছে ছিল ಎಂದು ಗೆ ನಲ್ಲಿ ಇದೆ இல் இன் உடன் என்று உள்ளது இருக்கிறது లో కి కు తో నుంచి కోసం ఉంది ఉన్నాయి എന്ന് ആണ് ഉണ്ട് ന് ൽ میں کا کی کے کو سے پر نے ہے ہیں",
+  "hesitations": "um uh erm er uhm hmm ahh उम्म उह अं ஹ்ம்ம் ఉమ్ ఉహ్ హ్మ్మ్ امم",
+  "contentActions": "build create protect launch launched rescue rescued discover discovered grow grew save buy sell need learn earn win lose love hate fear remember forget change improve fail succeed follow subscribe share join download बनाओ बचाओ बचाना बनाना बनाया सीखो सीखना जीतो जीत हार प्यार नफरत डर देख देखो देखा खरीदना खरीदो जाऊंगा जाओ बनाएं உருவாக்க காப்பாற்ற கற்றுக்கொள் வெற்றி தோல்வி நேசிக்கிறேன் வாங்க வேண்டும் నిర్మించు కాపాడు నేర్చుకో గెలుపు ఓటమి ప్రేమ కొనుగోలు చేయండి बचाव બનાવો શીખો બનાવવું ಬದಲಾವಣೆ ಕಲಿಯಿರಿ ನಿರ್ಮಿಸಿ സൃഷ്ടിക്കുക പഠിക്കുക ভালোবাসি শিখুন তৈরি",
+  "nounLeads": "a an the this that these those my your our their his her एक मेरा मेरी मेरे हमारा हमारी आपका आपकी यह इस उस ஒரு இந்த அந்த என் உங்கள் ఒక ఈ ఆ నా మీ every each",
+  "nounTails": "का की के को में पर से तक ने चा ची चे ला मध्ये वर ને માં પર થી ਦਾ ਦੀ ਦੇ ਨੂੰ ਵਿੱਚ ਤੇ ਤੋਂ এর কে থেকে জন্য లో కి కు తో కోసం இல் இன் உடன் ಗೆ ನಲ್ಲಿ ಇಂದ ൽ ന് میں کا کی کے کو سے پر",
+  "emotionalWords": "love hate fear afraid angry happy sad proud amazing incredible beautiful pain dream free win won lose lost best worst secret truth shocking unbelievable प्यार नफरत डर गुस्सा खुश दुख सपना सपने सच राज़ जीत हार शानदार कमाल காதல் பயம் மகிழ்ச்சி கனவு வெற்றி உண்மை ప్రేమ భయం సంతోషం కల గెలుపు నిజం",
+  "actionLeads": "can could will would should must may might",
+  "actionTails": "है हैं होगा होगी होंगे रहा रही रहे था थी थे आहेत आहे ఉంది ఉన్నాయి இருக்கிறது உள்ளது"
+}

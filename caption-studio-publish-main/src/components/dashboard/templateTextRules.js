@@ -10,19 +10,14 @@ export function isAdvancedTemplateId(templateId) {
   return /^t\d{2}$/.test(String(templateId || ''));
 }
 
-export function splitCaptionForTemplate(text = '') {
-  const words = String(text).trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return { top: '', hero: '', bottom: '', full: '' };
-  if (words.length === 1) {
-    return { top: '', hero: words[0], bottom: '', full: words[0] };
+export function splitCaptionForTemplate(text = '', requestedIndex = -1) {
+  const words = String(text).trim().split(/\s+/).filter(Boolean)
+  const full = words.join(' ')
+  const index = Number(requestedIndex)
+  if (!Number.isInteger(index) || index < 0 || index >= words.length) {
+    return { top: full, hero: '', bottom: '', full }
   }
-  const heroIndex = Math.min(1, words.length - 1);
-  return {
-    top: words.slice(0, heroIndex).join(' '),
-    hero: words[heroIndex] || words[0],
-    bottom: words.slice(heroIndex + 1).join(' '),
-    full: words.join(' '),
-  };
+  return { top: words.slice(0, index).join(' '), hero: words[index], bottom: words.slice(index+1).join(' '), full }
 }
 
 export function splitTemplateLines(text = '', maxLines = 2) {
@@ -107,9 +102,9 @@ export function normalizeImpWordIndices(impWordIndex = -1, impWordIndices = []) 
   const values = Array.isArray(impWordIndices) ? impWordIndices : [];
   const normalized = values
     .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value >= 0);
+    .filter((value) => Number.isInteger(value) && value >= 0);
   const single = Number(impWordIndex);
-  if (Number.isFinite(single) && single >= 0) normalized.push(single);
+  if (Number.isInteger(single) && single >= 0) normalized.push(single);
   return [...new Set(normalized.map((value) => Math.trunc(value)))];
 }
 
@@ -131,9 +126,28 @@ export function getTargetPhraseImpWordIndices(wordsOrTokens = []) {
 }
 
 export function resolveImpWordIndicesForWords(wordsOrTokens = [], impWordIndex = -1, impWordIndices = []) {
-  const phraseIndices = getTargetPhraseImpWordIndices(wordsOrTokens);
-  if (phraseIndices.length) return phraseIndices;
-  return normalizeImpWordIndices(impWordIndex, impWordIndices);
+  return normalizeImpWordIndices(impWordIndex, impWordIndices)
+    .filter(index => Number.isInteger(index) && index < wordsOrTokens.length)
+}
+
+// Rebuilt title/line layouts must retain global word identity rather than
+// promoting the entire last row to a keyword. Also used by the export page.
+export function appendSemanticTemplateWords(container, text, offset = 0, indices = [], impClass = '') {
+  const chosen = new Set(indices)
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean)
+  words.forEach((word, index) => {
+    if (index) container.appendChild(container.ownerDocument.createTextNode(' '))
+    const span = container.ownerDocument.createElement('span')
+    span.dataset.w = String(offset + index)
+    span.textContent = word
+    if (chosen.has(offset + index) && impClass) {
+      span.className = `${impClass} is-emphasis`
+      span.dataset.imp = 'true'
+      span.dataset.impCls = impClass
+    }
+    container.appendChild(span)
+  })
+  return offset + words.length
 }
 
 // Classes a template puts on its authored keyword. They describe the highlight,

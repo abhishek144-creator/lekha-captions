@@ -7,6 +7,7 @@ const clone = (value) => JSON.parse(JSON.stringify(value))
 // and project identity. Everything a saved draft restores lives here, so a
 // restore, a reset and New Project always change the same set of fields.
 export function useEditorDocument() {
+  const [audioAnalysis, setAudioAnalysis] = useState(null)
   const [videoUrl, setVideoUrl] = useState('')
   const [fileId, setFileId] = useState(null)
   const [originalFileName, setOriginalFileName] = useState('')
@@ -35,6 +36,7 @@ export function useEditorDocument() {
 
   const snapshotEditorState = useCallback((overrides = {}) => ({
     videoUrl,
+    audioAnalysis,
     captions: clone(overrides.captions ?? captions),
     captionTracks: clone(overrides.captionTracks ?? captionTracks),
     activeCaptionTrackId: overrides.activeCaptionTrackId ?? activeCaptionTrackId,
@@ -44,11 +46,12 @@ export function useEditorDocument() {
     originalFileName: overrides.originalFileName ?? originalFileName,
     projectId: overrides.projectId ?? projectId,
     settings: clone(overrides.settings ?? settings),
-  }), [activeCaptionTrackId, captionStyle, captionTracks, captions, duration, fileId, originalFileName, projectId, settings, videoUrl])
+  }), [audioAnalysis, activeCaptionTrackId, captionStyle, captionTracks, captions, duration, fileId, originalFileName, projectId, settings, videoUrl])
 
   // Replaces the whole document. Pass a value from restoreEditorDocument() or
   // emptyEditorDocument() so every field is set together.
   const applyDocument = useCallback((doc) => {
+    setAudioAnalysis(doc.audioAnalysis || null)
     setVideoUrl(doc.videoUrl)
     setFileId(doc.fileId)
     setOriginalFileName(doc.originalFileName)
@@ -67,6 +70,7 @@ export function useEditorDocument() {
   }, [applyDocument])
 
   return {
+    audioAnalysis, setAudioAnalysis,
     videoUrl, setVideoUrl,
     fileId, setFileId,
     originalFileName, setOriginalFileName,

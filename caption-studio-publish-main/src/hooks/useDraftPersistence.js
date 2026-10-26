@@ -199,7 +199,7 @@ export function useDraftPersistence({
   }, [applyLocalDraft, currentUser?.uid, isLoadingAuth, resetDocument, restoreRequested, setIsLoaded])
 
   const {
-    videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle,
+    videoUrl, audioAnalysis, captions, captionTracks, activeCaptionTrackId, captionStyle,
     projectId, settings, duration, originalFileName,
   } = doc
   // Auto-save a browser copy whenever the document changes (debounced). Paused
@@ -210,7 +210,7 @@ export function useDraftPersistence({
       try {
         // Modal states are intentionally not saved so they don't reopen on reload.
         const result = writeLocalDraft(currentUser?.uid, {
-          videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle,
+          videoUrl, audioAnalysis, captions, captionTracks, activeCaptionTrackId, captionStyle,
           projectId, settings, duration, fileId, originalFileName,
           savedAt: Date.now(),
         })
@@ -221,7 +221,7 @@ export function useDraftPersistence({
       }
     }, LOCAL_AUTOSAVE_DELAY_MS)
     return () => clearTimeout(timeoutId)
-  }, [videoUrl, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded, localRecoveryDraft, pauseAutosave])
+  }, [videoUrl, audioAnalysis, captions, captionTracks, activeCaptionTrackId, captionStyle, projectId, settings, duration, fileId, originalFileName, currentUser?.uid, isLoaded, localRecoveryDraft, pauseAutosave])
 
   // Explicit Save: browser copy first, then the account. Throws nothing; a
   // failure is reported through the notices. Returns true when both saved.

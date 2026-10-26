@@ -1,3 +1,4 @@
+import { captionTextKey } from '../../lib/captionTextKey.js'
 // Smart layout director (rules only, no AI): suggests a look for each caption
 // from its timing, pauses, loudness and wording, and applies it.
 //
@@ -17,10 +18,11 @@
 // director, is never changed by Auto layout.
 
 import {
-  EMPHASIS_STOP_WORDS,
+  getEmphasisStopWords,
   countLettersAndNumbers,
   getTemplatePhaseTypes,
   normalizeEmphasisWord,
+  selectSemanticEmphasis,
   quantile,
 } from './emotionalTemplateUtils.js'
 import { splitCaptionWordTokens, wordHasCreativePosition } from './videoPlayerWordEditing.js'
@@ -78,7 +80,7 @@ const hasNumber = (word) => /\p{N}/u.test(word || '')
 function readLineIntent(text, words, captionIndex, total) {
   if (QUESTION_END.test(text || '')) return 'question'
   if (captionIndex >= total - 2 && words.some((word) => CTA_WORDS.has(word))) return 'call_to_action'
-  if (words.length && words.every((word) => !word || EMPHASIS_STOP_WORDS.has(word))) return 'filler'
+  if (words.length && words.every((word) => !word || getEmphasisStopWords(text).has(word))) return 'filler'
   if (words.some((word) => CONTRAST_WORDS.has(word))) return 'contrast'
   if (words.some(hasNumber)) return 'statistic'
   if (captionIndex === 0) return 'hook'
@@ -94,14 +96,7 @@ function keywordPhrase(index, words) {
 
 // A short fingerprint of a caption's text, so a stored AI reading is only used
 // while the text it describes is unchanged (no repeat provider calls either).
-export function captionTextKey(text) {
-  let hash = 0x811c9dc5
-  for (const char of String(text ?? '').trim()) {
-    hash ^= char.codePointAt(0)
-    hash = Math.imul(hash, 0x01000193) >>> 0
-  }
-  return hash.toString(16)
-}
+export { captionTextKey } from '../../lib/captionTextKey.js'
 
 export function getCaptionAiEmotion(caption, wordCount = Infinity) {
   const ai = caption?.aiEmotion
@@ -110,7 +105,7 @@ export function getCaptionAiEmotion(caption, wordCount = Infinity) {
     type: ai.type,
     emotion: ai.emotion,
     intensity: clamp(Number(ai.intensity) || 0, 0, 1),
-    keywords: (Array.isArray(ai.keywords) ? ai.keywords : []).filter((index) => Number.isInteger(index) && index >= 0 && index < wordCount),
+    keywords: (Array.isArray(ai.keywords) ? ai.keywords : []).filter((index) => Number.isInteger(index) && index >= 0 && index < wordCount && !getEmphasisStopWords(caption.text, caption.language).has(normalizeEmphasisWord(String(caption.text).trim().split(/\s+/)[index]))).slice(0, 2),
   }
 }
 
@@ -186,7 +181,9 @@ function levelBetween(waveform, duration, from, to) {
 
 // Stress per word: wording (content word, number, !/?), elongation, pauses
 // around it and loudness relative to the rest of the caption.
-function scoreWords(tokens, timings, waveform, duration, { captionIndex = 0, avoidWord = '' } = {}) {
+function scoreWords(tokens, timings, waveform, duration, language = '') {
+  const stopWords = getEmphasisStopWords(tokens.map(token => token.word).join(' '), language)
+  const semanticIndex = selectSemanticEmphasis(tokens.map(token => token.word), language).impWordIndex
   const perChar = timings.map((timing, index) => (timing.end - timing.start) / Math.max(1, countLettersAndNumbers(tokens[index].word)))
   const typicalPerChar = median(perChar)
   const levels = timings.map((timing) => levelBetween(waveform, duration, timing.start, timing.end))
@@ -196,29 +193,31 @@ function scoreWords(tokens, timings, waveform, duration, { captionIndex = 0, avo
   const afterContrast = new Set()
   normalized.forEach((word, index) => {
     if (!CONTRAST_WORDS.has(word)) return
-    const next = normalized.findIndex((other, otherIndex) => otherIndex > index && other && !EMPHASIS_STOP_WORDS.has(other) && !CONTRAST_WORDS.has(other))
+    const next = normalized.findIndex((other, otherIndex) => otherIndex > index && other && !stopWords.has(other) && !CONTRAST_WORDS.has(other))
     if (next >= 0) afterContrast.add(next)
   })
   return tokens.map((token, index) => {
     const word = normalized[index]
-    if (!word) return { index, word: token.word, score: -9 }
+    if (!word || stopWords.has(word)) return { index, word: token.word, score: -9 }
     const isNumber = /\p{N}/u.test(word)
-    let score = EMPHASIS_STOP_WORDS.has(word) ? -2.5 : Math.min(3, countLettersAndNumbers(word) * 0.5)
+    const carriesMeaning = index === semanticIndex || isNumber || afterContrast.has(index)
+      || EMOTION_WORDS.has(word) || CTA_WORDS.has(word)
+    // Length and loudness can rank meaningful candidates; neither can turn
+    // an otherwise unsupported token into an automatic keyword.
+    if (!carriesMeaning) return { index, word: token.word, score: 0 }
+    let score = stopWords.has(word) ? -2.5 : Math.min(3, countLettersAndNumbers(word) * 0.5)
+    if (index === semanticIndex) score += 2
     if (isNumber) score += 2.2
     if (/[!?]$/.test(token.word)) score += 0.6
     if (typicalPerChar > 0) score += clamp((perChar[index] / typicalPerChar - 1) * 1.2, -0.6, 1.2)
     if (index > 0 && timings[index].start - timings[index - 1].end >= 0.18) score += 0.6
     if (index < tokens.length - 1 && timings[index + 1].start - timings[index].end >= 0.25) score += 0.3
     if (levels[index] != null && typicalLevel > 0) score += clamp((levels[index] / typicalLevel - 1) * 2, -0.8, 1.5)
-    // Brief 7.4: the word after a contrast word carries the twist; emotional
-    // and call-to-action words earn a highlight; the opening word only on the
-    // hook; never the word the previous caption highlighted.
+    // Contrast, emotion and calls to action add context to semantic choices.
     if (CONTRAST_WORDS.has(word)) score -= 2
     else if (afterContrast.has(index)) score += 1.4
     if (EMOTION_WORDS.has(word)) score += 0.9
     if (CTA_WORDS.has(word)) score += 0.8
-    if (index === 0 && captionIndex > 0) score -= 0.8
-    if (avoidWord && word === avoidWord) score -= 1.5
     return { index, word: token.word, score }
   })
 }
@@ -264,14 +263,13 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
   const waveform = Array.isArray(waveformData) ? waveformData.map(Number).filter(Number.isFinite).map(Math.abs) : []
   const videoDuration = duration > 0 ? duration : Math.max(0, ...speech.map((caption) => Number(caption.end_time) || 0))
 
-  let previousKeyword = ''
   const analyses = speech.map((caption, captionIndex) => {
     const tokens = splitCaptionWordTokens(caption.text)
     const normalized = tokens.map((token) => normalizeEmphasisWord(token.word))
     const timings = wordTimings(caption, tokens)
     const start = Number(caption.start_time) || 0
     const end = Math.max(start, Number(caption.end_time) || start)
-    const words = scoreWords(tokens, timings, waveform, videoDuration, { captionIndex, avoidWord: previousKeyword })
+    const words = scoreWords(tokens, timings, waveform, videoDuration, caption.language)
     const ranked = [...words].filter((word) => word.score > -9).sort((a, b) => b.score - a.score)
     // Only a word that clearly earns it is highlighted: a weak pick is worse than none.
     let keywordIndices = []
@@ -284,17 +282,16 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
     // which words carry the meaning; it replaces the rules' keyword guess.
     const ai = getCaptionAiEmotion(caption, tokens.length)
     let heroIndex = ranked[0]?.index ?? 0
-    if (ai?.keywords.length) {
+    if (ai) {
       keywordIndices = [...ai.keywords]
-      heroIndex = ai.keywords[0]
+      heroIndex = ai.keywords[0] ?? 0
     }
     const previous = speech[captionIndex - 1]
     const intent = readLineIntent(caption.text, normalized, captionIndex, speech.length)
-    if (intent === 'call_to_action' && ctaIndex >= 0 && !ai?.keywords.length) {
+    if (intent === 'call_to_action' && ctaIndex >= 0 && !ai) {
       keywordIndices = [ctaIndex]
       heroIndex = ctaIndex
     }
-    previousKeyword = keywordIndices.length ? normalized[heroIndex] || '' : ''
     return {
       caption,
       captionIndex,
@@ -345,7 +342,7 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
   const keywordThreshold = median(intensities) - 0.1
   const maxCpt = Math.max(1, Math.round(videoDuration / 10))
   const chosenCpt = analyses.filter((item) => isLockedForAuto(item.caption) && getCaptionLayoutMode(item.caption) === 'cpt')
-  const cptEligible = (item) => item.seconds >= CPT_MIN_SECONDS
+  const cptEligible = (item) => item.keywordIndices.length > 0 && item.seconds >= CPT_MIN_SECONDS
     && item.wordCount >= CPT_MIN_WORDS && item.wordCount <= CPT_MAX_WORDS && item.chars <= CPT_MAX_CHARS
     && !(item.ai && item.ai.type === 'narration' && item.ai.intensity < 0.5)
     // Questions stay quiet (the answer is the moment); filler and calls to action are never heroes.
@@ -399,7 +396,7 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
       mode,
       motion,
       animation,
-      keywordIndices: item.keywordIndices.length ? item.keywordIndices : [item.heroIndex],
+      keywordIndices: item.keywordIndices,
       heroIndex: item.heroIndex,
       intensity: Number(item.intensity.toFixed(3)),
       insight: item.ai ? { type: item.ai.type, emotion: item.ai.emotion, source: 'ai' } : { type: item.intent, source: 'rules' },

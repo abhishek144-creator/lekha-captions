@@ -276,7 +276,7 @@ def caption_emotions(req: api_models.CaptionEmotionRequest, request: Request, re
     texts = [line.text.strip() for line in req.lines]
     ids = [line.id for line in req.lines]
     model = settings.CAPTION_EMOTION_MODEL
-    cache_key = hashlib.sha256(json.dumps([model, texts], ensure_ascii=False).encode("utf-8")).hexdigest()
+    cache_key = hashlib.sha256(json.dumps(["semantic-v2", model, texts], ensure_ascii=False).encode("utf-8")).hexdigest()
     cached = _caption_emotion_cache.get(cache_key)
     if cached is not None:
         _caption_emotion_cache.move_to_end(cache_key)
@@ -357,7 +357,7 @@ def _classify_caption_lines(client, texts, model, strict=False):
         "\"intensity\" (0 to 1: how strongly this line should stand out visually; most narration is below 0.4, "
         "the opening hook and the punchline are usually the strongest), and "
         "\"keywords\" (0-based indexes, counting words split on spaces, of at most 2 words in that line that carry "
-        "its meaning or emotion; never filler words). Judge each line in the context of the whole script. "
+        "its meaning or emotion; choose key nouns, entities, main actions, numbers or significant facts. Use an empty list when no word earns emphasis. Never choose by position or length. Avoid articles, auxiliaries, conjunctions and grammatical particles in the actual language). Judge each line in the context of the whole script. "
         'Reply with JSON {"lines": [...]} with exactly one object per input line, in the same order.'
     )
     if strict:
@@ -369,7 +369,7 @@ def _classify_caption_lines(client, texts, model, strict=False):
             {"role": "system", "content": instruction},
             {"role": "user", "content": json.dumps({"lines": texts}, ensure_ascii=False)},
         ],
-        temperature=0.1 if strict else 0.2,
+        temperature=0,
         max_tokens=min(8_000, 80 + 45 * len(texts)),
     )
     try:

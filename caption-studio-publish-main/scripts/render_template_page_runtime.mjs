@@ -209,15 +209,14 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
 
 
 
-    const heroMarkup = (text, className = '') => {
-      const { top, hero, bottom, full } = splitCaptionForTemplate(text);
-      if (!full) return '';
-      if (!className || !hero) return escapeHtml(full);
-      return \`\${top ? \`\${escapeHtml(top)} \` : ''}<span class="\${className}">\${escapeHtml(hero)}</span>\${bottom ? \` \${escapeHtml(bottom)}\` : ''}\`;
+    const heroMarkup = (text, className = '', indices = []) => {
+      const words = String(text || '').trim().split(/\\s+/).filter(Boolean);
+      const selected = new Set(indices);
+      return words.map((word, index) => '<span class="' + (selected.has(index) ? className + ' is-emphasis' : 'plain-word') + '" data-w="' + index + '">' + escapeHtml(word) + '</span>').join(' ');
     };
 
-    const stillFramesMarkup = (text) =>
-      \`<span class="still-frames-line">\${heroMarkup(text, 'imp-rose still-frames-highlight')}</span>\`;
+    const stillFramesMarkup = (text, indices = []) =>
+      '<span class="still-frames-line">' + heroMarkup(text, 'imp-rose still-frames-highlight', indices) + '</span>';
 
     let activeTemplateImpWordIndices = [];
 
@@ -225,7 +224,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const { hero, full } = splitCaptionForTemplate(text);
       if (!full) return '';
       const tokens = full.split(/\\s+/).filter(Boolean).map((word) => ({ word }));
-      const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
+      const heroIndex = hero ? tokens.findIndex((token) => token.word === hero) : -1;
       const requestedImpWordIndices = options.impWordIndices?.length
         ? options.impWordIndices
         : activeTemplateImpWordIndices;
@@ -234,7 +233,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         : requestedImpWordIndices.length
           ? resolveImpWordIndicesForWords(tokens, -1, requestedImpWordIndices)
         : resolveImpWordIndicesForWords(tokens);
-      const emphasisIndices = new Set(resolvedImpWordIndices.length ? resolvedImpWordIndices : [heroIndex]);
+      const emphasisIndices = new Set(resolvedImpWordIndices);
       const lineMotion = String(options.motion || '');
       const lineClassName = String(options.lineClassName || '');
       const lineMotionAttr = lineMotion ? \` data-line-motion="\${escapeHtml(lineMotion)}"\` : '';
@@ -265,7 +264,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const { hero, full } = splitCaptionForTemplate(text);
       if (!full) return '';
       const tokens = full.split(/\\s+/).filter(Boolean).map((word) => ({ word }));
-      const heroIndex = Math.max(0, tokens.findIndex((token) => token.word === hero));
+      const heroIndex = hero ? tokens.findIndex((token) => token.word === hero) : -1;
       const lines = splitBattleCryIndexedLines(tokens);
       const markup = lines.map((line, lineIndex) => {
         const lineMotion = lineIndex % 2 === 0 ? 'wbw-slide' : 'wbw-rise';
@@ -579,25 +578,15 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     };
 
 
-    const normalizeAdvancedSourceStyledBlock = (block, templateId, blockIndex, captionText = '', previewLineTexts = []) => {
+    const normalizeAdvancedSourceStyledBlock = (block, templateId, blockIndex, captionText = '', previewLineTexts = [], impWordIndices = []) => {
       const rebuildSplitText = (container, lines, impClass = '') => {
         if (!container || !Array.isArray(lines) || !lines.length) return;
-        const doc = container.ownerDocument || document;
         container.textContent = '';
-        container.appendChild(doc.createTextNode(lines[0] || ''));
-        if (lines[1]) {
-          container.appendChild(doc.createElement('br'));
-          if (impClass) {
-            const span = doc.createElement('span');
-            span.className = impClass + ' is-emphasis';
-            span.dataset.imp = 'true';
-            span.dataset.impCls = impClass;
-            span.textContent = lines[1];
-            container.appendChild(span);
-          } else {
-            container.appendChild(doc.createTextNode(lines[1]));
-          }
-        }
+        let offset = 0;
+        lines.forEach((line, index) => {
+          if (index) container.appendChild(container.ownerDocument.createElement('br'));
+          offset = appendSemanticTemplateWords(container, line, offset, impWordIndices, impClass);
+        });
       };
 
       if (templateId === 't15' && blockIndex === 0) {
@@ -638,18 +627,11 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           splitTitle.textContent = '';
           const top = doc.createElement('span');
           top.className = 'split-top';
-          top.textContent = lines[0] || captionText;
+          const offset = appendSemanticTemplateWords(top, lines[0] || captionText, 0, impWordIndices, 'imp-purple');
           splitTitle.appendChild(top);
           const bottom = doc.createElement('span');
           bottom.className = 'split-bot';
-          if (lines[1]) {
-            const imp = doc.createElement('span');
-            imp.className = 'imp-purple is-emphasis';
-            imp.dataset.imp = 'true';
-            imp.dataset.impCls = 'imp-purple';
-            imp.textContent = lines[1];
-            bottom.appendChild(imp);
-          }
+          appendSemanticTemplateWords(bottom, lines[1] || '', offset, impWordIndices, 'imp-purple');
           splitTitle.appendChild(bottom);
           splitTitle.classList.add('lekha-template-fit');
         }
@@ -705,7 +687,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const impClass = getRecreatedAdvancedWbwImpClass(templateId, blockIndex);
       const fallbackImpIndex = Number.isFinite(Number(impWordIndex)) && Number(impWordIndex) >= 0
         ? Math.min(words.length - 1, Number(impWordIndex))
-        : Math.min(1, words.length - 1);
+        : -1;
       const targetImpIndices = new Set(resolveImpWordIndicesForWords(words, fallbackImpIndex, impWordIndices));
       block.textContent = '';
       const line = doc.createElement('span');
@@ -787,7 +769,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         }
       }
 
-      normalizeAdvancedSourceStyledBlock(block, templateId, normalized, text, previewLineTexts);
+      normalizeAdvancedSourceStyledBlock(block, templateId, normalized, text, previewLineTexts, resolveImpWordIndicesForWords(words, impWordIndex, impWordIndices));
 
       return '<span class="lekha-original-template ' + templateId + ' ' + templateId + '-stage">'
         + block.outerHTML
@@ -842,7 +824,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     \`;
 
     const buildOriginalAdvancedTemplateMarkup = (templateId, text, blockIndex = 0, previewLineTexts = [], impWordIndex = -1, impWordIndices = []) => {
-      const { top, hero, bottom, full } = splitCaptionForTemplate(text);
+      const { top, hero, bottom, full } = splitCaptionForTemplate(text, impWordIndices[0] ?? impWordIndex);
       const blockTypes = originalTemplateBlockTypes[templateId] || ['styled'];
       const normalized = ((blockIndex % blockTypes.length) + blockTypes.length) % blockTypes.length;
       const blockType = blockTypes[normalized];
@@ -861,18 +843,24 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         impWordIndex,
         impWordIndices,
       );
+      const fullWords = full.split(/\\s+/).filter(Boolean).map(normalizeTemplateWord);
+      const heroLine = (line, className, offsetHint) => {
+        const lineWords = String(line).trim().split(/\\s+/).filter(Boolean).map(normalizeTemplateWord);
+        const offset = Number.isInteger(offsetHint) ? offsetHint : fullWords.findIndex((_, index) => lineWords.every((word, local) => fullWords[index + local] === word));
+        return heroMarkup(line, className, activeTemplateImpWordIndices.map(index => index-offset).filter(index => offset >= 0 && index >= 0 && index < lineWords.length));
+      };
       const lineSpans = (lines, cls, mapper = (line) => escapeHtml(line)) =>
         lines.map((line, index) => \`<span class="\${cls}" style="animation-delay:\${index * 0.1}s">\${mapper(line, index)}</span>\`).join('');
       const wrap = (blockClass, children, extraStyle = '') => wrapOriginalTemplate(templateId, blockClass, normalized, blockType, children, extraStyle);
 
       switch (templateId) {
         case 't11':
-          if (normalized === 1) return wrap('t11-b1', \`<span class="blur-txt lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
+          if (normalized === 1) return wrap('t11-b1', \`<span class="blur-txt lekha-template-fit">\${heroLine(full, 'imp-italic')}</span>\`);
           if (normalized === 2) return wrap('t11-b2', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 3) return wrap('t11-b3', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           return wrap('t11-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
         case 't12':
-          if (normalized === 1) return wrap('t12-b1', \`<span class="rise-unit lekha-template-fit">\${heroMarkup(full, 'imp-purple')}</span>\`);
+          if (normalized === 1) return wrap('t12-b1', \`<span class="rise-unit lekha-template-fit">\${heroLine(full, 'imp-purple')}</span>\`);
           if (normalized === 2) return wrap('t12-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
           if (normalized === 3) return wrap('t12-b3', wbwMarkup(full, 'wbw-slide', 'imp-rose'));
           return wrap('t12-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-purple'));
@@ -882,15 +870,15 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 3) return wrap('t13-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-bold'));
           return wrap('t13-b0', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
         case 't14':
-          if (normalized === 1) return wrap('t14-b1', \`<span class="drop-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          if (normalized === 1) return wrap('t14-b1', \`<span class="drop-txt lekha-template-fit">\${heroLine(full, 'imp-gold')}</span>\`);
           if (normalized === 2) return wrap('t14-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
           if (normalized === 3) return wrap('t14-b3', wbwMarkup(full, 'wbw-rise', 'imp-weight'));
-          return wrap('t14-b0', \`<span style="perspective:600px" class="lekha-template-fit">\${lineSpans(lines2, 'flip-line', (line, index) => index === lines2.length - 1 ? heroMarkup(line, 'imp-underline') : escapeHtml(line))}</span>\`);
+          return wrap('t14-b0', \`<span style="perspective:600px" class="lekha-template-fit">\${lineSpans(lines2, 'flip-line', (line, index) => index === lines2.length - 1 ? heroLine(line, 'imp-underline') : escapeHtml(line))}</span>\`);
         case 't15':
           if (normalized === 1) return wrap('t15-b1', \`<span class="pop-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
           if (normalized === 2) return wrap('t15-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
           if (normalized === 3) return wrap('t15-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose'));
-          return wrap('t15-b0', \`<span class="shake-in lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-rose')}\` : ''}</span>\`);
+          return wrap('t15-b0', \`<span class="shake-in lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroLine(lines2[1], 'imp-rose', lines2[0].trim().split(/\\s+/).length)}\` : ''}</span>\`);
         case 't16':
           if (normalized === 1) return wrap('t16-b1', wbwMarkup(full, 'wbw-rise', 'imp-bold', { motion: 't16-neon', lineClassName: 't16-neon-words' }));
           if (normalized === 2) return wrap('t16-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold', { motion: 't16-diagonal', lineClassName: 't16-diagonal-words' }));
@@ -902,17 +890,17 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 3) return wrap('t17-b3', wbwMarkup(full, 'wbw-rise', 'imp-rose'));
           return wrap('t17-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose'));
         case 't18':
-          if (normalized === 1) return wrap('t18-b1', \`<span class="reveal-txt lekha-template-fit">\${heroMarkup(full, 'imp-purple')}</span>\`);
+          if (normalized === 1) return wrap('t18-b1', \`<span class="reveal-txt lekha-template-fit">\${heroLine(full, 'imp-purple')}</span>\`);
           if (normalized === 2) return wrap('t18-b2', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
           if (normalized === 3) return wrap('t18-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
-          return wrap('t18-b0', \`<span class="split-title lekha-template-fit"><span class="split-top">\${escapeHtml(resolvedPreviewLines[0] || full)}</span><span class="split-bot">\${resolvedPreviewLines[1] ? heroMarkup(resolvedPreviewLines[1], 'imp-purple') : ''}</span></span>\`);
+          return wrap('t18-b0', \`<span class="split-title lekha-template-fit"><span class="split-top">\${escapeHtml(resolvedPreviewLines[0] || full)}</span><span class="split-bot">\${resolvedPreviewLines[1] ? heroLine(resolvedPreviewLines[1], 'imp-purple') : ''}</span></span>\`);
         case 't19':
-          if (normalized === 1) return wrap('t19-b1', \`<span class="rise-unit lekha-template-fit">\${heroMarkup(upperFull, 'imp-rose')}</span>\`);
+          if (normalized === 1) return wrap('t19-b1', \`<span class="rise-unit lekha-template-fit">\${heroLine(upperFull, 'imp-rose')}</span>\`);
           if (normalized === 2) return wrap('t19-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
           if (normalized === 3) return wrap('t19-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose'));
           return wrap('t19-b0', \`<span class="slash-wrap lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
         case 't20':
-          if (normalized === 1) return wrap('t20-b1', \`<span class="impact-txt lekha-template-fit">\${heroMarkup(full, 'imp-green')}</span>\`);
+          if (normalized === 1) return wrap('t20-b1', \`<span class="impact-txt lekha-template-fit">\${heroLine(full, 'imp-green')}</span>\`);
           if (normalized === 2) return wrap('t20-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
           if (normalized === 3) return wrap('t20-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-green'));
           return wrap('t20-b0', \`<span class="impact-slide lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
@@ -922,12 +910,12 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 3) return wrap('t21-b3', wbwMarkup(full, 'wbw-slide', 'imp-weight'));
           return wrap('t21-b0', wbwMarkup(full, 'editorial-line wbw-rise', ''));
         case 't22':
-          if (normalized === 1) return wrap('t22-b1', \`<span class="wave-txt lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          if (normalized === 1) return wrap('t22-b1', \`<span class="wave-txt lekha-template-fit">\${heroLine(full, 'imp-gold')}</span>\`);
           if (normalized === 2) return wrap('t22-b2', wbwMarkup(full, 'wbw-rise', 'imp-italic'));
           if (normalized === 3) return wrap('t22-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
           return wrap('t22-b0', karaokeMarkup(full));
         case 't23':
-          if (normalized === 3) return wrap('t23-b3', \`<span class="punch-txt lekha-template-fit">\${heroMarkup(full, 'imp-bold')}</span>\`);
+          if (normalized === 3) return wrap('t23-b3', \`<span class="punch-txt lekha-template-fit">\${heroLine(full, 'imp-bold')}</span>\`);
           return wrap(\`t23-b\${normalized}\`, \`<span class="\${normalized === 0 ? 'setup-txt ' : ''}lekha-template-fit">\${escapeHtml(full)}</span>\`);
         case 't24':
           if (normalized === 1) return wrap('t24-b1', wbwMarkup(full, 'wbw-rise', 'imp-orange', { motion: 't24-drift', lineClassName: 't24-drift-line', compactLines: true, lineTexts: previewLineTexts }));
@@ -936,10 +924,10 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           if (normalized === 4) return wrap('t24-b4', wbwMarkup(full, 'wbw-rise', 'imp-orange', { motion: 't24-inner', lineClassName: 't24-inner-line', compactLines: true, lineTexts: previewLineTexts }));
           return wrap('t24-b0', wbwMarkup(full, 'wbw-rise', 'imp-orange', { motion: 't24-wipe', lineClassName: 't24-wipe-line', compactLines: true, lineTexts: previewLineTexts }));
         case 't25':
-          if (normalized === 1) return wrap('t25-b1', \`<span class="soft-rise lekha-template-fit lekha-template-preview-lines">\${compactLines2.map((line, index) => \`<span class="lekha-template-preview-line">\${index === compactLines2.length - 1 ? heroMarkup(line, 'imp-italic') : escapeHtml(line)}</span>\`).join('')}</span>\`);
+          if (normalized === 1) return wrap('t25-b1', \`<span class="soft-rise lekha-template-fit lekha-template-preview-lines">\${compactLines2.map((line, index) => \`<span class="lekha-template-preview-line">\${heroLine(line, 'imp-italic', compactLines2.slice(0, index).join(' ').trim().split(/\\s+/).filter(Boolean).length)}</span>\`).join('')}</span>\`);
           if (normalized === 2) return wrap('t25-b2', wbwMarkup(full, 'wbw-rise', 'imp-rose', { compactLines: true, lineTexts: previewLineTexts }));
           if (normalized === 3) return wrap('t25-b3', wbwMarkup(full, 'wbw-slide', 'imp-italic', { compactLines: true, lineTexts: previewLineTexts }));
-          return wrap('t25-b0', \`<span class="hand-txt lekha-template-fit lekha-template-preview-lines">\${compactLines2.map((line, index) => \`<span class="lekha-template-preview-line">\${index === compactLines2.length - 1 ? heroMarkup(line, 'imp-rose') : escapeHtml(line)}</span>\`).join('')}</span>\`);
+          return wrap('t25-b0', \`<span class="hand-txt lekha-template-fit lekha-template-preview-lines">\${compactLines2.map((line, index) => \`<span class="lekha-template-preview-line">\${heroLine(line, 'imp-rose', compactLines2.slice(0, index).join(' ').trim().split(/\\s+/).filter(Boolean).length)}</span>\`).join('')}</span>\`);
         case 't26':
           if (normalized === 1) return wrap('t26-b1', wbwMarkup(upperFull, 'wbw-slide', 'imp-rose', { motion: 't26-snap', lineClassName: 't26-snap-line' }));
           if (normalized === 2) return wrap('t26-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold', { motion: 't26-kick', lineClassName: 't26-kick-line' }));
@@ -947,48 +935,48 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           return wrap('t26-b0', wbwMarkup(upperFull, 'wbw-rise', 'imp-rose', { motion: 't26-shutter', lineClassName: 't26-shutter-line' }));
         case 't27':
           if (normalized === 1) return wrap('t27-b1', \`<span class="lekha-template-fit" style="font-family:'Exo 2',sans-serif;font-weight:700;color:rgba(0,229,255,0.8)">\${escapeHtml(full)}</span>\`);
-          if (normalized === 2) return wrap('t27-b2', \`<span class="lekha-template-fit">\${heroMarkup(full, 'imp-bold')}</span>\`);
+          if (normalized === 2) return wrap('t27-b2', \`<span class="lekha-template-fit">\${heroLine(full, 'imp-bold')}</span>\`);
           if (normalized === 3) return wrap('t27-b3', wbwMarkup(full, 'wbw-rise', 'imp-cyan'));
           return wrap('t27-b0', \`<span class="center-expand-txt lekha-template-fit">\${escapeHtml(upperFull)}</span>\`);
         case 't28':
-          if (normalized === 1) return wrap('t28-b1', \`<span class="slow-fade lekha-template-fit">\${heroMarkup(full, 'imp-gold')}</span>\`);
+          if (normalized === 1) return wrap('t28-b1', \`<span class="slow-fade lekha-template-fit">\${heroLine(full, 'imp-gold')}</span>\`);
           if (normalized === 2) return wrap('t28-b2', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 3) return wrap('t28-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
-          return wrap('t28-b0', \`<span class="grain-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroMarkup(lines2[1], 'imp-gold')}\` : ''}</span>\`);
+          return wrap('t28-b0', \`<span class="grain-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br>\${heroLine(lines2[1], 'imp-gold', lines2[0].trim().split(/\\s+/).length)}\` : ''}</span>\`);
         case 't29':
           if (normalized === 1) return wrap('t29-b1', wbwMarkup(full, 'wbw-rise', 'imp-rose', { motion: 't29-recoil', lineClassName: 't29-recoil-line' }));
           if (normalized === 2) return wrap('t29-b2', wbwMarkup(full, 'wbw-slide', 'imp-rose', { motion: 't29-charge', lineClassName: 't29-charge-line' }));
           if (normalized === 3) return wrap('t29-b3', wbwMarkup(full, 'wbw-seq-fade', 'imp-rose', { motion: 't29-clamp', lineClassName: 't29-clamp-line' }));
           return wrap('t29-b0', wbwMarkup(full, 'wbw-rise', 'imp-rose', { motion: 't29-shutter', lineClassName: 't29-shutter-line' }));
         case 't30':
-          if (normalized > 0) return wrap(\`t30-b\${normalized}\`, \`<span class="lekha-template-fit">\${normalized === 3 ? heroMarkup(full, 'imp-italic') : escapeHtml(full)}</span>\`);
+          if (normalized > 0) return wrap(\`t30-b\${normalized}\`, \`<span class="lekha-template-fit">\${normalized === 3 ? heroLine(full, 'imp-italic') : escapeHtml(full)}</span>\`);
           return wrap('t30-b0', \`<span class="breathe-txt lekha-template-fit">\${escapeHtml(lines2[0] || '')}\${lines2[1] ? \`<br><span class="imp-italic">\${escapeHtml(lines2[1])}</span>\` : ''}</span>\`);
         case 't31':
           if (normalized === 1) return wrap('t31-b1', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
           if (normalized === 2) return wrap('t31-b2', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
           if (normalized === 3) return wrap('t31-b3', wbwMarkup(full, 'wbw-rise', 'imp-gold'));
-          if (normalized === 4) return wrap('t31-b4', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Playfair Display',serif">\${heroMarkup(full, 'imp-gold')}</span></span>\`);
+          if (normalized === 4) return wrap('t31-b4', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Playfair Display',serif">\${heroLine(full, 'imp-gold')}</span></span>\`);
           return wrap('t31-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-gold'));
         case 't32':
-          if (normalized === 1) return wrap('t32-b1', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Bodoni Moda',serif;font-style:italic">\${heroMarkup(full, 'imp-italic')}</span></span>\`);
+          if (normalized === 1) return wrap('t32-b1', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Bodoni Moda',serif;font-style:italic">\${heroLine(full, 'imp-italic')}</span></span>\`);
           if (normalized === 2) return wrap('t32-b2', \`<span class="lekha-template-fit">\${escapeHtml(full)}</span>\`);
           if (normalized === 3) return wrap('t32-b3', wbwMarkup(full, 'wbw-rise', 'imp-purple'));
           if (normalized === 4) return wrap('t32-b4', wbwMarkup(full, 'wbw-seq-fade', 'imp-purple'));
-          return wrap('t32-b0', \`<span style="font-style:italic" class="lekha-template-fit">\${lineSpans(lines2, 'ink-line', (line, index) => index === lines2.length - 1 ? heroMarkup(line, 'imp-purple') : escapeHtml(line))}</span>\`);
+          return wrap('t32-b0', \`<span style="font-style:italic" class="lekha-template-fit">\${lineSpans(lines2, 'ink-line', (line, index) => heroLine(line, 'imp-purple', lines2.slice(0, index).join(' ').trim().split(/\\s+/).filter(Boolean).length))}</span>\`);
         case 't33':
           if (normalized === 1) return wrap('t33-b1', wbwMarkup(full, 'wbw-seq-fade', 'imp-cyan', { compactLines: true, lineTexts: previewLineTexts }));
           if (normalized === 2) return wrap('t33-b2', karaokeMarkup(full));
           if (normalized === 3) return wrap('t33-b3', wbwMarkup(full, 'wbw-rise', 'imp-bold', { compactLines: true, lineTexts: previewLineTexts }));
-          if (normalized === 4) return wrap('t33-b4', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Noto Sans',sans-serif">\${heroMarkup(full, 'imp-cyan')}</span></span>\`);
-          return wrap('t33-b0', \`<span class="doc-line lekha-template-fit">\${lineSpans(resolvedPreviewLines, '', (line) => line.includes(hero) ? heroMarkup(line, 'imp-cyan') : escapeHtml(line))}</span>\`);
+          if (normalized === 4) return wrap('t33-b4', \`<span style="perspective:500px" class="lekha-template-fit"><span class="flip-line" style="font-family:'Noto Sans',sans-serif">\${heroLine(full, 'imp-cyan')}</span></span>\`);
+          return wrap('t33-b0', \`<span class="doc-line lekha-template-fit">\${lineSpans(resolvedPreviewLines, '', (line) => line.includes(hero) ? heroLine(line, 'imp-cyan') : escapeHtml(line))}</span>\`);
         case 't34':
-          if (normalized === 1) return wrap('t34-b1', \`<span class="pow-txt lekha-template-fit">\${heroMarkup(full, 'imp-cyan')}</span>\`);
+          if (normalized === 1) return wrap('t34-b1', \`<span class="pow-txt lekha-template-fit">\${heroLine(full, 'imp-cyan')}</span>\`);
           if (normalized === 2) return wrap('t34-b2', wbwMarkup(full, 'wbw-rise', 'imp-bold'));
           if (normalized === 3) return wrap('t34-b3', wbwMarkup(full, 'wbw-slide', 'imp-cyan'));
           return wrap('t34-b0', wbwMarkup(full, 'wbw-seq-fade', 'imp-bold'));
         case 't35':
-          if (normalized > 0) return wrap(\`t35-b\${normalized}\`, \`<span class="lekha-template-fit">\${normalized === 3 ? heroMarkup(full, 'imp-italic') : escapeHtml(full)}</span>\`);
-          return wrap('t35-b0', \`<span class="secret-txt lekha-template-fit">\${heroMarkup(full, 'imp-italic')}</span>\`);
+          if (normalized > 0) return wrap(\`t35-b\${normalized}\`, \`<span class="lekha-template-fit">\${normalized === 3 ? heroLine(full, 'imp-italic') : escapeHtml(full)}</span>\`);
+          return wrap('t35-b0', \`<span class="secret-txt lekha-template-fit">\${heroLine(full, 'imp-italic')}</span>\`);
         case 't36':
           return wrap(\`t36-b\${normalized}\`, karaokeMarkup(full));
         case 't37':
@@ -1004,8 +992,8 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         case 't39':
           return wrap(\`t39-b\${normalized}\`, wbwMarkup(full, 'wbw-seq-fade', normalized % 2 ? 'imp-rose' : 'imp-gold', { motion: 't39-evidence' }));
         case 't40':
-          if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
-          return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${stillFramesMarkup(full)}</span>\`);
+          if (normalized === 2) return wrap('t40-b2', \`<span class="lekha-template-fit">\${stillFramesMarkup(full, activeTemplateImpWordIndices)}</span>\`);
+          return wrap(\`t40-b\${normalized}\`, \`<span class="lekha-template-fit">\${stillFramesMarkup(full, activeTemplateImpWordIndices)}</span>\`);
         case 't41':
         case 't42':
         case 't43':
@@ -1739,15 +1727,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       if (Number.isFinite(requested) && requested >= 0 && requested < targetCount) {
         return requested;
       }
-      if (sourceImpIndex < 0 || sourceCount <= 0 || targetCount <= 0) return -1;
-      if (sourceCount === 1 || targetCount === 1) return 0;
-      return Math.max(
-        0,
-        Math.min(
-          targetCount - 1,
-          Math.round((sourceImpIndex * (targetCount - 1)) / Math.max(1, sourceCount - 1)),
-        ),
-      );
+      return -1;
     };
 
     const splitSidebarWordsForSlots = (words, slotCount) => {

@@ -146,6 +146,7 @@ export default function Dashboard() {
   const editorDocument = useEditorDocument();
   const {
     videoUrl, setVideoUrl,
+    audioAnalysis, setAudioAnalysis,
     fileId, setFileId,
     originalFileName, setOriginalFileName,
     duration, setDuration,
@@ -273,7 +274,7 @@ export default function Dashboard() {
   } : null), [wordPopup]);
 
   // Waveform data for timeline
-  const [waveformData, setWaveformData] = useState(null);
+  const waveformData = audioAnalysis?.fileId === fileId ? audioAnalysis.samples : null
   const mediaRefreshInFlightRef = useRef(false);
   const lastMediaRefreshRef = useRef({ fileId: null, at: 0, reported: false });
   // The preview <video>, for the mobile dock's live scrubbing.
@@ -636,7 +637,7 @@ export default function Dashboard() {
       setSettings(uploadSettings);
       setCloudSaveConflict(false);
       // The previous video's waveform and playhead must not carry over.
-      setWaveformData(null);
+      setAudioAnalysis(null);
       setCurrentTime(0);
       setSeekSignal(null);
       setSourceUnavailable(false)
@@ -654,9 +655,18 @@ export default function Dashboard() {
         language: SARVAM_SPOKEN_LANGUAGES.has(spokenLanguage) ? spokenLanguage : 'auto',
         min_words: minWords,
         max_words: maxWords,
+        cleanup_mode: uploadSettings?.cleanupMode || 'clean',
         id_token: mediaAuthToken,
       });
       if (!processData.success) throw new Error(processData.error || 'Processing failed');
+      const nextAudioAnalysis = processData.audio_analysis?.samples?.length
+        ? { ...processData.audio_analysis, fileId: uploadData.file_id } : null
+      setAudioAnalysis(nextAudioAnalysis)
+      if (nextAudioAnalysis?.duration > 0) {
+        setDuration(nextAudioAnalysis.duration)
+        setIsTimelineCollapsed(false)
+        setTimelineHeight(EXPANDED_TIMELINE_HEIGHT)
+      }
       trackAnalytics('funnel.process.success', getClientContext({ stage: 'process', language: uploadSettings?.language || 'auto' }));
 
       let sourceCaptions = captionsFromTranscript(processData.captions);
@@ -687,7 +697,7 @@ export default function Dashboard() {
             throw new Error(translateData.error || `Translation to ${targetLang} failed`);
           }
           trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
-          translatedCaptions = applyTranslation(sourceCaptions, translateData.captions);
+          translatedCaptions = applyTranslation(sourceCaptions, translateData.captions, targetLang);
         } catch (translateErr) {
           trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
           console.warn(`Translation to ${targetLang} failed; keeping the original language track.`, translateErr);
@@ -697,8 +707,9 @@ export default function Dashboard() {
 
       if (uploadSettings?.style === 'double_line' && sourceCaptions.length > 1) {
         const sharedIdPrefix = `${Date.now()}-merged`;
+        const pairingReference = sourceCaptions
         sourceCaptions = mergeCaptionPairs(sourceCaptions, sharedIdPrefix);
-        if (translatedCaptions) translatedCaptions = mergeCaptionPairs(translatedCaptions, sharedIdPrefix);
+        if (translatedCaptions) translatedCaptions = mergeCaptionPairs(translatedCaptions, sharedIdPrefix, pairingReference);
       }
 
       const trackState = buildCaptionTracks({
@@ -707,6 +718,9 @@ export default function Dashboard() {
         translatedCaptions,
         targetLanguage: targetLang,
       });
+      if (processData.verbatim_captions?.length && JSON.stringify(processData.verbatim_captions.map(c => c.text)) !== JSON.stringify(processData.captions.map(c => c.text))) {
+        trackState.tracks.push({ id: 'verbatim', language: sourceLanguage, label: `Verbatim · ${sourceLanguage}`, captions: captionsFromTranscript(processData.verbatim_captions) })
+      }
       setCaptions(trackState.captions);
       setCaptionTracks(trackState.tracks);
       setActiveCaptionTrackId(trackState.activeTrackId);
@@ -740,20 +754,21 @@ export default function Dashboard() {
       setProjectId(nextProjectId);
       resetPointRef.current = restoreEditorDocument({
         videoUrl: acceptedPlayableVideoUrl,
+        audioAnalysis: nextAudioAnalysis,
         captions: trackState.captions,
         captionTracks: trackState.tracks,
         activeCaptionTrackId: trackState.activeTrackId,
         captionStyle: nextCaptionStyle,
-        duration: 0,
+        duration: nextAudioAnalysis?.duration || 0,
         fileId: uploadData.file_id,
         originalFileName: selectedFileName,
         projectId: nextProjectId,
         settings: uploadSettings,
       });
 
-      // The waveform is built by the editor's onVideoLoaded once this screen
-      // closes (from the local file when there is one), so decoding the whole
-      // file never keeps the finished captions waiting.
+      // Transcription and waveform share the server's source PCM clock.
+      // Older cached results recover analysis in the editor without another
+      // transcription request.
 
     } catch (error) {
       console.error('Upload failed:', error);
@@ -855,7 +870,7 @@ export default function Dashboard() {
       setVideoUrl(resolveApiResourceUrl(uploaded.raw_url, import.meta.env.VITE_API_BASE_URL))
       replaceLocalPlayback(file, uploaded.file_id)
       setOriginalFileName(file.name)
-      setWaveformData(null)
+      setAudioAnalysis(null)
       setSourceUnavailable(false)
       setCloudSaveMessage('Source relinked. Captions and styles preserved; review synchronization before rendering.')
     } catch (error) {
@@ -863,7 +878,37 @@ export default function Dashboard() {
     } finally { setIsRelinking(false) }
   }
 
+  useEffect(() => {
+    const point = resetPointRef.current
+    if (point?.fileId === fileId && !point.duration && duration > 0) resetPointRef.current = { ...point, duration }
+  }, [fileId, duration, resetPointRef])
+
   const playbackUrl = localPlayback && localPlayback.fileId === fileId ? localPlayback.url : videoUrl;
+  useEffect(() => {
+    if (!videoUrl || !fileId || isGenerating || !(duration > 0) || audioAnalysis?.fileId === fileId) return undefined
+    let cancelled = false
+    const recover = async () => {
+      try {
+        const token = await getEffectiveAuthToken(currentUser)
+        const result = await apiRequest('/api/audio-analysis', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_id: fileId, id_token: token || '' }),
+        })
+        if (!cancelled && result.audio_analysis?.samples?.length) {
+          setAudioAnalysis({ ...result.audio_analysis, fileId })
+          return
+        }
+      } catch (error) {
+        console.warn('Source audio analysis unavailable; trying local decode', error)
+      }
+      if (cancelled) return
+      const samples = await extractWaveformData(playbackUrl, 1200)
+      if (!cancelled && samples) setAudioAnalysis({ fileId, duration, samples })
+    }
+    recover()
+    return () => { cancelled = true }
+  }, [videoUrl, playbackUrl, fileId, isGenerating, audioAnalysis?.fileId, duration, currentUser, setAudioAnalysis])
+
   const refreshVideoPlaybackUrl = useCallback(async (event) => {
     if (!fileId || mediaRefreshInFlightRef.current) return;
     // A fresh link is requested at most once a minute per video. Every refresh
@@ -1478,13 +1523,7 @@ export default function Dashboard() {
                       setSelectedCaptionId={setSelectedCaptionId}
                       wordPopup={wordPopup}
                       setWordPopup={openWordPopup}
-                      onVideoLoaded={async (videoEl) => {
-                        previewVideoElRef.current = videoEl || null;
-                        if (videoEl && !waveformData) {
-                          const data = await extractWaveformData(videoEl, 400);
-                          if (data) setWaveformData(data);
-                        }
-                      }}
+                      onVideoLoaded={(videoEl) => { previewVideoElRef.current = videoEl || null }}
                       onVideoError={handleVideoError}
                       isVideoFullscreen={isVideoFullscreen}
                       setIsVideoFullscreen={setIsVideoFullscreen}

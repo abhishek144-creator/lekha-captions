@@ -236,14 +236,14 @@ export function placeDuplicateCaption(caption, newId, nextStart = Infinity) {
   const copy = duplicateCaptionWithTiming(caption, newId)
   if (copy.end_time <= nextStart + 0.001) return { original: caption, copy }
   if (nextStart - copy.start_time >= MIN_DUPLICATE_SECONDS) {
-    return { original: caption, copy: invalidateWordTimingOutsideCaption({ ...copy, end_time: nextStart }) }
+    return { original: caption, copy: invalidateWordTimingOutsideCaption({ ...copy, end_time: nextStart }, false) }
   }
   const start = Number(caption.start_time) || 0
   const end = Math.max(start + 0.1, Number(caption.end_time) || start + 0.1)
   const middle = start + (end - start) / 2
   return {
-    original: invalidateWordTimingOutsideCaption({ ...caption, end_time: middle }),
-    copy: invalidateWordTimingOutsideCaption({ ...copy, start_time: middle, end_time: end, words: caption.words || [] }),
+    original: invalidateWordTimingOutsideCaption({ ...caption, end_time: middle }, false),
+    copy: invalidateWordTimingOutsideCaption({ ...copy, start_time: middle, end_time: end, words: caption.words || [] }, false),
   }
 }
 
@@ -264,7 +264,7 @@ export function shiftCaptionTiming(caption, deltaSeconds) {
   }
 }
 
-export function invalidateWordTimingOutsideCaption(caption) {
+export function invalidateWordTimingOutsideCaption(caption, preserveSourceTimings = true) {
   if (caption?.isTextElement || !Array.isArray(caption?.words) || !caption.words.length) return caption
   const start = Number(caption.start_time) || 0
   const end = Number(caption.end_time) || start
@@ -277,8 +277,11 @@ export function invalidateWordTimingOutsideCaption(caption) {
   if (fits) return caption
   return {
     ...caption,
-    words: [],
+    // Trimming the caption changes its visibility window, not the recording.
+    // Keep the source clock (and all surviving measured words) for undo,
+    // re-extension and export; never redistribute them over the shorter box.
+    words: preserveSourceTimings ? caption.words : [],
     word_alignment_status: 'needs_review',
-    word_alignment_note: 'Caption timing changed. Word timing was invalidated instead of inventing new measurements.',
+    word_alignment_note: 'Caption trim excludes some spoken words. Their source timings are preserved; review the text or extend the caption.',
   }
 }

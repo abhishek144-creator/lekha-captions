@@ -138,6 +138,7 @@ const clone = (value) => JSON.parse(JSON.stringify(value))
 // An empty editor: what New Project, account changes and a clean entry show.
 export const emptyEditorDocument = () => ({
   videoUrl: '',
+  audioAnalysis: null,
   captions: [],
   captionTracks: [],
   activeCaptionTrackId: 'source',
@@ -226,6 +227,7 @@ export const restoreEditorDocument = (storedDraft = {}) => {
   )
   return {
     videoUrl: draft.videoUrl || '',
+    audioAnalysis: normalizeAudioAnalysis(draft.audioAnalysis, draft.fileId),
     captions: clone(trackState.captions),
     captionTracks: clone(trackState.tracks),
     activeCaptionTrackId: trackState.activeTrackId,
@@ -236,4 +238,13 @@ export const restoreEditorDocument = (storedDraft = {}) => {
     projectId: draft.projectId || null,
     settings: clone(draft.settings || defaultEditorSettings()),
   }
+}
+
+// Analysis belongs to one source. Reject stale/malformed data at every restore.
+export function normalizeAudioAnalysis(analysis, fileId) {
+  if (!analysis || !fileId || analysis.fileId !== fileId || !Array.isArray(analysis.samples)
+    || !analysis.samples.length || analysis.samples.length > 12000
+    || !analysis.samples.every(value => Number.isFinite(value) && value >= 0 && value <= 1)
+    || !Number.isFinite(analysis.duration) || analysis.duration <= 0) return null
+  return { ...analysis, samples: [...analysis.samples] }
 }
