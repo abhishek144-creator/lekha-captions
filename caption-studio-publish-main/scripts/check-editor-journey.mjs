@@ -384,6 +384,37 @@ try {
   await new Promise(resolve => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeCloudRecovery, 'reading the account draft must not write a new revision')
 
+  // A stale browser copy must not hide the account draft on another device.
+  // Switching explicitly downloads the complete browser styling first.
+  const browserOnlyDraft = { ...draft, duration: recoveryMediaDuration,
+    captions: [{ ...caption, text: 'browser-only layout', wordStyles: { 'a-1': { fontSize: 28, x: 12 } } }] }
+  const recoverySeed = await page.evaluateOnNewDocument((value) => {
+    localStorage.clear()
+    localStorage.setItem('captionEditorState', JSON.stringify(value))
+  }, browserOnlyDraft)
+  try {
+    await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
+  } finally {
+    await page.removeScriptToEvaluateOnNewDocument(recoverySeed.identifier)
+  }
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Back up browser draft & open account draft'))
+  assert.ok(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Continue saved draft')), 'browser draft remains separately available')
+  await textClick('Back up browser draft & open account draft')
+  await page.waitForFunction(() => document.body.textContent.includes('cloud recovery caption'))
+  const backupPath = resolve(downloadPath, 'lekha-caption-draft.json')
+  let browserBackup
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try { browserBackup = JSON.parse(await fs.readFile(backupPath, 'utf8')); break }
+    catch (error) { if (error.code !== 'ENOENT') throw error }
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  assert.ok(browserBackup, 'switching must finish downloading the browser backup')
+  assert.equal(browserBackup.ownerUid, browserOnlyDraft.ownerUid)
+  assert.equal(browserBackup.captions[0].text, 'browser-only layout')
+  assert.deepEqual(browserBackup.captions[0].wordStyles, browserOnlyDraft.captions[0].wordStyles)
+  await new Promise(resolve => setTimeout(resolve, 3000))
+  assert.equal(saveRequests, savesBeforeCloudRecovery, 'account recovery must not overwrite either cloud revision')
+
   expiredAccountMedia = true
   await page.evaluate(() => localStorage.clear())
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
