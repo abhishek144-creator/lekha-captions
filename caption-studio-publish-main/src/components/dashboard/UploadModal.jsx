@@ -90,6 +90,7 @@ export default function UploadModal({
   const [selectedFile, setSelectedFile] = useState(null);
   const [language, setLanguage] = useState('auto');
   const [cleanupMode, setCleanupMode] = useState('clean')
+  const [speechFocus, setSpeechFocus] = useState('main')
   const [style, setStyle] = useState('single_line');
   const [wordsPerLine, setWordsPerLine] = useState('dynamic');
   const [step, setStep] = useState(1);
@@ -282,6 +283,7 @@ export default function UploadModal({
         style,
         wordsPerLine,
         cleanupMode,
+        speechFocus,
         spokenLanguage: detectedSpokenLanguage,
         uploadTask: task,
       });
@@ -608,6 +610,12 @@ export default function UploadModal({
               </div>
 
               <div>
+                <label htmlFor="speech-focus" className="mb-2 block text-sm text-gray-400">Speech focus</label>
+                <select id="speech-focus" aria-label="Speech focus" value={speechFocus} onChange={event => setSpeechFocus(event.target.value)} className="mb-2 w-full rounded-md border border-white/10 bg-zinc-800 p-2 text-sm text-white">
+                  <option value="main">Main voice — reduce quiet background speech</option>
+                  <option value="all">All voices — keep dialogue and quiet speech</option>
+                </select>
+                <p className="mb-4 text-xs text-gray-500">Main voice excludes brief, isolated quiet speech at the beginning or end. Original video audio is preserved.</p>
                 <label htmlFor="caption-cleanup" className="mb-2 block text-sm text-gray-400">Caption wording</label>
                 <select id="caption-cleanup" aria-label="Caption wording" value={cleanupMode} onChange={event => setCleanupMode(event.target.value)} className="w-full rounded-md border border-white/10 bg-zinc-800 p-2 text-sm text-white">
                   <option value="clean">Clean — remove clear hesitations</option>

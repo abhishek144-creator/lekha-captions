@@ -207,6 +207,7 @@ class SupportRequest(BaseModel):
 
 class ProcessRequest(BaseModel):
     cleanup_mode: Literal["clean", "verbatim"] = "clean"
+    speech_focus: Literal["main", "all"] = "main"
     file_id: str = Field(min_length=36, max_length=36)
     language: str = Field(default="English", max_length=50)
     min_words: int = Field(default=0, ge=0, le=20)

@@ -307,9 +307,9 @@ def _upload_security_service() -> UploadSecurityService:
     )
 
 
-def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int, cleanup_mode: str = "clean") -> str:
-    # v5: source PCM waveform, natural segmentation and configurable cleanup.
-    key = f"v5:{media_hash}:{language.lower()}:{min_words}:{max_words}:{cleanup_mode}"
+def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int, cleanup_mode: str = "clean", speech_focus: str = "main") -> str:
+    # v6: main-voice input and source-clock offsets; do not reuse old estimates.
+    key = f"v6:{media_hash}:{language.lower()}:{min_words}:{max_words}:{cleanup_mode}:{speech_focus}"
     key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return os.path.join(settings.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
 

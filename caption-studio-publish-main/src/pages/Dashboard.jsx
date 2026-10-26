@@ -656,6 +656,7 @@ export default function Dashboard() {
         min_words: minWords,
         max_words: maxWords,
         cleanup_mode: uploadSettings?.cleanupMode || 'clean',
+        speech_focus: uploadSettings?.speechFocus || 'main',
         id_token: mediaAuthToken,
       });
       if (!processData.success) throw new Error(processData.error || 'Processing failed');
@@ -1570,6 +1571,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
+              {wordPopup && (isVideoFullscreen || (isDesktopLayout && !isWordEditorDocked)) && renderWordEditor('floating')}
             </div>
 
             {!isVideoFullscreen && isDesktopLayout && (
@@ -1611,10 +1613,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      {/* The word editor floats beside the frame: in the free space between
-          the frame and the editor columns (desktop) or beside it (fullscreen). */}
-      {wordPopup && (isVideoFullscreen || (isDesktopLayout && !isWordEditorDocked)) && renderWordEditor('floating')}
 
       {/* Modals */}
       {isUploadModalOpen && (

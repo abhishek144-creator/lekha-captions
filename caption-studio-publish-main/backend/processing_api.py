@@ -92,6 +92,8 @@ async def process_video(req: api_models.ProcessRequest, request: Request, respon
                 "min_words": req.min_words, "max_words": req.max_words}
     if req.cleanup_mode != "clean":
         job_settings["cleanup_mode"] = req.cleanup_mode
+    if req.speech_focus != "main":
+        job_settings["speech_focus"] = req.speech_focus
     jobs = TranscriptionJobs(firebase_admin_setup.get_db())
     job = await asyncio.to_thread(jobs.create, uid, job_settings, operation_reference=req.idempotency_key)
     if job["status"] == "completed":
@@ -229,7 +231,7 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
 
     try:
         media_hash = await asyncio.to_thread(media_records._compute_media_hash, input_path)
-        cache_path = media_records._build_process_cache_path(media_hash, req.language, req.min_words, req.max_words, req.cleanup_mode)
+        cache_path = media_records._build_process_cache_path(media_hash, req.language, req.min_words, req.max_words, req.cleanup_mode, req.speech_focus)
     except Exception:
         media_hash = ""
         cache_path = ""
@@ -261,6 +263,7 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
         "min_words": req.min_words,
         "max_words": req.max_words,
         **({"cleanup_mode": req.cleanup_mode} if req.cleanup_mode != "clean" else {}),
+        **({"speech_focus": req.speech_focus} if req.speech_focus != "main" else {}),
     }, sort_keys=True).encode("utf-8")).hexdigest()
     if process_idem_key:
         cached_process = request_guards._idem_get(process_idem_key)
@@ -302,6 +305,7 @@ async def _process_video_inline(req: api_models.ProcessRequest, request: Request
                 min_words=req.min_words,
                 max_words=req.max_words,
                 cleanup_mode=req.cleanup_mode,
+                speech_focus=req.speech_focus,
             ))
 
         try:

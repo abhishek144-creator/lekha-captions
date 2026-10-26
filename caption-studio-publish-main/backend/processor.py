@@ -24,6 +24,7 @@ try:
     from .processor_fonts import FontAssetsMixin
     from .processor_media import MediaProbeMixin
     from .audio_analysis import analyze_pcm, extraction_command
+    from .speech_focus import focus_pcm, slice_pcm
     from .processor_captions import CaptionTextMixin, SENTENCE_END_MARKS
     from .processor_ass import AssSubtitleMixin
     from .processor_templates import TemplateOverlayMixin
@@ -33,6 +34,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     from processor_fonts import FontAssetsMixin
     from processor_media import MediaProbeMixin
     from audio_analysis import analyze_pcm, extraction_command
+    from speech_focus import focus_pcm, slice_pcm
     from processor_captions import CaptionTextMixin, SENTENCE_END_MARKS
     from processor_ass import AssSubtitleMixin
     from processor_templates import TemplateOverlayMixin
@@ -239,11 +241,12 @@ def _unheard_edges(words):
 
 
 def _align_chunks_to_speech(chunks, speech_words):
-    """Time each Sarvam word inside the speech another recognizer heard.
+    """Estimate Sarvam word times inside source speech intervals.
 
     Sarvam gives one time span per phrase, and a span can cover a whole
-    request including music and pauses. `speech_words` (whisper word timings,
-    text unused) mark where speech actually is, so each phrase's words are
+    request including music and pauses. `speech_words` (local PCM activity in
+    production, or supplied measured spans for trusted callers) mark speech,
+    so each phrase's words are
     shared, by length, across only the speech inside its span. A phrase with
     no heard speech inside keeps the even split over its own span.
     """
@@ -434,7 +437,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         self._ensure_fallback_font()
 
 
-    def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code, speech_words=None):
+    def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code, speech_words=None, audio_window=None):
         """Timed words for the whole file, one Sarvam request per <=29 s piece.
 
         The production Sarvam path uses native phrase timestamps and local
@@ -443,6 +446,22 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         this path never requests a separate Whisper alignment transcript.
         """
         speech_words = speech_words or []
+
+        if audio_window:
+            # Sarvam may return a request-wide phrase starting at zero. Keep
+            # quiet scene directions out of the request, then restore the exact
+            # PCM offset to every returned word. Never rebase editor timestamps.
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as handle:
+                focused_piece = handle.name
+            try:
+                offset = slice_pcm(audio_p, focused_piece, audio_window['start'], audio_window['end'])
+                relative_words = [{**word, 'start': word['start'] - offset, 'end': word['end'] - offset}
+                                  for word in speech_words if word['end'] > offset and word['start'] < audio_window['end']]
+                result = self._transcribe_with_sarvam(sarvam_client, focused_piece, lang_code, relative_words)
+                return [{**word, 'start': round(word['start'] + offset, 6), 'end': round(word['end'] + offset, 6)}
+                        for word in result]
+            finally:
+                os.remove(focused_piece)
 
         def transcribe(path):
             with open(path, "rb") as f:
@@ -513,14 +532,11 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         return self._time_sarvam_chunks(chunks, speech_words, audio_p)
 
     def _time_sarvam_chunks(self, chunks, speech_words, audio_p):
-        """Timed words for Sarvam's phrases, using whisper's words when they agree.
+        """Place Sarvam phrases on the supplied audio's speech activity.
 
-        Matching the two transcripts gives each word the moment whisper heard
-        it. Opening or closing words whisper never heard are murmurs or
-        whispers before or after the real speech ("रेडी हम्म चेंज" said under
-        the breath before the take); they are dropped when that audio is much
-        quieter than the speech. Otherwise phrases are placed over the speech
-        whisper heard, or split evenly without whisper.
+        Production uses local PCM activity and labels interpolated word times
+        as estimates. Trusted callers may supply measured word spans, matched
+        only when the actual tokens agree. No extra recognizer is called here.
         """
         tokens = [token for chunk in chunks for token in str(chunk["word"]).split()]
         matched = None
@@ -658,7 +674,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             except Exception:
                 pass
 
-    async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0, cleanup_mode="clean"):
+    async def generate_captions_only(self, input_p, target_language="English", min_words=0, max_words=0, cleanup_mode="clean", speech_focus="main"):
         print(f"Processing: {input_p} -> Target: {target_language}, Words: {min_words}-{max_words}")
         try:
             # Try to initialize client if not ready
@@ -676,6 +692,8 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             audio_p = None
             transcription_source = ""
             audio_analysis = None
+            focused_audio_p = None
+            audio_focus = {'mode': speech_focus, 'suppressed_regions': [], 'reference': 'source_media_seconds'}
 
             try:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as _tf:
@@ -685,6 +703,19 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             except Exception as ffmpeg_e:
                 print(f"[Warning] FFmpeg audio extraction failed (might have no audio): {ffmpeg_e}")
                 api_error_msg = f"Audio extraction failed: {ffmpeg_e}"
+
+            provider_audio_p = audio_p
+            if api_error_msg is None and speech_focus == 'main':
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as handle:
+                    focused_audio_p = handle.name
+                try:
+                    audio_focus = focus_pcm(audio_p, focused_audio_p, speech_focus)
+                    if audio_focus['suppressed_regions']:
+                        provider_audio_p = focused_audio_p
+                except (OSError, ValueError, EOFError, wave.Error):
+                    # Uncertain activity must keep the original speech, not
+                    # silently turn a transcription into an empty result.
+                    pass
 
             sarvam_langs = {
                 'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
@@ -750,7 +781,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             # configured, name the language from a 30-second sample first so
             # Indian-language speech reaches Sarvam instead of whisper-1.
             if (target_language or "").lower() == "auto" and sarvam_api_key and api_error_msg is None:
-                spoken_language = self._detect_spoken_language(audio_p)
+                spoken_language = self._detect_spoken_language(provider_audio_p)
                 if spoken_language in sarvam_langs:
                     print(f"[Transcribe] Detected {spoken_language} speech; routing to Sarvam.")
                     target_language = spoken_language
@@ -778,7 +809,8 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     try:
                         # Use Sarvam's phrase timestamps and local pause-based
                         # splitting; no second Whisper transcription for alignment.
-                        words = self._transcribe_with_sarvam(sarvam_client, audio_p, lang_code)
+                        words = self._transcribe_with_sarvam(sarvam_client, provider_audio_p, lang_code,
+                                                            audio_window=audio_focus.get('window'))
                         words = self._clean_transcript_words(words, "verbatim", target_language)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
@@ -808,7 +840,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     }
                     if whisper_lang:
                         whisper_kwargs["language"] = whisper_lang
-                    with open(audio_p, "rb") as f:
+                    with open(provider_audio_p, "rb") as f:
                         transcript = self.client.audio.transcriptions.create(
                             file=f,
                             timeout=TRANSCRIPTION_PROVIDER_TIMEOUT_SECONDS,
@@ -850,7 +882,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 try:
                     if sarvam_failed:
                         print("[Transcribe] Sarvam failed; using configured OpenAI failover.")
-                    with open(audio_p, "rb") as f:
+                    with open(provider_audio_p, "rb") as f:
                         transcript = self.client.audio.transcriptions.create(
                             model="whisper-1",
                             file=f,
@@ -895,6 +927,8 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             try:
                 if audio_p and os.path.exists(audio_p):
                     os.remove(audio_p)
+                if focused_audio_p and os.path.exists(focused_audio_p):
+                    os.remove(focused_audio_p)
             except Exception:
                 pass
 
@@ -1002,6 +1036,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 "cleanup_mode": cleanup_mode,
                 "cleanup_notice": cleanup_notice,
                 "audio_analysis": audio_analysis,
+                "audio_focus": audio_focus,
                 "detected_language": detected_language,
                 "language_confidence": round(max(0.0, min(1.0, language_confidence)), 2),
                 "transcription_source": transcription_source or (

@@ -208,7 +208,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
     panel: 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/10 bg-zinc-900',
     // Compact on phones so the preview (and the word being edited) stays large; the tabs scroll.
     sheet: 'relative flex h-[36dvh] min-h-[220px] max-h-[380px] flex-col overflow-hidden rounded-t-[22px] border-t border-white/10 bg-zinc-900',
-    floating: 'fixed z-[99999] flex flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-2xl',
+    floating: 'fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-2xl',
   }[placement] || '';
   const floatingStyle = isFloating && floatingRect ? {
     left: `${floatingRect.left}px`,
@@ -1003,12 +1003,11 @@ function useFloatingEditorRect(active) {
       const obstacles = [...document.querySelectorAll('[aria-label="Preview tools"], [data-word-editor-avoid="true"]')]
         .map((node) => node.getBoundingClientRect())
         .filter((box) => box.width && box.height);
-      // Desktop editor layout: float in the preview column, above the timeline
-      // bar, and only beside the frame (the caller docks it when there is no room).
+      // The editor keeps the full preview-column height. The timeline paints
+      // above it; opening the timeline must not squeeze the editor into a strip.
       const stage = document.querySelector('[data-word-editor-bounds="true"]')?.getBoundingClientRect();
-      const floor = document.querySelector('[data-word-editor-floor="true"]')?.getBoundingClientRect();
       const bounds = stage?.height
-        ? { top: stage.top, bottom: floor?.height ? Math.min(stage.bottom, floor.top) : stage.bottom }
+        ? { top: stage.top, bottom: stage.bottom }
         : null;
       const next = computeFloatingWordEditorRect({
         frame,
@@ -1036,9 +1035,7 @@ function useFloatingEditorRect(active) {
     const frameNode = document.querySelector('.lekha-video-frame');
     const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
     if (frameNode && resizeObserver) resizeObserver.observe(frameNode);
-    // Opening or resizing the timeline moves the floor the editor stays above,
-    // without resizing the frame or the window.
-    ['[data-word-editor-floor="true"]', '[data-word-editor-bounds="true"]'].forEach((selector) => {
+    ['[data-word-editor-bounds="true"]'].forEach((selector) => {
       const node = document.querySelector(selector);
       if (node && resizeObserver) resizeObserver.observe(node);
     });
