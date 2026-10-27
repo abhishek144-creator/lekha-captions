@@ -25,11 +25,13 @@ try:
     from . import worker_launcher
     from . import render_autoscaling
     from . import transactional_email
+    from . import firestore_backup
 except ImportError:  # pragma: no cover - run as a script from backend/
     import main as api
     import worker_launcher
     import render_autoscaling
     import transactional_email
+    import firestore_backup
 
 try:
     from rq.registry import StartedJobRegistry
@@ -161,6 +163,8 @@ def run_once(*, host=None, launch_queues=None):
              lambda: host.asyncio.run(host.scheduled_payment_reconciliation_job())),
             ("plan_expiry_reminders",
              lambda: send_plan_expiry_reminders(host._rq_redis_client, host.get_db())),
+            ("firestore_backup",
+             lambda: firestore_backup.run_nightly(host._rq_redis_client, host.get_db())),
         ]
     failures = []
     for name, step in steps:

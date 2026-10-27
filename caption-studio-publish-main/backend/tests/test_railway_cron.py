@@ -62,7 +62,9 @@ class RailwayCronTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
 
     def run_pass(self, **kwargs):
-        with patch.object(railway_cron, "_log", lambda *args, **fields: None):
+        # The real backup step only runs after 20:00 UTC; keep these passes clock-independent.
+        with (patch.object(railway_cron, "_log", lambda *args, **fields: None),
+              patch.object(railway_cron.firestore_backup, "run_nightly", lambda *args: {"skipped": "test"})):
             return railway_cron.run_once(host=FakeHost(self.redis, self.calls, **kwargs))
 
     def test_runs_every_step_and_reports_none_failed(self):
