@@ -7,6 +7,7 @@ from backend import transactional_email as email
 
 
 SMTP_ENV = {
+    "RESEND_API_KEY": "",
     "SMTP_HOST": "smtp.example.com",
     "SMTP_PORT": "587",
     "SMTP_USERNAME": "mailer",
@@ -87,7 +88,7 @@ class SendEmailTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def test_nothing_is_sent_until_smtp_is_configured(self):
-        with patch.dict(os.environ, {"SMTP_HOST": "", "EMAIL_FROM": ""}):
+        with patch.dict(os.environ, {"RESEND_API_KEY": "", "SMTP_HOST": "", "EMAIL_FROM": ""}):
             self.assertFalse(email.email_configured())
             self.assertFalse(email.send_email("a@example.com", "Hi", "text", "<p>text</p>"))
         self.assertEqual(FakeSmtp.sent, [])
@@ -113,6 +114,46 @@ class SendEmailTests(unittest.TestCase):
                 raise OSError("connection reset")
 
         with patch.dict(os.environ, SMTP_ENV), patch.object(email.smtplib, "SMTP", BrokenSmtp):
+            self.assertFalse(email.send_email("user@example.com", "Hi", "t", "<p>t</p>"))
+
+
+class FakeResponse:
+    def __init__(self, status_code, text=""):
+        self.status_code, self.text = status_code, text
+
+
+class ResendTests(unittest.TestCase):
+    ENV = {**SMTP_ENV, "RESEND_API_KEY": "re_test_key"}
+
+    def setUp(self):
+        FakeSmtp.sent = []
+        for patcher in (patch.object(email.smtplib, "SMTP", FakeSmtp), patch.dict(os.environ, self.ENV)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_resend_key_alone_is_enough(self):
+        with patch.dict(os.environ, {"SMTP_HOST": ""}):
+            self.assertTrue(email.email_configured())
+
+    def test_resend_is_used_instead_of_smtp(self):
+        with patch.object(email.requests, "post", return_value=FakeResponse(200)) as post:
+            self.assertTrue(email.send_email("user@example.com", *email.welcome_message("Asha")))
+        self.assertEqual(FakeSmtp.sent, [])
+        url = post.call_args.args[0]
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(url, "https://api.resend.com/emails")
+        self.assertEqual(post.call_args.kwargs["headers"], {"Authorization": "Bearer re_test_key"})
+        self.assertEqual(payload["from"], "Lekha Captions <hello@example.com>")
+        self.assertEqual(payload["to"], ["user@example.com"])
+        self.assertEqual(payload["reply_to"], "support@example.com")
+        self.assertEqual(payload["subject"], "Welcome to Lekha Captions")
+        self.assertIn("Hi Asha,", payload["text"])
+        self.assertIn("/Dashboard", payload["html"])
+
+    def test_rejected_or_unreachable_api_is_reported_not_raised(self):
+        with patch.object(email.requests, "post", return_value=FakeResponse(422, "invalid from")):
+            self.assertFalse(email.send_email("user@example.com", "Hi", "t", "<p>t</p>"))
+        with patch.object(email.requests, "post", side_effect=OSError("timeout")):
             self.assertFalse(email.send_email("user@example.com", "Hi", "t", "<p>t</p>"))
 
 

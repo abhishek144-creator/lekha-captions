@@ -1,12 +1,14 @@
 """Service emails: welcome, payment confirmation and plan-expiry reminder.
 
-Sent over SMTP so any provider works (Resend, Postmark, Amazon SES, Zoho, ...).
-Nothing is sent until SMTP_HOST and EMAIL_FROM are set. A failed send is logged
-and never breaks the sign-up, payment or cron pass that triggered it.
+Sent through Resend's HTTPS API when RESEND_API_KEY is set, otherwise over SMTP
+(any provider, e.g. Spacemail). Railway's Hobby plan blocks outbound SMTP, so
+production uses Resend until the workspace moves to Pro. Nothing is sent until
+EMAIL_FROM and one of RESEND_API_KEY / SMTP_HOST are set. A failed send is
+logged and never breaks the sign-up, payment or cron pass that triggered it.
 
-Environment: SMTP_HOST, SMTP_PORT (587 STARTTLS, 465 TLS), SMTP_USERNAME,
-SMTP_PASSWORD, EMAIL_FROM ("Lekha Captions <hello@example.com>"),
-EMAIL_REPLY_TO and APP_PUBLIC_URL (both optional).
+Environment: EMAIL_FROM ("Lekha Captions <hello@example.com>"), RESEND_API_KEY,
+or SMTP_HOST, SMTP_PORT (587 STARTTLS, 465 TLS), SMTP_USERNAME, SMTP_PASSWORD;
+EMAIL_REPLY_TO and APP_PUBLIC_URL are optional.
 """
 
 import html
@@ -18,6 +20,8 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
 
+import requests
+
 try:
     from . import observability
 except ImportError:  # Direct execution from backend/ remains supported.
@@ -26,11 +30,13 @@ except ImportError:  # Direct execution from backend/ remains supported.
 
 EXPIRY_REMINDER_DAYS = 3
 EXPIRY_REMINDER_BATCH = 200
+RESEND_API_URL = "https://api.resend.com/emails"
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="email")
 
 
 def _config():
     return {
+        "resend_key": os.environ.get("RESEND_API_KEY", "").strip(),
         "host": os.environ.get("SMTP_HOST", "").strip(),
         "port": int(os.environ.get("SMTP_PORT", "587") or 587),
         "username": os.environ.get("SMTP_USERNAME", "").strip(),
@@ -43,7 +49,7 @@ def _config():
 
 def email_configured() -> bool:
     config = _config()
-    return bool(config["host"] and config["sender"])
+    return bool(config["sender"] and (config["resend_key"] or config["host"]))
 
 
 def _valid_address(value) -> str:
@@ -120,16 +126,41 @@ def expiry_message(plan_id, expiry_iso):
     ], "Renew your plan", f"{site}/UserAccount"))
 
 
+def _send_with_resend(config, recipient, subject, text, html_body) -> bool:
+    payload = {"from": config["sender"], "to": [recipient], "subject": subject, "text": text, "html": html_body}
+    if _valid_address(config["reply_to"]):
+        payload["reply_to"] = config["reply_to"]
+    try:
+        response = requests.post(
+            RESEND_API_URL,
+            json=payload,
+            headers={"Authorization": f"Bearer {config['resend_key']}"},
+            timeout=15,
+        )
+    except Exception as error:
+        observability._json_log("warning", "email_send_failed", provider="resend", subject=subject,
+                                error=type(error).__name__)
+        return False
+    if response.status_code >= 300:
+        observability._json_log("warning", "email_send_failed", provider="resend", subject=subject,
+                                status_code=response.status_code, error=(response.text or "")[:200])
+        return False
+    observability._json_log("info", "email_sent", provider="resend", subject=subject)
+    return True
+
+
 def send_email(to, subject, text, html_body) -> bool:
     """Sends one email now. Returns False (and logs) instead of raising."""
     config = _config()
     recipient = _valid_address(to)
-    if not (config["host"] and config["sender"]):
+    if not email_configured():
         observability._json_log("info", "email_skipped_unconfigured", subject=subject)
         return False
     if not recipient:
         observability._json_log("warning", "email_skipped_invalid_recipient", subject=subject)
         return False
+    if config["resend_key"]:
+        return _send_with_resend(config, recipient, subject, text, html_body)
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = config["sender"]
@@ -149,10 +180,11 @@ def send_email(to, subject, text, html_body) -> bool:
             if config["username"]:
                 client.login(config["username"], config["password"])
             client.send_message(message)
-        observability._json_log("info", "email_sent", subject=subject)
+        observability._json_log("info", "email_sent", provider="smtp", subject=subject)
         return True
     except Exception as error:
-        observability._json_log("warning", "email_send_failed", subject=subject, error=type(error).__name__)
+        observability._json_log("warning", "email_send_failed", provider="smtp", subject=subject,
+                                error=type(error).__name__)
         return False
 
 
