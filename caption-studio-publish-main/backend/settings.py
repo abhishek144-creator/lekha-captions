@@ -418,6 +418,40 @@ RESERVED_SERVER_ANALYTICS_EVENTS = frozenset({
     "support_request_created",
 })
 
+# The public analytics endpoint stores only the browser's own funnel/perf
+# events, as flat scalar fields. Any other well-formed name is counted as one
+# shared event, so callers cannot grow counters or Firestore without bound.
+# Keep in sync with trackAnalytics()/reportFirstParty() calls in src/.
+CLIENT_ANALYTICS_EVENTS = frozenset({
+    "frontend.exception",
+    "funnel.captions.ready",
+    "funnel.export.cancelled",
+    "funnel.export.failed",
+    "funnel.export.started",
+    "funnel.export.success",
+    "funnel.process.success",
+    "funnel.process.transport_failed",
+    "funnel.process.transport_success",
+    "funnel.translate.failed",
+    "funnel.translate.success",
+    "funnel.upload.abandoned",
+    "funnel.upload.direct_fallback",
+    "funnel.upload.failed",
+    "funnel.upload.file_picked",
+    "funnel.upload.refused_locally",
+    "funnel.upload.success",
+    "funnel.upload.transport_failed",
+    "funnel.upload.transport_success",
+    "perf.cls",
+    "perf.inp_candidate",
+    "perf.lcp",
+    "template.applied",
+})
+UNLISTED_CLIENT_ANALYTICS_EVENT = "client.unlisted_event"
+ANALYTICS_MAX_BODY_BYTES = 16 * 1024
+ANALYTICS_MAX_PAYLOAD_FIELDS = 24
+ANALYTICS_MAX_STRING_CHARS = 2_000
+
 PLAN_EXPORT_PRESETS = {
     "free": {"max_quality": "1080p", "fps_options": {24, 30}},
     "starter": {"max_quality": "1080p", "fps_options": {24, 30}},

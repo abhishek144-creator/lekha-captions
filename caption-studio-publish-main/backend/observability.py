@@ -25,6 +25,14 @@ except ImportError:  # Direct execution from backend/ remains supported.
     import app_state
     import firebase_admin_setup
 
+try:
+    from google.api_core import exceptions as google_api_exceptions
+    # 400-class Firestore answers (e.g. InvalidArgument for nested arrays or an
+    # oversized document) mean the row itself can never be stored.
+    _REJECTED_TELEMETRY_ROW_ERRORS = (ValueError, TypeError, google_api_exceptions.BadRequest)
+except ImportError:
+    _REJECTED_TELEMETRY_ROW_ERRORS = (ValueError, TypeError)
+
 
 def _utcnow() -> datetime:
     """Return naive UTC for compatibility with existing persisted timestamp formats."""
@@ -108,11 +116,30 @@ def _flush_telemetry():
         batch.commit()
         return len(rows)
     except Exception as e:
-        with app_state._telemetry_lock:
-            for row in reversed(rows):
-                app_state._telemetry_buffer.appendleft(row)
         _json_log("warning", "telemetry_batch_persist_failed", count=len(rows), error=str(e))
-        return 0
+        return _persist_telemetry_rows_individually(db, rows)
+
+
+def _persist_telemetry_rows_individually(db, rows) -> int:
+    # A batch is all-or-nothing, so one row Firestore rejects would fail every
+    # retry of the same batch and stall audit logs behind it. Write rows one at
+    # a time: drop the rejected ones, and re-queue the rest only when Firestore
+    # itself is failing.
+    written = 0
+    for index, (collection_name, payload) in enumerate(rows):
+        try:
+            db.collection(collection_name).document().set(payload)
+            written += 1
+        except _REJECTED_TELEMETRY_ROW_ERRORS as error:
+            _json_log("error", "telemetry_row_rejected", collection=collection_name, error=type(error).__name__)
+        except Exception as error:
+            deferred = rows[index:]
+            with app_state._telemetry_lock:
+                for row in reversed(deferred):
+                    app_state._telemetry_buffer.appendleft(row)
+            _json_log("warning", "telemetry_rows_deferred", count=len(deferred), error=str(error))
+            break
+    return written
 
 
 async def _telemetry_flush_loop():
