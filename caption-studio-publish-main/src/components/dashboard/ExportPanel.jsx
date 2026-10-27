@@ -59,15 +59,6 @@ const DISABLE_EXPORT_LIMITS_FOR_TESTING = import.meta.env.DEV && import.meta.env
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com';
 const ACTIVE_EXPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-const formatQueueEta = (seconds) => {
-  if (seconds == null || seconds === '') return '';
-  const safeSeconds = Number(seconds);
-  if (!Number.isFinite(safeSeconds) || safeSeconds < 0) return '';
-  if (safeSeconds < 60) return 'under a minute';
-  const minutes = Math.max(1, Math.ceil(safeSeconds / 60));
-  return `about ${minutes} min`;
-};
-
 const activeExportStorageKey = (uid, fileId) => (
   uid && fileId ? `lekha.activeExport.${uid}.${fileId}` : ''
 );
@@ -131,7 +122,7 @@ function notifyExportFailure(error, jobId) {
   // used; the same export request is safely replayable instead.
   if (jobId && error?.exportStatus !== 'failed') {
     toast({
-      variant: 'destructive',
+      variant: 'notice',
       title: 'Export connection interrupted',
       description: `${baseMessage}\n\nYour existing export may still finish. Do not start a new export for this video; reopen Export to recover it. Job reference: ${reference || jobId}`,
       duration: 15000,
@@ -142,7 +133,7 @@ function notifyExportFailure(error, jobId) {
     ? `${baseMessage}\n\nJob reference: ${reference}\nNo credit was charged. Email ${SUPPORT_EMAIL} with this reference if it keeps failing.`
     : `${baseMessage}\n\nNo credit was charged. Email ${SUPPORT_EMAIL} if it keeps failing.`;
   toast({
-    variant: 'destructive',
+    variant: 'notice',
     title: 'Export failed',
     description,
     duration: 15000,
@@ -222,7 +213,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
-  const [queueEstimate, setQueueEstimate] = useState(null);
   const [waitStartTime, setWaitStartTime] = useState(null);
   const [showServerBusy, setShowServerBusy] = useState(false);
   const [exportExpiry, setExportExpiry] = useState(null);
@@ -311,32 +301,15 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       const status = (statusPayload?.status || '').toLowerCase();
       setActiveExportStatus(status);
       if (status === 'queued' || status === 'starting') {
-        const queuePosition = Number(statusPayload?.queue_position);
-        const queueDepth = Number(statusPayload?.queue_depth);
-        const etaLabel = formatQueueEta(statusPayload?.estimated_completion_seconds);
-        const awaitingCapacity = statusPayload?.active_workers === 0;
-        if (status === 'queued' && Number.isFinite(queuePosition) && queuePosition > 0) {
-          setQueueEstimate({
-            position: queuePosition,
-            depth: Number.isFinite(queueDepth) && queueDepth > 0 ? queueDepth : queuePosition,
-            etaLabel,
-          });
-          setStatusMessage(`Queued ${queuePosition} of ${Math.max(queuePosition, queueDepth || 0)}${awaitingCapacity ? ' · Starting render capacity' : etaLabel ? ` · ${etaLabel}` : ''}`);
-        } else {
-          setQueueEstimate(null);
-          setStatusMessage('Preparing your export...');
-        }
+        setStatusMessage('Preparing your export...');
         raiseProgressTarget(45);
       } else if (status === 'retrying') {
-        setQueueEstimate(null);
         setStatusMessage('Recovering your export. Please keep this page open...');
         raiseProgressTarget(58);
       } else if (status === 'processing') {
-        setQueueEstimate(null);
         setStatusMessage('Rendering in progress...');
         raiseProgressTarget(96);
       } else if (status === 'finalizing') {
-        setQueueEstimate(null);
         setStatusMessage('Finalizing your export...');
         raiseProgressTarget(98);
       } else if (status === 'completed') {
@@ -452,8 +425,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       // Not a failure and nothing for support to fix: the quota resets on its own.
       const limit = getDailyLimitMessage(errorOrDetail);
       toast({
+        variant: 'notice',
         title: 'Daily export limit reached',
-        description: `${limit || 'Your plan’s daily export limit is used up.'} No credit was charged. You can export again once your oldest export today is 24 hours old, or upgrade for a higher daily limit.`,
+        description: `${limit || 'Your plan’s daily export limit is used up.'}\n\nYour credits are safe. You can export again when your oldest export in the last 24 hours reaches 24 hours.`,
         duration: 15000,
       });
       return;
@@ -524,7 +498,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     exportInFlightRef.current = true;
     progressTargetRef.current = 35;
     setProgress(10);
-    setQueueEstimate(null);
     setStatusMessage('Reconnecting to your export...');
     setActiveExportJobId(receipt.jobId);
     setActiveExportStatus('reconnecting');
@@ -557,7 +530,9 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
           removeActiveExport(currentUser?.uid, fileId);
           setRecoverableExport(null);
         }
-        notifyExportFailure(error, receipt.jobId);
+        const planKind = getPlanLimitErrorKind(error);
+        if (planKind) handlePlanLimitError(planKind, error);
+        else notifyExportFailure(error, receipt.jobId);
       }
     } finally {
       setIsExporting(false);
@@ -566,7 +541,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setProgress(0);
       progressTargetRef.current = 0;
       setStatusMessage('');
-      setQueueEstimate(null);
       setWaitStartTime(null);
       setShowServerBusy(false);
       setActiveExportJobId('');
@@ -659,7 +633,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     const exportController = new AbortController();
     exportAbortRef.current = exportController;
     setProgress(2);
-    setQueueEstimate(null);
     setStatusMessage('Preparing export...');
     setActiveExportJobId('');
     setActiveExportStatus('submitting');
@@ -1050,6 +1023,10 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       // surfaces as a thrown ApiError — route it to the upgrade flow instead of a
       // generic failure toast.
       if (planKind) {
+        if (error?.exportStatus === 'failed') {
+          removeActiveExport(currentUser?.uid, fileId);
+          setRecoverableExport(null);
+        }
         handlePlanLimitError(planKind, error);
         return;
       }
@@ -1068,7 +1045,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       setProgress(0);
       progressTargetRef.current = 0;
       setStatusMessage('');
-      setQueueEstimate(null);
       setWaitStartTime(null);
       setShowServerBusy(false);
       setActiveExportJobId('');
@@ -1182,12 +1158,6 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
               <div className="mt-4">
                 <h3 className="text-xl font-black text-white mb-1">Creating your video</h3>
                 <p className="text-sm text-gray-400 animate-pulse">{statusMessage || 'Preparing render...'}</p>
-                {queueEstimate && (
-                  <p className="mt-2 text-xs text-sky-200/80" aria-live="polite">
-                    {queueEstimate.position - 1} job{queueEstimate.position - 1 === 1 ? '' : 's'} ahead
-                    {queueEstimate.etaLabel ? ` · estimated completion ${queueEstimate.etaLabel}` : ''}
-                  </p>
-                )}
                 {showServerBusy && (
                   <p className="text-xs text-amber-400 mt-2 animate-pulse">
                     Your export is still in progress. Timing depends on video length and effects.

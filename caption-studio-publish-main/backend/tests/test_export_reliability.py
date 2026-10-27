@@ -51,6 +51,29 @@ class MemoryRef:
 
 
 class ExportReliabilityTests(unittest.TestCase):
+    def test_worker_preserves_safe_daily_limit_message(self):
+        job = {"status": "queued"}
+        message = "Limit reached: You can only export 3 videos per 24 hours."
+
+        def transition(_job_id, status, **kwargs):
+            job.update(status=status, **kwargs)
+            return dict(job)
+
+        with (
+            patch.object(main.export_jobs, "_load_export_job", side_effect=lambda _: dict(job)),
+            patch.object(main.export_jobs, "_set_export_job", side_effect=transition),
+            patch.object(main.export_jobs, "_load_recorded_export_result", return_value=None),
+            patch.object(main.export_jobs, "_process_export_job_core", new_callable=AsyncMock, side_effect=HTTPException(status_code=429, detail=message)),
+            patch.object(main.request_guards, "_acquire_export_slot", return_value=True),
+            patch.object(main.request_guards, "_release_export_slot"),
+            patch.object(main.export_api, "_release_export_pending_work"),
+            patch.object(main.export_jobs, "_write_dead_letter"),
+        ):
+            with self.assertRaises(HTTPException):
+                main.run_export_job_task("job", {"file_id": FILE_ID, "captions": [{"id": "1", "text": "Hello", "start_time": 0, "end_time": 1}]}, "owner", "", "")
+        self.assertEqual(job["status"], "failed")
+        self.assertEqual(job["error"], message)
+
     def test_interrupted_processing_is_conditionally_reopened_for_rq_retry(self):
         with patch.object(main.export_jobs, "_load_export_job", return_value={"status": "processing"}), patch.object(main.export_jobs, "_set_export_job") as write:
             main.recover_interrupted_export_retry("crashed")

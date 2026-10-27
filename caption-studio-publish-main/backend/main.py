@@ -605,8 +605,10 @@ def run_export_job_task(
             if rq_job and not retryable:
                 rq_job.retries_left = 0
                 rq_job.save()
+            policy_detail = e.detail if isinstance(e, HTTPException) and e.status_code == 429 else None
+            public_error = export_jobs._public_export_error(policy_detail) or "Export failed. Please retry or contact support."
             export_jobs._set_export_job(export_job_id, "retrying" if retry_pending else "failed",
-                            failed_at=time.time(), error="Export failed. Please retry or contact support.")
+                            failed_at=time.time(), error=public_error)
         except Exception as state_error:
             observability._json_log(
                 "error",

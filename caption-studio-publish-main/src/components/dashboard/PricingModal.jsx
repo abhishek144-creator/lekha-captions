@@ -74,7 +74,7 @@ const plans = [
     features: [
       '15 video credits / month',
       'Max 3 min per video',
-      'Max 3 videos / day',
+      'Max 5 videos / day',
       'No watermark · 100+ styles',
       'Available transcription language choices',
       '2 hr download link',
@@ -93,7 +93,7 @@ const plans = [
     features: [
       '45 video credits / month',
       'Max 3 min per video',
-      'Max 5 videos / day',
+      'Max 7 videos / day',
       'No watermark · 100+ styles',
       'Available transcription and translation language choices',
       'Translation feature',

@@ -120,6 +120,15 @@ def _load_export_job(job_id: str) -> Optional[Dict[str, Any]]:
     return app_state._export_jobs.get(job_id)
 
 
+def _public_export_error(error):
+    """Expose only the known, non-sensitive daily-limit policy message."""
+    import re
+    message = str(error or "")
+    if re.fullmatch(r"Limit reached: You can only export [0-9]{1,6} videos per 24 hours\.", message):
+        return message
+    return "Export failed. Please retry or contact support." if message else None
+
+
 def _evaluate_export_policy(user_data: Dict[str, Any], now_ts: float):
     if user_data.get("deletion_pending"):
         return False, "Account deletion is in progress.", []
