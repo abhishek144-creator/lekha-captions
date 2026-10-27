@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo'
+import { reopenAnalyticsConsent } from '@/lib/analyticsConsent'
 
 const legalBusinessName = import.meta.env.VITE_LEGAL_BUSINESS_NAME || 'Lekha Captions'
 const legalBusinessAddress = import.meta.env.VITE_LEGAL_BUSINESS_ADDRESS || 'Business address available from support'
@@ -12,6 +13,7 @@ const sections = [
   ['Information we process', 'We process your Firebase account identity, plan and payment records, uploaded audio or video, generated captions, export history, support requests, and limited operational telemetry such as request identifiers and performance data.'],
   ['Why we process it', 'With your consent and as necessary to provide the service you request, we use this data to authenticate you, transcribe and translate media, render exports, enforce plan limits, process payments, provide support, prevent fraud or abuse, comply with law, and operate securely.'],
   ['Service providers', 'Firebase provides authentication, database, and object storage; OpenAI and Sarvam may process audio or text for transcription or translation; Razorpay processes payments. These providers receive only the information required for their function, and process it under their own terms and security commitments.'],
+  ['Cookies and analytics', 'Your browser stores what the service needs to work, such as your sign-in session and caption drafts. With your consent, Google Analytics (through Firebase) sets cookies to measure how the site is used; it stays off until you accept, and you can change your choice at any time with Cookie settings below or in the site footer. Sentry receives error reports with your account identifier (not your email) so we can fix problems you report.'],
   ['AI training and advertising', 'Lekha Captions does not use your videos, audio, captions, or exports to train its own AI models, and we do not sell your content or use it for advertising. Service providers named above may process the information needed to provide storage, transcription, translation, rendering, and payment services under their applicable terms. Your files are deleted on the retention schedule below.'],
   ['Retention', 'Uploaded source media is scheduled for deletion within six hours. Exported media is retained for 2 to 72 hours depending on plan. Short export history and payment records remain with the account where required for service, accounting, fraud prevention, or legal obligations. Operational security records use bounded retention schedules.'],
   ['Local drafts and deletion protection', 'Caption drafts are cached in your browser. When cloud saving succeeds, your account retains the latest draft and up to five recovery snapshots until account deletion. Source videos still follow the media expiry schedule; saved captions do not extend media retention. After account deletion is requested, we retain a minimal record containing the account identifier, request time and status to prevent delayed processing or payment events from recreating the account. This record has no automatic expiry. Contact support about access or retention; it does not contain your videos or captions.'],
@@ -47,7 +49,8 @@ export default function PrivacyPolicy() {
             </section>
           ))}
         </div>
-        <p className="mt-10 text-sm text-gray-400">Privacy and grievance requests: <a className="text-[#F5A623] underline underline-offset-2" href={`mailto:${grievanceEmail}`}>{grievanceEmail}</a></p>
+        <button type="button" onClick={reopenAnalyticsConsent} className="mt-10 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Cookie settings</button>
+        <p className="mt-6 text-sm text-gray-400">Privacy and grievance requests: <a className="text-[#F5A623] underline underline-offset-2" href={`mailto:${grievanceEmail}`}>{grievanceEmail}</a></p>
       </main>
     </div>
   )

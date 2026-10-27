@@ -1,8 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
+import { getAnalytics, isSupported as isAnalyticsSupported, setAnalyticsCollectionEnabled } from 'firebase/analytics';
 import { getToken, initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { getAnalyticsConsent, onAnalyticsConsentChange } from '@/lib/analyticsConsent';
 
 // Your web app's Firebase configuration
 // These will be securely loaded from Replit Secrets (Environment Variables)
@@ -39,13 +40,23 @@ try {
     // Google's account chooser so a returning user can select another email.
     googleProvider.setCustomParameters({ prompt: 'select_account' });
     if (firebaseConfig.measurementId && typeof window !== 'undefined') {
-        isAnalyticsSupported()
-            .then((supported) => {
-                if (supported) analytics = getAnalytics(app);
-            })
-            .catch(() => {
-                // Analytics is optional; unsupported browsers must retain auth/editor access.
-            });
+        // Analytics sets cookies, so it waits for the visitor's consent; a later
+        // rejection stops collection for the rest of the page view.
+        const applyConsent = (choice) => {
+            if (choice === 'granted' && !analytics) {
+                isAnalyticsSupported()
+                    .then((supported) => {
+                        if (supported && !analytics && getAnalyticsConsent() === 'granted') analytics = getAnalytics(app);
+                    })
+                    .catch(() => {
+                        // Analytics is optional; unsupported browsers must retain auth/editor access.
+                    });
+            } else if (analytics) {
+                setAnalyticsCollectionEnabled(analytics, choice === 'granted');
+            }
+        };
+        applyConsent(getAnalyticsConsent());
+        onAnalyticsConsentChange(applyConsent);
     }
 } catch (error) {
     console.warn("Firebase failed to initialize. Running in local dev mode without Firebase.", error.message);

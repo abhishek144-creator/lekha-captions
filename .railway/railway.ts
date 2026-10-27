@@ -28,7 +28,11 @@ const WORKER_PORT = "8080"
 const RENDER_MAX_REPLICAS = 5
 const TRANSCRIPTION_MAX_REPLICAS = 5
 // Pending-work admission follows effective capacity while rollout is gated.
-const WORKER_AUTOSCALING_ACCEPTED = false
+// Both controllers are enabled in production (read back 2026-10-27:
+// RENDER_/TRANSCRIPTION_AUTOSCALE_ENABLED=1, API admission 3000 s, scaling
+// token present). Keep these matching live so an apply cannot switch either off.
+const RENDER_AUTOSCALING_ACCEPTED = true
+const TRANSCRIPTION_AUTOSCALING_ACCEPTED = true
 // Sleep when idle. A larger/warm launch profile requires a reviewed spending
 // allowance and measured capacity; the workspace hard cap stops the whole app.
 const KEEP_ONE_WORKER_AWAKE = false
@@ -100,16 +104,16 @@ export default defineRailway((ctx) => {
     // Workers scale on enqueue and back to one replica when idle (lekha-cron).
     // A resize Railway rejects (plan limits) keeps the current capacity.
     // Enable each controller only after its finite live resize/drain test.
-    RENDER_AUTOSCALE_ENABLED: WORKER_AUTOSCALING_ACCEPTED ? "1" : "0",
+    RENDER_AUTOSCALE_ENABLED: RENDER_AUTOSCALING_ACCEPTED ? "1" : "0",
     RENDER_AUTOSCALE_SERVICE_ID: "${{lekha-render.RAILWAY_SERVICE_ID}}",
     RENDER_AUTOSCALE_REGION: REGION,
     RENDER_AUTOSCALE_MAX_REPLICAS: String(RENDER_MAX_REPLICAS),
-    TRANSCRIPTION_AUTOSCALE_ENABLED: WORKER_AUTOSCALING_ACCEPTED ? "1" : "0",
+    TRANSCRIPTION_AUTOSCALE_ENABLED: TRANSCRIPTION_AUTOSCALING_ACCEPTED ? "1" : "0",
     TRANSCRIPTION_AUTOSCALE_SERVICE_ID: "${{lekha-transcription.RAILWAY_SERVICE_ID}}",
     TRANSCRIPTION_AUTOSCALE_MAX_REPLICAS: String(TRANSCRIPTION_MAX_REPLICAS),
     // Admit at most the work all render replicas finish within the 10-minute
     // queue-wait limit (600 s per replica), so accepted exports do not time out.
-    EXPORT_MAX_PENDING_WORK_SECONDS: String(600 * (WORKER_AUTOSCALING_ACCEPTED ? RENDER_MAX_REPLICAS : 1)),
+    EXPORT_MAX_PENDING_WORK_SECONDS: String(600 * (RENDER_AUTOSCALING_ACCEPTED ? RENDER_MAX_REPLICAS : 1)),
   }
 
   const api = service("lekha-api", {

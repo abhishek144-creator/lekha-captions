@@ -50,6 +50,21 @@ class VerifiedTokenCacheTests(unittest.TestCase):
             firebase.verify_token("token-d")["uid"] = "attacker"
             self.assertEqual(firebase.verify_token("token-d")["uid"], "owner")
 
+    def test_verified_requests_name_the_account_on_error_reports(self):
+        decoded = {"uid": "owner", "email": "owner@example.com", "exp": time.time() + 3600}
+        with (patch.object(firebase.auth, "verify_id_token", return_value=decoded),
+              patch.object(firebase.optional_deps, "sentry_sdk") as sentry):
+            firebase.verify_token("token-e")
+            firebase.verify_token("token-e")
+        self.assertEqual(sentry.set_user.call_count, 2)
+        sentry.set_user.assert_called_with({"id": "owner"})
+
+    def test_rejected_tokens_name_no_account(self):
+        with (patch.object(firebase.auth, "verify_id_token", side_effect=ValueError("revoked")),
+              patch.object(firebase.optional_deps, "sentry_sdk") as sentry):
+            firebase.verify_token("token-f")
+        sentry.set_user.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

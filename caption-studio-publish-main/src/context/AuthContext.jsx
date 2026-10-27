@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { loadFirebase } from '../lib/firebaseLoader'
 import { apiRequest } from '../lib/apiClient'
 import { toast } from '@/components/ui/use-toast'
+import { setMonitoringUser } from '@/lib/frontendMonitoring'
 
 const AuthContext = createContext(undefined)
 const PENDING_CONSENT_KEY = 'lekha.pendingConsent'
@@ -230,6 +231,7 @@ export function AuthProvider({ children }) {
 
                 reviewSignInStartedRef.current = false
                 setCurrentUser(user)
+                setMonitoringUser(user?.uid)
                 setLoading(false)
 
                 if (user) {

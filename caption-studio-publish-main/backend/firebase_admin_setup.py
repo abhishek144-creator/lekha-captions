@@ -11,6 +11,11 @@ from google.cloud import storage as gcs_storage
 from google.auth import default as google_auth_default
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.api_core.exceptions import NotFound
+
+try:
+    from . import optional_deps
+except ImportError:  # Direct execution from backend/ remains supported.
+    import optional_deps
 try:
     from .media_storage import (
         bucket_ready as s3_bucket_ready,
@@ -144,6 +149,17 @@ def _remember_token(cache_key: str, decoded_token: dict):
         _token_cache[cache_key] = (now + lifetime, dict(decoded_token))
 
 
+def _tag_error_reports(decoded_token):
+    """Name the signed-in account on this request's Sentry events (uid only, no email)."""
+    uid = decoded_token.get("uid") if isinstance(decoded_token, dict) else None
+    if optional_deps.sentry_sdk is None or not uid:
+        return
+    try:
+        optional_deps.sentry_sdk.set_user({"id": str(uid)})
+    except Exception:
+        pass
+
+
 def verify_token(id_token: str):
     if IS_TEST_ENV and not firebase_admin._apps:
         return None
@@ -151,6 +167,7 @@ def verify_token(id_token: str):
     if cache_key:
         cached = _cached_token(cache_key)
         if cached is not None:
+            _tag_error_reports(cached)
             return cached
     try:
         # check_revoked=True prevents a stolen token from remaining usable after
@@ -158,6 +175,7 @@ def verify_token(id_token: str):
         decoded_token = auth.verify_id_token(id_token, check_revoked=True)
         if cache_key and isinstance(decoded_token, dict):
             _remember_token(cache_key, decoded_token)
+        _tag_error_reports(decoded_token)
         return decoded_token
     except Exception as e:
         print(f"Token verification failed: {e}")

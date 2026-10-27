@@ -25,6 +25,7 @@ import { toDateSafe } from '@/lib/subscription'
 import { db } from '@/lib/firebase'
 import { apiRequest } from '@/lib/apiClient'
 import { clearUserLocalDrafts } from '@/lib/localDraftStorage'
+import { downloadPaymentReceipt } from '@/lib/paymentReceipt'
 import { collection, getDocs, limit, orderBy, query, startAfter } from 'firebase/firestore'
 import planCatalog from '../../shared/planCatalog.json'
 
@@ -362,29 +363,11 @@ export default function UserAccount() {
   }
 
   const downloadPaymentRecord = (payment) => {
-    const record = [
-      'Lekha Captions payment record',
-      `Payment ID: ${payment?.payment_id || payment?.id || 'Unavailable'}`,
-      `Order ID: ${payment?.order_id || 'Unavailable'}`,
-      `Plan: ${payment?.plan || 'Unavailable'}`,
-      `Amount: ${formatPaymentAmount(payment)}`,
-      `Status: ${payment?.status || 'Processed'}`,
-      `Refund status: ${payment?.refund_status || 'Not refunded'}`,
-      `Refunded amount: ${payment?.refunded_amount ? formatPaymentAmount({ ...payment, amount: payment.refunded_amount }) : 'None'}`,
-      `Date: ${formatDate(payment?.timestamp, 'Unavailable')}`,
-      '',
-      'This is a payment record, not a tax invoice.',
-      'When a tax invoice applies, it is issued separately using your billing details. Contact support if you did not receive it.',
-    ].join('\n')
-    const blob = new Blob([record], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `lekha-payment-${payment?.payment_id || payment?.id || 'record'}.txt`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+    downloadPaymentReceipt(
+      payment,
+      { name: currentUser?.displayName || '', email: currentUser?.email || '' },
+      formatDate(payment?.timestamp, 'Unavailable'),
+    )
   }
 
   const memberSince = formatDate(userData?.created_at ?? userData?.createdAt, 'Recently')
@@ -699,9 +682,9 @@ export default function UserAccount() {
                     <button
                       type="button"
                       onClick={() => downloadPaymentRecord(payment)}
-                      aria-label="Download payment record"
-                      title="Download payment record"
-                      className="hidden sm:flex w-9 h-9 rounded-xl border border-white/10 items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+                      aria-label="Download receipt"
+                      title="Download receipt"
+                      className="flex shrink-0 w-9 h-9 rounded-xl border border-white/10 items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
                     >
                       <Download className="w-4 h-4" />
                     </button>

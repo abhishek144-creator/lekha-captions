@@ -8,6 +8,7 @@ import PageNotFound from './lib/PageNotFound';
 import { useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import CookieConsentBanner from '@/components/CookieConsentBanner';
 import { canonicalPublicPath } from '@/lib/publicRoutes'
 import { lazyWithRefresh } from '@/lib/lazyWithRefresh'
 
@@ -95,6 +96,7 @@ function App() {
         <ErrorBoundary label="the application">
           <AuthenticatedApp />
         </ErrorBoundary>
+        <CookieConsentBanner />
       </Router>
       <Toaster />
     </QueryClientProvider>

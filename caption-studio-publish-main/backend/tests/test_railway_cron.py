@@ -62,7 +62,9 @@ class RailwayCronTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
 
     def run_pass(self, **kwargs):
-        with patch.object(railway_cron, "_log", lambda *args, **fields: None):
+        # The real backup step only runs after 20:00 UTC; keep these passes clock-independent.
+        with (patch.object(railway_cron, "_log", lambda *args, **fields: None),
+              patch.object(railway_cron.firestore_backup, "run_nightly", lambda *args: {"skipped": "test"})):
             return railway_cron.run_once(host=FakeHost(self.redis, self.calls, **kwargs))
 
     def test_runs_every_step_and_reports_none_failed(self):
@@ -81,6 +83,13 @@ class RailwayCronTests(unittest.TestCase):
             self.run_pass()
         self.assertNotIn("janitor", self.calls)
         self.assertNotIn("payment_reconciliation", self.calls)
+
+    def test_plan_expiry_reminders_run_at_most_once_an_hour(self):
+        sends = []
+        send = lambda db: sends.append(db) or {"sent": 0}
+        first = railway_cron.send_plan_expiry_reminders(self.redis, "db", send=send)
+        second = railway_cron.send_plan_expiry_reminders(self.redis, "db", send=send)
+        self.assertEqual((first, second, sends), ({"sent": 0}, {"skipped": "ran_this_hour"}, ["db"]))
 
     def test_due_retry_is_promoted_and_a_worker_is_woken(self):
         queue = Queue("caption_export_jobs", connection=self.redis)

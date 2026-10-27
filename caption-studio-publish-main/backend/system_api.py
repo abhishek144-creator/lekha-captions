@@ -5,6 +5,8 @@ place and every caller sees it.
 """
 
 import asyncio
+import json
+import math
 import re
 import shutil
 import time
@@ -38,6 +40,50 @@ except ImportError:  # Direct execution from backend/ remains supported.
 
 
 router = APIRouter()
+_ANALYTICS_FIELD_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+
+
+async def _read_bounded_json(request: Request, max_bytes: int) -> Dict[str, Any]:
+    try:
+        declared = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Content-Length")
+    if declared > max_bytes:
+        raise HTTPException(status_code=413, detail="Analytics payload too large")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            raise HTTPException(status_code=413, detail="Analytics payload too large")
+    try:
+        parsed = json.loads(bytes(body) or b"null")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid analytics payload")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Invalid analytics payload")
+    return parsed
+
+
+def _flat_analytics_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    # Browser events are flat scalars. Nested values are dropped: Firestore
+    # rejects some shapes (arrays inside arrays), and one rejected row must not
+    # be able to stall the shared telemetry/audit-log writer.
+    flat: Dict[str, Any] = {}
+    for key, value in payload.items():
+        if len(flat) >= settings.ANALYTICS_MAX_PAYLOAD_FIELDS:
+            break
+        if not isinstance(key, str) or not _ANALYTICS_FIELD_NAME.match(key):
+            continue
+        if isinstance(value, str):
+            flat[key] = value[:settings.ANALYTICS_MAX_STRING_CHARS]
+        elif value is None or isinstance(value, bool):
+            flat[key] = value
+        elif isinstance(value, int) and abs(value) < 2 ** 63:
+            flat[key] = value
+        elif isinstance(value, float) and math.isfinite(value):
+            flat[key] = value
+    return flat
+
 
 @router.post("/api/analytics/track")
 async def analytics_track(request: Request, response: Response):
@@ -51,11 +97,9 @@ async def analytics_track(request: Request, response: Response):
     request_guards._apply_rate_headers(response, settings.ANALYTICS_RATE_LIMIT, remaining, retry_after)
     if not allowed:
         raise HTTPException(status_code=429, detail="Too many analytics events. Please slow down.")
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid analytics payload")
-    event = (body.get("event") or "").strip()
+    body = await _read_bounded_json(request, settings.ANALYTICS_MAX_BODY_BYTES)
+    event = body.get("event")
+    event = event.strip() if isinstance(event, str) else ""
     if not event or len(event) > 80:
         raise HTTPException(status_code=400, detail="Invalid analytics event")
     if event in settings.RESERVED_SERVER_ANALYTICS_EVENTS:
@@ -63,6 +107,11 @@ async def analytics_track(request: Request, response: Response):
     payload = body.get("payload") or {}
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid analytics payload")
+    if event in settings.CLIENT_ANALYTICS_EVENTS:
+        payload = _flat_analytics_payload(payload)
+    else:
+        payload = {"name": event}
+        event = settings.UNLISTED_CLIENT_ANALYTICS_EVENT
     await asyncio.to_thread(observability._track_event, event, payload)
     if event == "funnel.captions.ready":
         await asyncio.to_thread(observability._record_client_time_to_first_caption, payload.get("timeToFirstCaptionMs"))
