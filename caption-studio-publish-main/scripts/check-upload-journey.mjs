@@ -39,6 +39,7 @@ let holdProcessing = false
 let failProcessing = false
 let pendingProcess = null
 const savedProjects = new Map()
+let lastSaveAt = 0
 const caption = { text: 'hello bright world', start_time: 0, end_time: 1, words: [{ word: 'hello', start: 0, end: 0.3 }, { word: 'bright', start: 0.3, end: 0.6 }, { word: 'world', start: 0.6, end: 1 }] }
 
 await page.setRequestInterception(true)
@@ -68,6 +69,7 @@ page.on('request', async (request) => {
     const submitted = JSON.parse(body)
     const projectId = submitted.project_id || 'current'
     savedProjects.set(projectId, submitted.draft)
+    lastSaveAt = Date.now()
     payload = { success: true, revision: 1, project_id: projectId, draft: submitted.draft }
   }
   else if (url.pathname === '/api/projects/list') payload.projects = []
@@ -148,7 +150,13 @@ try {
   // A replacement must not attach its media to the previous account project
   // while the provider is still processing. Wait beyond the autosave debounce.
   for (let wait = 0; wait < 100 && !savedProjects.size; wait += 1) await new Promise((done) => setTimeout(done, 100))
+  // The editor saves the original project again once the video's length is
+  // known (2.5 s autosave debounce). Snapshot only after that save has landed
+  // and saving has gone quiet, or the late save looks like a replacement leak.
+  const originalSettled = () => [...savedProjects.values()][0]?.duration > 0 && Date.now() - lastSaveAt > 3000
+  for (let wait = 0; wait < 200 && !originalSettled(); wait += 1) await new Promise((done) => setTimeout(done, 100))
   assert.equal(savedProjects.size, 1, 'the original project has an account copy')
+  assert.ok(originalSettled(), 'the original project saves its video length before Upload New')
   const [previousId, previousDraft] = [...savedProjects][0]
   const previousJson = JSON.stringify(previousDraft)
   fileId = '123e4567-e89b-12d3-a456-426614174222'

@@ -88,10 +88,14 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
           })
       if (accountRef.current !== currentUser.uid) return data
       assignedProjectIdRef.current = ''
+      const savedProjectId = data.project_id || data.draft?.projectId || targetProjectId
       revisionRef.current = data.revision
-      revisionProjectRef.current = data.project_id || data.draft?.projectId || targetProjectId
+      revisionProjectRef.current = savedProjectId
       setCloudDraft(data.draft)
-      setProjectId(data.project_id || data.draft?.projectId || targetProjectId)
+      // Upload New (or opening another project) may have moved the editor on
+      // while this save was in flight. Adopting the saved ID then would point
+      // the next autosave, with the new video, at this older project.
+      setProjectId((current) => (!current || current === targetProjectId ? savedProjectId : current))
       setCloudProjects((projects) => {
         const next = {
           project_id: data.project_id || data.draft?.projectId,
