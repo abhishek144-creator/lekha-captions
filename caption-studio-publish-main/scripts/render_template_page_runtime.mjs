@@ -1806,7 +1806,16 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         const rowWordIndices = rowPlan[rowIndex] || [];
         const sourceClasses = rowSpans.map((span) => splitTemplateKeywordClasses(cleanSidebarClassName(span.className, 'w')).base);
         const sourceVisible = rowSpans.map((span) => span.classList.contains('on') && !span.getAttribute('data-lc-anim'));
-        const sourceStyles = rowSpans.map((span) => stripTemplateKeywordColor(String(span.getAttribute('style') || '').replace(/\\banimation\\s*:[^;]+;?/gi, '')));
+        const sourceStyles = rowSpans.map((span) => {
+          const sourceStyle = String(span.getAttribute('style') || '').replace(/\\banimation\\s*:[^;]+;?/gi, '');
+          // The sidebar DOM is reused between frames, so a source span may carry
+          // the script-font pass's font from an earlier frame (the template
+          // keyword's face). That is not authored style: copying it gave plain
+          // Hindi words the keyword font after the keyword moved.
+          return stripTemplateKeywordColor(span.dataset.exportScriptFont
+            ? sourceStyle.replace(/\\bfont-family\\s*:[^;]+;?/gi, '')
+            : sourceStyle);
+        });
         const sourceRowHasUnderline = rowSpans.some((span) => (
           span.matches('.ul, .ns3hero, .imp-underline')
         ));
