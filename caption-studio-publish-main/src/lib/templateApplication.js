@@ -76,6 +76,16 @@ export const stripDetachedWordLayout = (wordStyles = {}) => Object.fromEntries(
   }),
 )
 
+// A highlight the user picked survives a template change; everything else a
+// word carried (position, size, colour, motion) belonged to the old template.
+// Auto layout's highlights are recomputed for the new template instead.
+const keepManualEmphasis = (caption) => {
+  if (caption?.layoutSource === 'auto') return {}
+  return Object.fromEntries(Object.entries(caption?.wordStyles || {})
+    .filter(([, style]) => style?.isEmphasis && !style.autoLayout)
+    .map(([key]) => [key, { isEmphasis: true }]))
+}
+
 export const getTemplateSelectionIdentity = (style = {}) => [
   String(style?.template_source || ''),
   String(style?.template_20_id || ''),
@@ -199,8 +209,8 @@ export function buildTemplateApplication({
       // A genuinely new template starts from its authored word layout. Clear
       // every prior per-word override so detached coordinates, source offsets,
       // resized boxes and frozen template typography cannot leak from the
-      // previously selected template.
-      wordStyles: isNewTemplateSelection ? {} : stripDetachedWordLayout(cap.wordStyles || {}),
+      // previously selected template. Only the user's own highlights stay.
+      wordStyles: isNewTemplateSelection ? keepManualEmphasis(cap) : stripDetachedWordLayout(cap.wordStyles || {}),
       animation: 'none',
       animationSpeed: 1,
       template_id: templateSnapshot.template_id || '',

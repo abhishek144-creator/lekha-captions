@@ -29,11 +29,13 @@ import { splitCaptionWordTokens, wordHasCreativePosition } from './videoPlayerWo
 
 export const CAPTION_LAYOUT_MODES = ['sentence', 'keywords', 'cpt']
 
-const CPT_MIN_SECONDS = 1.2
+const CPT_MIN_SECONDS = 0.9
 const CPT_MIN_WORDS = 2
 const CPT_MAX_WORDS = 6
 const CPT_MAX_CHARS = 34
-const CPT_SPACING_SECONDS = 8
+// Brief section 7.3: roughly one hero line in every three captions, never
+// two in a row; a hero line is followed by calmer ones.
+const CPT_EVERY_CAPTIONS = 3
 const KEYWORD_MIN_SCORE = 2
 const REFERENCE_WIDTH = 360
 
@@ -149,6 +151,9 @@ const average = (values) => (values.length ? values.reduce((sum, value) => sum +
 function templateMarkupOf(caption) {
   return String(caption?.template_markup || caption?.applied_template_style?.template_markup || '')
 }
+
+// Which template a caption's look was mapped onto (phase indexes belong to it).
+const templateKeyOf = (caption) => `${caption?.template_20_id || ''}::${caption?.template_id || ''}`
 
 // Timings per text token: measured word timings when they line up with the
 // text, otherwise the caption's span shared by character count.
@@ -279,13 +284,15 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
     }
     const ctaIndex = normalized.findIndex((word) => CTA_WORDS.has(word))
     // The AI reading of the line (when its text has not changed since) knows
-    // which words carry the meaning; it replaces the rules' keyword guess.
+    // which words carry the meaning; it replaces the rules' keyword guess,
+    // including a decision that no word earns emphasis.
     const ai = getCaptionAiEmotion(caption, tokens.length)
-    let heroIndex = ranked[0]?.index ?? 0
-    if (ai) {
-      keywordIndices = [...ai.keywords]
-      heroIndex = ai.keywords[0] ?? 0
-    }
+    if (ai) keywordIndices = [...ai.keywords]
+    // The hero is always a chosen keyword; -1 when nothing earned emphasis,
+    // so no layout can promote an arbitrary word.
+    let heroIndex = keywordIndices.length
+      ? (ai ? keywordIndices[0] : (keywordIndices.includes(ranked[0]?.index) ? ranked[0].index : keywordIndices[0]))
+      : -1
     const previous = speech[captionIndex - 1]
     const intent = readLineIntent(caption.text, normalized, captionIndex, speech.length)
     if (intent === 'call_to_action' && ctaIndex >= 0 && !ai) {
@@ -295,6 +302,7 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
     return {
       caption,
       captionIndex,
+      templated: Boolean(templateMarkupOf(caption)),
       intent: ai?.type || intent,
       ctaIndex,
       start,
@@ -337,29 +345,36 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
   })
 
   const intensities = analyses.map((item) => item.intensity)
-  const cptThreshold = quantile(intensities, 0.7)
+  const cptThreshold = quantile(intensities, 0.6)
   const motionThreshold = quantile(intensities, 0.4)
   const keywordThreshold = median(intensities) - 0.1
-  const maxCpt = Math.max(1, Math.round(videoDuration / 10))
+  const maxCpt = Math.max(1, Math.round(analyses.length / CPT_EVERY_CAPTIONS))
   const chosenCpt = analyses.filter((item) => isLockedForAuto(item.caption) && getCaptionLayoutMode(item.caption) === 'cpt')
-  const cptEligible = (item) => item.keywordIndices.length > 0 && item.seconds >= CPT_MIN_SECONDS
+  // Whether a CPT can be built from the line at all: its shape and timing.
+  // Emotion and AI line types only rank lines; they never make a line
+  // ineligible. A plain caption's CPT is built around its hero word; a
+  // template draws its own styled phase and needs no highlighted word.
+  const cptFits = (item) => item.seconds >= CPT_MIN_SECONDS
     && item.wordCount >= CPT_MIN_WORDS && item.wordCount <= CPT_MAX_WORDS && item.chars <= CPT_MAX_CHARS
-    && !(item.ai && item.ai.type === 'narration' && item.ai.intensity < 0.5)
+    && (item.heroIndex >= 0 || item.templated)
+  const cptEligible = (item) => cptFits(item) && item.heroIndex >= 0
     // Questions stay quiet (the answer is the moment); filler and calls to action are never heroes.
     && !['question', 'filler', 'call_to_action'].includes(item.intent)
 
-  // The hook: the first caption takes the template's hero look when it can.
+  // The hook (brief 7.3): the first caption shows the template's hero look
+  // whenever its shape allows, whatever its loudness or AI label. A question
+  // is a classic opening hook. Only filler opens quietly.
   const hook = analyses[0]
-  if (hook && !isLockedForAuto(hook.caption) && cptEligible(hook) && hook.intensity >= quantile(intensities, 0.25)) chosenCpt.push(hook)
+  const hookIsCpt = Boolean(hook && !isLockedForAuto(hook.caption) && hook.intent !== 'filler' && cptFits(hook))
+  if (hookIsCpt) chosenCpt.push(hook)
 
   // CPT: the strongest eligible lines, spaced out and never back to back.
   ;[...analyses]
-    .filter((item) => !isLockedForAuto(item.caption) && cptEligible(item))
-    .sort((a, b) => b.intensity - a.intensity)
+    .filter((item) => !isLockedForAuto(item.caption) && cptEligible(item) && item !== hook)
+    .sort((a, b) => b.intensity - a.intensity || a.captionIndex - b.captionIndex)
     .forEach((item) => {
-      const strongEnough = item.intensity >= cptThreshold || (item.captionIndex === 0 && item.intensity >= median(intensities))
-      const spaced = chosenCpt.every((other) => Math.abs(other.captionIndex - item.captionIndex) > 1 && Math.abs(other.start - item.start) >= CPT_SPACING_SECONDS)
-      if (strongEnough && spaced && chosenCpt.length < maxCpt) chosenCpt.push(item)
+      const spaced = chosenCpt.every((other) => Math.abs(other.captionIndex - item.captionIndex) >= CPT_EVERY_CAPTIONS)
+      if (item.intensity >= cptThreshold && spaced && chosenCpt.length < maxCpt) chosenCpt.push(item)
     })
   const cptIds = new Set(chosenCpt.map((item) => item.caption.id))
 
@@ -549,7 +564,11 @@ export function applyCaptionLayout(caption, {
   if (!caption || caption.isTextElement || !CAPTION_LAYOUT_MODES.includes(mode)) return caption
   const tokens = splitCaptionWordTokens(caption.text)
   const keywordIndices = (plan.keywordIndices || []).filter((index) => index >= 0 && index < tokens.length)
-  const heroIndex = clamp(Number(plan.heroIndex) || 0, 0, Math.max(0, tokens.length - 1))
+  // -1: no word earned emphasis. A CPT then highlights nothing; a plain CPT
+  // still needs a row to build around, so it leads with the first word.
+  const chosenHero = Number.isInteger(Number(plan.heroIndex)) && Number(plan.heroIndex) >= 0 && Number(plan.heroIndex) < tokens.length
+    ? Number(plan.heroIndex) : -1
+  const heroIndex = Math.max(0, chosenHero)
   const wordStyles = {}
   Object.entries(caption.wordStyles || {}).forEach(([key, style]) => {
     const next = stripLayout(style)
@@ -572,7 +591,7 @@ export function applyCaptionLayout(caption, {
       : motionKind === 'none' ? ['plain', 'normal'] : ['normal', 'styled', 'plain']
     const avoidPhase = Number.isInteger(plan.avoidPhaseIndex) ? plan.avoidPhaseIndex : -1
     const { phaseIndex, type } = pickTemplatePhase(phaseTypes, wanted, Number(plan.captionIndex) || 0, avoidPhase)
-    const emphasis = mode === 'sentence' ? [] : (mode === 'cpt' ? [heroIndex] : keywordIndices)
+    const emphasis = mode === 'sentence' ? [] : (mode === 'cpt' ? (chosenHero >= 0 ? [chosenHero] : []) : keywordIndices)
     return {
       ...next,
       wordStyles,
@@ -580,6 +599,7 @@ export function applyCaptionLayout(caption, {
       emotional_mode: type,
       imp_word_index: emphasis[0] ?? -1,
       imp_word_indices: emphasis,
+      layoutTemplateKey: templateKeyOf(caption),
     }
   }
 
@@ -617,7 +637,7 @@ export function applyCaptionLayout(caption, {
         frozenFontSize: baseFontSize,
         // The hero is emphasised (painted 1.2x), so its stored size is divided back.
         fontSize: Number((isHero ? paintedSize / 1.2 : paintedSize).toFixed(2)),
-        ...(isHero ? { isEmphasis: true } : {}),
+        ...(isHero && chosenHero >= 0 ? { isEmphasis: true } : {}),
         // Smart default motion: a strong entrance for the hero, a subtle one for the rest.
         ...(hasOwnAnimation ? {} : { animation: isHero ? 'pop' : 'rise', autoAnimation: true }),
         autoLayout: true,
@@ -641,6 +661,22 @@ export function autoLayoutCaptions(captions = [], { waveformData, duration, capt
     if (!plan) return caption
     if (plan.locked) {
       counts.kept += 1
+      // A look the user chose stays theirs on another template: map it onto
+      // the new template's phase of the same type, keeping their highlights.
+      if (caption.layoutSource === 'user' && templateMarkupOf(caption) && caption.layoutTemplateKey !== templateKeyOf(caption)) {
+        const own = (caption.imp_word_indices || []).filter(Number.isInteger)
+        const remapped = applyCaptionLayout(caption, {
+          mode: getCaptionLayoutMode(caption),
+          motion: getCaptionLayoutMotion(caption),
+          plan: { keywordIndices: own, heroIndex: own[0] ?? -1, captionIndex: plan.captionIndex, avoidPhaseIndex: lastPhaseIndex },
+          source: 'user',
+          captionStyle,
+          frame,
+          measure,
+        })
+        lastPhaseIndex = remapped.template_phase_index
+        return remapped
+      }
       if (Number.isInteger(caption.template_phase_index)) lastPhaseIndex = caption.template_phase_index
       return caption
     }

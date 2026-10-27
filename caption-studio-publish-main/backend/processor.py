@@ -55,6 +55,9 @@ AUDIO_EXTRACTION_TIMEOUT_SECONDS = max(
 # request; longer audio is sent as consecutive pieces cut at pauses in speech.
 SARVAM_MAX_SEGMENT_SECONDS = 29.0
 SARVAM_MIN_SEGMENT_SECONDS = 10.0
+# Whisper language codes for the Sarvam languages whisper also recognizes,
+# used only to steer its word timings for Sarvam's words.
+WHISPER_INDIC_CODES = {"hi", "bn", "kn", "ml", "mr", "pa", "ta", "te", "gu", "as", "ur", "ne"}
 _SILENCE_RE = re.compile(r"silence_(start|end): (-?\d+(?:\.\d+)?)")
 
 
@@ -440,10 +443,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
     def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code, speech_words=None, audio_window=None):
         """Timed words for the whole file, one Sarvam request per <=29 s piece.
 
-        The production Sarvam path uses native phrase timestamps and local
-        silence detection, splitting each phrase into estimated word timings.
-        Optional supplied speech timings remain supported for trusted callers;
-        this path never requests a separate Whisper alignment transcript.
+        `speech_words` are whisper's word timings for the same audio. They
+        place each word where it was actually spoken and pick cut points
+        between words. Without them (or when the transcripts disagree) local
+        PCM activity splits each phrase into labelled estimated timings.
         """
         speech_words = speech_words or []
 
@@ -534,9 +537,9 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
     def _time_sarvam_chunks(self, chunks, speech_words, audio_p):
         """Place Sarvam phrases on the supplied audio's speech activity.
 
-        Production uses local PCM activity and labels interpolated word times
-        as estimates. Trusted callers may supply measured word spans, matched
-        only when the actual tokens agree. No extra recognizer is called here.
+        Whisper's measured word spans are used when the two transcripts agree
+        letter by letter; otherwise local PCM activity gives labelled
+        estimates. No recognizer is called here.
         """
         tokens = [token for chunk in chunks for token in str(chunk["word"]).split()]
         matched = None
@@ -562,7 +565,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             matched = self._drop_quiet_unheard_edges(matched, audio_p)
         except Exception as trim_error:
             print(f"[Warning] Could not check the loudness of unheard opening words: {trim_error}")
-        return [{"word": w["word"], "start": w["start"], "end": w["end"]} for w in matched]
+        # A token whisper never heard got a guessed slot; say so.
+        return [{"word": w["word"], "start": w["start"], "end": w["end"],
+                 "timing_source": "whisper_aligned" if w["heard"] else "sarvam_phrase_estimate"}
+                for w in matched]
 
     def _drop_quiet_unheard_edges(self, words, audio_p):
         """Remove unheard opening/closing words when that audio is much quieter."""
@@ -691,6 +697,8 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             language_confidence = 0.6
             audio_p = None
             transcription_source = ""
+            alignment_words = []
+            transcript = None
             audio_analysis = None
             focused_audio_p = None
             audio_focus = {'mode': speech_focus, 'suppressed_regions': [], 'reference': 'source_media_seconds'}
@@ -806,11 +814,21 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     )
                     lang_code = sarvam_langs[target_language.lower()]
 
+                    # Sarvam times whole phrases (often a whole request, music
+                    # included); whisper's word timings for the same audio say
+                    # where each word was spoken. This is the pre-2026-10-25
+                    # alignment; without it every Indian-language word time
+                    # was an estimate spread over its phrase. Any whisper
+                    # failure falls back to the labelled estimate.
+                    whisper_code = lang_code.split("-")[0]
+                    alignment_words = self._whisper_speech_timings(
+                        provider_audio_p, whisper_code if whisper_code in WHISPER_INDIC_CODES else "",
+                    )
+                    print(f"[Transcribe] Whisper word timings for alignment: {len(alignment_words)}")
+
                     try:
-                        # Use Sarvam's phrase timestamps and local pause-based
-                        # splitting; no second Whisper transcription for alignment.
                         words = self._transcribe_with_sarvam(sarvam_client, provider_audio_p, lang_code,
-                                                            audio_window=audio_focus.get('window'))
+                                                            alignment_words, audio_window=audio_focus.get('window'))
                         words = self._clean_transcript_words(words, "verbatim", target_language)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:
@@ -878,7 +896,15 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             sarvam_failed = bool(is_indian_lang and api_error_msg)
             audio_ready = bool(audio_p and os.path.exists(audio_p) and os.path.getsize(audio_p) > 0)
             needs_fallback = not words and self.client and audio_ready and (api_error_msg is None or sarvam_failed)
-            if needs_fallback and transcription_provider_health.allow_request("openai"):
+            if needs_fallback and sarvam_failed and alignment_words:
+                # The alignment request already transcribed this audio with
+                # whisper; use it instead of paying for the same call twice.
+                print("[Transcribe] Sarvam failed; using the whisper alignment transcript as failover.")
+                words = [dict(w) for w in alignment_words]
+                api_error_msg = None
+                language_confidence = max(language_confidence, 0.55)
+                transcription_source = "whisper_failover"
+            elif needs_fallback and transcription_provider_health.allow_request("openai"):
                 try:
                     if sarvam_failed:
                         print("[Transcribe] Sarvam failed; using configured OpenAI failover.")

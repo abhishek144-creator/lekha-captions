@@ -100,13 +100,44 @@ class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.get("transcription_source"), "sarvam")
         transcribe = sarvam.return_value.speech_to_text.transcribe
         self.assertEqual(transcribe.call_args.kwargs["language_code"], "hi-IN")
-        # Whisper may identify the language, but successful Indian transcription
-        # must not trigger another Whisper call for word alignment.
-        self.assertEqual(len(self.whisper_calls()), 1)
+        # One whisper call names the language; one more times Sarvam's words
+        # (restored 2026-10-27: without it every Hindi word time was a guess).
+        self.assertEqual(len(self.whisper_calls()), 2)
         self.assertNotIn("timestamp_granularities", self.whisper_calls()[0].kwargs)
+        self.assertEqual(self.whisper_calls()[1].kwargs["timestamp_granularities"], ["word"])
+        self.assertEqual(self.whisper_calls()[1].kwargs["language"], "hi")
 
     @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
-    async def test_all_indian_languages_use_sarvam_without_whisper_alignment(self):
+    async def test_sarvam_words_take_whisper_measured_times(self):
+        heard = [{"word": "नमस्ते", "start": 1.2, "end": 1.7}, {"word": "दोस्तों", "start": 2.4, "end": 3.0}]
+        self.processor.client.audio.transcriptions.create.return_value = SimpleNamespace(language="hindi", words=heard)
+        phrase = [{"word": "नमस्ते दोस्तों", "start": 0.0, "end": 4.0, "timing_source": "sarvam_phrase"}]
+        with patch("processor.run_media_command", side_effect=_write_output), \
+                patch("processor.SarvamAI"), \
+                patch("processor._extract_sarvam_chunks", return_value=phrase), \
+                patch.object(self.processor, "_get_video_duration", return_value=4.0), \
+                patch.object(self.processor, "_drop_quiet_unheard_edges", side_effect=lambda words, _audio: words):
+            result = await self.processor.generate_captions_only("video.mp4", target_language="hindi")
+        words = [w for caption in result["captions"] for w in caption["words"]]
+        self.assertEqual([(w["start"], w["end"]) for w in words], [(1.2, 1.7), (2.4, 3.0)])
+        self.assertTrue(all(w["timing_source"] == "whisper_aligned" for w in words))
+        self.assertTrue(all(c["word_alignment_status"] == "aligned" for c in result["captions"]))
+
+    @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
+    async def test_failed_alignment_keeps_sarvam_with_labelled_estimates(self):
+        self.processor.client.audio.transcriptions.create.side_effect = RuntimeError("openai down")
+        phrase = [{"word": "नमस्ते दोस्तों", "start": 0.0, "end": 4.0, "timing_source": "sarvam_phrase"}]
+        with patch("processor.run_media_command", side_effect=_write_output), \
+                patch("processor.SarvamAI"), \
+                patch("processor._extract_sarvam_chunks", return_value=phrase), \
+                patch("processor.analyze_pcm", return_value={"activity": []}), \
+                patch.object(self.processor, "_get_video_duration", return_value=4.0):
+            result = await self.processor.generate_captions_only("video.mp4", target_language="hindi")
+        self.assertEqual(result.get("transcription_source"), "sarvam")
+        self.assertTrue(all(c["word_alignment_status"] == "estimated" for c in result["captions"]))
+
+    @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
+    async def test_all_indian_languages_use_sarvam_with_whisper_alignment(self):
         languages = {
             'hindi': 'hi-IN', 'bengali': 'bn-IN', 'kannada': 'kn-IN',
             'malayalam': 'ml-IN', 'marathi': 'mr-IN', 'odia': 'od-IN',
@@ -123,9 +154,11 @@ class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result.get('transcription_source'), 'sarvam')
                 self.assertEqual(transcribe.call_args.args[2], code)
                 sarvam.assert_called_once()
-        self.assertEqual(len(self.whisper_calls()), 0)
-        # A successful Sarvam request must not reserve an unused OpenAI probe.
-        self.assertNotIn(unittest.mock.call('openai'), self.health.allow_request.call_args_list)
+        # Exactly one alignment request per transcription, never a failover.
+        self.assertEqual(len(self.whisper_calls()), len(languages))
+        self.assertTrue(all(c.kwargs['timestamp_granularities'] == ['word'] for c in self.whisper_calls()))
+        hints = {c.kwargs.get('language', '') for c in self.whisper_calls()}
+        self.assertNotIn('od', hints)  # whisper has no Odia: it detects instead
 
     @patch.dict(os.environ, {"SARVAM_API_KEY": "test-key"})
     async def test_sarvam_errors_empty_results_and_open_circuit_fall_back_to_whisper(self):

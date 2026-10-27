@@ -375,9 +375,20 @@ export function useWordGestures({
       seenWordKeys.add(key)
       siblingRects.push(measureWordInkBox(visual) || rect)
     })
-    const resolveDelta = (deltaX, deltaY, bypassSnap = false) => bypassSnap
-      ? { deltaX, deltaY, guides: [] }
-      : resolveCptWordSnap({ draggedRect: snapRectAtStart, siblingRects, frameRect: containerRectAtStart, deltaX, deltaY })
+    // The previous move's snap, so a snapped word holds until it is clearly
+    // pulled away (hysteresis) instead of flickering between targets.
+    let lastSnap = null
+    // Placement is free by default; `acceptSuggestion` (Shift on release)
+    // takes the smallest move that clears an overlap instead.
+    const resolveDelta = (deltaX, deltaY, bypassSnap = false, acceptSuggestion = false) => {
+      if (bypassSnap) {
+        lastSnap = null
+        return { deltaX, deltaY, guides: [], suggestion: null }
+      }
+      const snapped = resolveCptWordSnap({ draggedRect: snapRectAtStart, siblingRects, frameRect: containerRectAtStart, deltaX, deltaY, previous: lastSnap })
+      lastSnap = snapped.snap
+      return acceptSuggestion && snapped.suggestion ? { ...snapped, ...snapped.suggestion } : snapped
+    }
     const canvasGuides = guides => guides.map(guide => ({
       ...guide,
       ...(guide.x != null ? { x: (guide.x - containerRectAtStart.left) / viewportScaleX } : {}),
@@ -386,6 +397,10 @@ export function useWordGestures({
       ...(guide.y != null ? { y: (guide.y - containerRectAtStart.top) / viewportScaleY } : {}),
       ...(guide.y1 != null ? { y1: (guide.y1 - containerRectAtStart.top) / viewportScaleY } : {}),
       ...(guide.y2 != null ? { y2: (guide.y2 - containerRectAtStart.top) / viewportScaleY } : {}),
+      ...(guide.left != null ? { left: (guide.left - containerRectAtStart.left) / viewportScaleX } : {}),
+      ...(guide.right != null ? { right: (guide.right - containerRectAtStart.left) / viewportScaleX } : {}),
+      ...(guide.top != null ? { top: (guide.top - containerRectAtStart.top) / viewportScaleY } : {}),
+      ...(guide.bottom != null ? { bottom: (guide.bottom - containerRectAtStart.top) / viewportScaleY } : {}),
     }))
     const startCenterXPct = containerRectAtStart?.width
       ? ((wordRectAtStart.left + wordRectAtStart.width / 2 - containerRectAtStart.left) / containerRectAtStart.width) * 100
@@ -471,7 +486,7 @@ export function useWordGestures({
           : (Number(previousCoords?.clientDeltaY) || 0)
         // Resolve the final pointer event with the same snapshot and resolver
         // as the live preview, including a pointer-up beyond the last move.
-        const released = resolveDelta(releaseClientDeltaX, releaseClientDeltaY, upEvent?.altKey)
+        const released = resolveDelta(releaseClientDeltaX, releaseClientDeltaY, upEvent?.altKey, upEvent?.shiftKey)
         const finalCoords = {
           x: dragState.initialX + released.deltaX / (isFixedWordEditorDrag ? 1 : viewportScaleX),
           y: dragState.initialY + released.deltaY / (isFixedWordEditorDrag ? 1 : viewportScaleY),

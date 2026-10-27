@@ -70,6 +70,17 @@ describe('buildTemplateApplication', () => {
     expect(captions[0].template_id).toBe('t12')
   })
 
+  it('keeps a highlight the user picked on a new template, but not Auto layout\'s', () => {
+    const manual = { id: 'm', text: 'we shipped today', start_time: 0, end_time: 1, wordStyles: { 'm-1': { isEmphasis: true, color: 'red', abs_x_pct: 30 } } }
+    const auto = { ...manual, id: 'a', layoutSource: 'auto', wordStyles: { 'a-1': { isEmphasis: true } } }
+    const { captions } = apply({ template_id: 't12' }, defaultCaptionStyle, [manual, auto])
+    expect(captions[0].wordStyles).toEqual({ 'm-1': { isEmphasis: true } })
+    expect(captions[0].imp_word_indices).toEqual([1])
+    expect(captions[1].wordStyles).toEqual({})
+    // Text and source timing never change when a template is applied.
+    expect(captions.map((item) => [item.text, item.start_time, item.end_time])).toEqual([[manual.text, 0, 1], [auto.text, 0, 1]])
+  })
+
   it('re-applying the same template keeps word colours but drops dragged layout and motion', () => {
     const current = { ...defaultCaptionStyle, template_id: 't12', template_source: '' }
     const { captions } = apply({ template_id: 't12' }, current)
