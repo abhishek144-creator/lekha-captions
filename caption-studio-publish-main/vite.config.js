@@ -173,6 +173,8 @@ export default defineConfig(({ mode, command }) => {
   return {
   plugins: [backendAutostartPlugin(), releaseMetadataPlugin(buildRelease, releaseMetadata(env, 'editor', isProductionBuild)), react()],
   build: {
+    // Hidden maps exist only to be uploaded to Sentry; scripts/upload-sentry-sourcemaps.mjs deletes them.
+    sourcemap: String(env.SENTRY_SOURCEMAP_AUTH_TOKEN || '').trim() ? 'hidden' : false,
     rollupOptions: {
       output: {
         manualChunks(id) {

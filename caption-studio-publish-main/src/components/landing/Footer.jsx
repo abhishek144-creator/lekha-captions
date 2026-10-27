@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { createPageUrl } from '@/utils'
 import CaptionStudioLogo from '@/components/dashboard/CaptionStudioLogo'
+import { reopenAnalyticsConsent } from '@/lib/analyticsConsent'
 
 export default function Footer() {
   return (
@@ -36,6 +37,7 @@ export default function Footer() {
                 ].map(([label, to]) => (
                   <li key={label}><Link to={to} className="block transition hover:text-white">{label}</Link></li>
                 ))}
+                <li><button type="button" onClick={reopenAnalyticsConsent} className="block text-left transition hover:text-white">Cookie settings</button></li>
               </ul>
             </nav>
           </div>

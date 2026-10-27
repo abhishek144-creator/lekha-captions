@@ -6,6 +6,8 @@ const sentrySdkIntegrity = 'sha384-ekhFYbUiD5vrs1pT5Kty50wAgPsq9eoEDo+hUVl7VahsX
 
 let sentryClientPromise = null
 let sentryInitialized = false
+// The account uid only (no email): lets a support request be matched to its errors.
+let monitoringUserId = ''
 
 function reportFirstParty(error, componentStack, reference) {
   const apiBase = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
@@ -39,6 +41,7 @@ function initializeSentryClient() {
       sendDefaultPii: false,
       tracesSampleRate: 0,
     })
+    Sentry.setUser?.(monitoringUserId ? { id: monitoringUserId } : null)
     sentryInitialized = true
   }
   return Sentry
@@ -71,6 +74,11 @@ function loadSentryClient() {
 
 export function initializeFrontendMonitoring() {
   void loadSentryClient()
+}
+
+export function setMonitoringUser(uid) {
+  monitoringUserId = String(uid || '').slice(0, 128)
+  if (sentryInitialized) window.Sentry?.setUser?.(monitoringUserId ? { id: monitoringUserId } : null)
 }
 
 export function captureFrontendException(error, { componentStack = '', reference = '' } = {}) {
