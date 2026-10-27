@@ -476,7 +476,7 @@ export default function CaptionTimeline({
       <button
         type="button"
         onClick={onToggleCollapsed}
-        className="w-full h-[38px] rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 px-4 flex items-center justify-center gap-4 text-[9px] uppercase tracking-[0.22em] text-slate-500 shadow-[0_10px_28px_-20px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-white/15 hover:bg-[#111] transition-colors"
+        className="w-full h-[38px] rounded-[18px] border border-white/10 bg-[#0d0d0d] px-4 flex items-center justify-center gap-4 text-[9px] uppercase tracking-[0.22em] text-slate-500 shadow-[0_10px_28px_-20px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-white/15 hover:bg-[#111] transition-colors"
         title="Expand timeline"
       >
         <span>Source audio</span>
@@ -535,7 +535,7 @@ export default function CaptionTimeline({
       data-timeline-root="true"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0d0d]/95 shadow-[0_12px_32px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] outline-none focus-visible:border-sky-300/40"
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0d0d] shadow-[0_12px_32px_-24px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] outline-none focus-visible:border-sky-300/40"
     >
       {/* Toolbar: a click anywhere on the bar (outside its controls) collapses it */}
       <div

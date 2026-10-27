@@ -207,7 +207,7 @@ export const APPLIED_TEMPLATE_HOST_OVERRIDES = `
   .lekha-applied-template-host [data-source-word-visual="true"] {
     display: inline-block !important;
     position: absolute !important;
-    left: 0 !important;
+    left: auto !important;
     top: 0 !important;
     z-index: 6 !important;
     transform-origin: center center !important;
@@ -461,7 +461,7 @@ export function OriginalAdvancedTemplateStyles() {
         .lekha-original-template [data-source-word-visual="true"] {
           display: inline-block !important;
           position: absolute !important;
-          left: 0 !important;
+          left: auto !important;
           top: 0 !important;
           z-index: 6 !important;
           transform-origin: center center !important;

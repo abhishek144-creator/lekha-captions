@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Move, RotateCcw, RotateCw } from 'lucide-react'
 import { useDocumentGesture } from './useDocumentGesture'
+import { getPreviewOverlayRoot, PREVIEW_WORD_BOX_Z_INDEX } from './previewOverlayRoot'
 
 // Selection box for a word that stays inside its caption or template (one not
 // dragged out to a free position; those get the editor box in VideoPlayer).
@@ -166,7 +167,7 @@ export default function SelectedWordOutline({
         width: `${box.width + pad * 2}px`,
         height: `${box.height + pad * 2}px`,
         transform: `translate(-50%, -50%)${rotation ? ` rotate(${rotation}deg)` : ''}`,
-        zIndex: 100005,
+        zIndex: PREVIEW_WORD_BOX_Z_INDEX,
       }}
       data-video-control
     >
@@ -218,6 +219,6 @@ export default function SelectedWordOutline({
         </>
       )}
     </span>,
-    document.body,
+    getPreviewOverlayRoot(),
   )
 }
