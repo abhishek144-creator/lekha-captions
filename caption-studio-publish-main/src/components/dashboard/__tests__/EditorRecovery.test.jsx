@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import EditorEmptyState from '../EditorEmptyState'
 import EditorNotices from '../EditorNotices'
 import EditorStatusBanners from '../EditorStatusBanners'
+import * as localDraftStorage from '@/lib/localDraftStorage'
 
 const recoveryDraft = { ownerUid: 'alice', fileId: 'f1', captions: [{ id: '1', text: 'unsynced edit' }] }
 
@@ -26,14 +27,29 @@ describe('EditorEmptyState', () => {
     expect(handlers.applyLocalDraft).toHaveBeenCalledWith(recoveryDraft)
     expect(screen.getByRole('button', { name: 'Download draft backup' })).toBeTruthy()
   })
-  it('offers to continue or back up a browser draft before anything else', () => {
+  it('keeps browser recovery and backs it up before opening the account draft', () => {
+    const backup = vi.spyOn(localDraftStorage, 'downloadDraft').mockImplementation(() => {})
     const handlers = renderEmptyState({ localRecoveryDraft: recoveryDraft, accountDraft: { fileId: 'f0' } })
     expect(screen.getByText('Your previous draft is available on this browser.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Download draft backup' })).toBeTruthy()
-    // The older account draft would overwrite unsynced browser edits.
-    expect(screen.queryByRole('button', { name: 'Continue account draft' })).toBeNull()
+    expect(handlers.onContinueAccountDraft).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Back up browser draft & open account draft' }))
+    expect(backup).toHaveBeenCalledWith(recoveryDraft)
+    expect(handlers.onContinueAccountDraft).toHaveBeenCalledTimes(1)
+    expect(backup.mock.invocationCallOrder[0]).toBeLessThan(handlers.onContinueAccountDraft.mock.invocationCallOrder[0])
+    backup.mockRestore()
     fireEvent.click(screen.getByRole('button', { name: 'Continue saved draft' }))
     expect(handlers.applyLocalDraft).toHaveBeenCalledWith(recoveryDraft)
+  })
+
+  it('does not replace browser edits when the backup cannot be created', () => {
+    const backup = vi.spyOn(localDraftStorage, 'downloadDraft').mockImplementation(() => { throw new Error('Storage unavailable') })
+    const handlers = renderEmptyState({ localRecoveryDraft: recoveryDraft, accountDraft: { fileId: 'f0', captions: [] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Back up browser draft & open account draft' }))
+    expect(handlers.onContinueAccountDraft).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('Your draft has not been replaced')
+    expect(screen.getByRole('button', { name: 'Continue saved draft' })).toBeTruthy()
+    backup.mockRestore()
   })
 
   it('opening the upload window keeps the browser draft until an upload is accepted', () => {

@@ -1,13 +1,13 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { downloadDraft } from '@/lib/localDraftStorage'
 import DismissibleNotice from './DismissibleNotice'
 
-// The "Start Creating Captions" screen. A same-browser recovery copy takes
-// precedence over the account draft: it can hold edits the account never
-// received, and continuing the account draft would overwrite them.
+// The "Start Creating Captions" screen. A same-browser recovery copy
+// stays available alongside the account draft. Switching to the account copy
+// explicitly downloads the browser edits first, rather than hiding newer work.
 export default function EditorEmptyState({
   localRecoveryDraft,
   applyLocalDraft,
@@ -15,6 +15,17 @@ export default function EditorEmptyState({
   onContinueAccountDraft,
   handleUploadModalOpen,
 }) {
+  const [recoveryError, setRecoveryError] = useState('')
+  const openAccountDraft = () => {
+    setRecoveryError('')
+    try {
+      if (localRecoveryDraft) downloadDraft(localRecoveryDraft)
+      onContinueAccountDraft()
+    } catch {
+      setRecoveryError('Could not download the browser backup. Your draft has not been replaced. Please try the backup again.')
+    }
+  }
+
   return (
     <div className="h-full flex items-center justify-center p-6">
       <motion.div
@@ -42,10 +53,22 @@ export default function EditorEmptyState({
             </div>
           </div>
         )}
-        {accountDraft && !localRecoveryDraft && (
-          <Button className="mb-4" onClick={onContinueAccountDraft}>
-            Continue account draft
-          </Button>
+        {accountDraft && (
+          <div className="mb-4 rounded border border-white/15 p-3 text-left">
+            <p className="mb-2 text-sm text-gray-300">
+              Account draft: {accountDraft.projectName || accountDraft.originalFileName || 'Saved project'}
+              {' · '}{accountDraft.captions?.length || 0} captions
+            </p>
+            {localRecoveryDraft && (
+              <p className="mb-3 text-xs text-gray-400">
+                This browser and your account can have different drafts. Keep the browser copy above, or download its backup and open the account copy.
+              </p>
+            )}
+            <Button className="h-auto min-h-9 whitespace-normal text-left" onClick={openAccountDraft}>
+              {localRecoveryDraft ? 'Back up browser draft & open account draft' : 'Continue account draft'}
+            </Button>
+            {recoveryError && <p role="alert" className="mt-2 text-sm text-red-300">{recoveryError}</p>}
+          </div>
         )}
         {/* The recovery copy is discarded only once a new upload is accepted
             (Dashboard.handleUpload), so cancelling the upload window keeps it. */}
