@@ -62,7 +62,10 @@ export function prepareSourceTemplateWordNode(node) {
     setSourceTemplateStyle(target, 'pointer-events', 'auto');
     setSourceTemplateStyle(target, 'line-height', 'inherit');
     if (isManagedVisual || isKaraokeFill) {
-      setSourceTemplateStyle(target, 'left', '0');
+      // The managed visual keeps its in-flow start (left: auto), so a template's
+      // ::before mark (LC bracket '‹ ') stays in front of the word instead of
+      // under it; the spacer after it holds the word's width.
+      setSourceTemplateStyle(target, 'left', isKaraokeFill ? '0' : 'auto');
       setSourceTemplateStyle(target, 'top', '0');
       // Reset any stale transform, but WITHOUT !important — a per-word entrance
       // animation (source-word-rise/pop/...) sets `transform` via keyframes, and

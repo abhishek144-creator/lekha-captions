@@ -117,14 +117,30 @@ try {
       const t = timeline.getBoundingClientRect()
       const x = (Math.max(p.left, t.left) + Math.min(p.right, t.right)) / 2
       const y = Math.max(p.top, t.top) + 10
+      // The selected word's box sits under the timeline too, like the editor.
+      // It lets pointer events through, so let it take hits to test paint order.
+      const outline = document.querySelector('[data-selected-word-outline]')
+      let wordBoxUnderTimeline = null
+      if (outline) {
+        const o = outline.getBoundingClientRect()
+        const ox = o.left + o.width / 2
+        const oy = o.top + o.height / 2
+        if (oy > t.top && oy < t.bottom && ox > t.left && ox < t.right) {
+          outline.style.pointerEvents = 'auto'
+          wordBoxUnderTimeline = Boolean(document.elementFromPoint(ox, oy)?.closest('[data-timeline-root]'))
+          outline.style.pointerEvents = ''
+        }
+      }
       return {
         height: parseFloat(panel.style.maxHeight), placement: panel.dataset.placement,
         extendsBehindTimeline: p.bottom > t.top + 40,
         timelineOnTop: Boolean(document.elementFromPoint(x, y)?.closest('[data-timeline-root]')),
+        wordBoxUnderTimeline,
       }
     })
     const ok = before.placement === 'floating' && result.placement === 'floating'
       && Math.abs(before.height - result.height) < 2 && result.extendsBehindTimeline && result.timelineOnTop
+      && result.wordBoxUnderTimeline === true
     recordResult(ok)
     console.log(`${ok ? 'OK  ' : 'FAIL'} timeline keeps the full floating editor behind its layer: ${JSON.stringify({ before, result })}`)
     await page.screenshot({ path: 'test-artifacts/popup-expanded-timeline.png' })

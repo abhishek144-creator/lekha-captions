@@ -925,7 +925,7 @@ export const APPLIED_BASIC_TEMPLATE_PREVIEW_ONLY_OVERRIDES = `
   .lekha-applied-basic-template-host [data-source-word-visual="true"] {
     display: inline-block !important;
     position: absolute !important;
-    left: 0 !important;
+    left: auto !important;
     top: 0 !important;
     z-index: 6 !important;
     transform-origin: center center !important;

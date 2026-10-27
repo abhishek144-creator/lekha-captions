@@ -1468,7 +1468,7 @@ export default function Dashboard() {
             )}
 
             {/* Center Panel - Video Player & Timeline */}
-            <div className={`${isVideoFullscreen ? 'absolute inset-0 z-30 bg-[#050505] px-6 py-5' : 'flex-1 px-1 py-1 md:py-2 lg:py-3'} flex flex-col overflow-hidden min-h-0`} style={{ position: isVideoFullscreen ? 'absolute' : 'relative', zIndex: 50 }}>
+            <div data-preview-overlay-root="true" className={`${isVideoFullscreen ? 'absolute inset-0 z-30 bg-[#050505] px-6 py-5' : 'flex-1 px-1 py-1 md:py-2 lg:py-3'} flex flex-col overflow-hidden min-h-0`} style={{ position: isVideoFullscreen ? 'absolute' : 'relative', zIndex: 50 }}>
               {!isVideoFullscreen && (
               <div className="relative z-10 shrink-0 hidden lg:flex items-center justify-between px-1 pb-2">
                 <div className="flex items-center gap-3">
