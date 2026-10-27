@@ -50,10 +50,10 @@ export default function EditorGuide({ active }) {
   const { title, body } = EDITOR_GUIDE_STEPS[step]
 
   return (
+    // A labelled region, not a dialog: it never blocks the editor or traps focus.
     <section
       data-editor-panel="true"
-      role="dialog"
-      aria-labelledby="editor-guide-title"
+      aria-label="Quick guide"
       className="fixed inset-x-4 top-20 z-40 mx-auto max-w-sm rounded-2xl border border-white/10 bg-[#161616]/95 p-5 text-white shadow-2xl backdrop-blur lg:inset-x-auto lg:right-6 lg:top-auto lg:bottom-6"
     >
       <div className="flex items-start justify-between gap-3">

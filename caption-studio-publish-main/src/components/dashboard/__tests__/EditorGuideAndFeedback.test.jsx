@@ -18,7 +18,7 @@ afterEach(() => {
 describe('EditorGuide', () => {
   it('waits until captions are ready', () => {
     render(<EditorGuide active={false} />)
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Quick guide' })).toBeNull()
   })
 
   it('walks through every step and never returns once done', () => {
@@ -28,16 +28,18 @@ describe('EditorGuide', () => {
       fireEvent.click(screen.getByText('Next'))
     }
     fireEvent.click(screen.getByText('Done'))
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Quick guide' })).toBeNull()
     unmount()
     render(<EditorGuide active />)
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Quick guide' })).toBeNull()
   })
 
   it('can be skipped from the first step', () => {
     render(<EditorGuide active />)
-    fireEvent.click(screen.getByText('Skip guide'))
+    expect(screen.getByRole('region', { name: 'Quick guide' })).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByText('Skip guide'))
+    expect(screen.queryByRole('region', { name: 'Quick guide' })).toBeNull()
     expect(window.localStorage.getItem('lekha.editor-guide.v1')).toBe('done')
   })
 })

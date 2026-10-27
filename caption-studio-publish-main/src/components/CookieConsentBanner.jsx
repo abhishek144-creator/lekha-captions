@@ -11,8 +11,8 @@ export default function CookieConsentBanner() {
   if (choice) return null
 
   return (
+    // A labelled region, not a dialog: the page stays usable while it shows.
     <section
-      role="dialog"
       aria-live="polite"
       aria-labelledby="cookie-consent-title"
       className="fixed inset-x-4 bottom-4 z-[1000] mx-auto max-w-md rounded-2xl border border-white/10 bg-[#161616]/95 p-5 text-white shadow-2xl backdrop-blur sm:left-6 sm:right-auto sm:mx-0"
