@@ -27,6 +27,7 @@ try:
     from . import operator_controls
     from . import request_guards
     from . import email_policy
+    from . import transactional_email
     from .transcription_jobs import TranscriptionJobs
     from .drafts import list_projects, read_draft
     from .editor_preferences import read_editor_preferences
@@ -40,6 +41,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     import operator_controls
     import request_guards
     import email_policy
+    import transactional_email
     from transcription_jobs import TranscriptionJobs
     from drafts import list_projects, read_draft
     from editor_preferences import read_editor_preferences
@@ -366,6 +368,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
         })
         observability._audit_action("account_bootstrap_created", uid)
         observability._track_event("account_signup", {"uid": uid})
+        transactional_email.send_welcome(safe_profile["email"], safe_profile["displayName"])
     except AlreadyExists:
         # Only identity-provider profile fields may be refreshed here. Billing
         # and entitlement fields remain server-controlled elsewhere.

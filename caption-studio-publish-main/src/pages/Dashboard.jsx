@@ -9,6 +9,7 @@ import MobileDashboardDock from '@/components/dashboard/MobileDashboardDock';
 import EditorNotices from '@/components/dashboard/EditorNotices';
 import EditorStatusBanners from '@/components/dashboard/EditorStatusBanners';
 import EditorEmptyState from '@/components/dashboard/EditorEmptyState';
+import EditorGuide from '@/components/dashboard/EditorGuide';
 import GeneratingCaptionsScreen from '@/components/dashboard/GeneratingCaptionsScreen';
 import TimelineResizeHandle from '@/components/dashboard/TimelineResizeHandle';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -1613,6 +1614,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <EditorGuide active={captions.length > 0 && !isGenerating && !isVideoFullscreen} />
 
       {/* Modals */}
       {isUploadModalOpen && (

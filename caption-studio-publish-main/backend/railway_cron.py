@@ -24,10 +24,12 @@ try:
     from . import main as api
     from . import worker_launcher
     from . import render_autoscaling
+    from . import transactional_email
 except ImportError:  # pragma: no cover - run as a script from backend/
     import main as api
     import worker_launcher
     import render_autoscaling
+    import transactional_email
 
 try:
     from rq.registry import StartedJobRegistry
@@ -110,6 +112,13 @@ def kick_backlogged_workers(connection, queue_names):
     return sum(1 for name in queue_names if worker_launcher.kick(connection, name, log=print))
 
 
+def send_plan_expiry_reminders(connection, db, *, send=None):
+    """At most once an hour: the reminder query re-reads every plan ending soon."""
+    if not connection.set("lekha:cron:plan-expiry-reminders", "1", nx=True, ex=3600):
+        return {"skipped": "ran_this_hour"}
+    return (send or transactional_email.send_expiry_reminders)(db)
+
+
 def _api_host():
     """The real API: shared state and helpers from the modules that own them."""
     return SimpleNamespace(
@@ -150,6 +159,8 @@ def run_once(*, host=None, launch_queues=None):
             ("janitor", lambda: host.asyncio.run(host.scheduled_janitor_job())),
             ("payment_reconciliation",
              lambda: host.asyncio.run(host.scheduled_payment_reconciliation_job())),
+            ("plan_expiry_reminders",
+             lambda: send_plan_expiry_reminders(host._rq_redis_client, host.get_db())),
         ]
     failures = []
     for name, step in steps:

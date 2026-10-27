@@ -25,6 +25,7 @@ try:
     from . import entitlements
     from . import api_models
     from . import optional_deps
+    from . import transactional_email
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
     import app_state
@@ -34,6 +35,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     import entitlements
     import api_models
     import optional_deps
+    import transactional_email
 
 
 router = APIRouter()
@@ -577,6 +579,10 @@ def _apply_successful_payment(
             "amount_minor": int(amount_minor or 0),
             "payment_id": payment_id,
         })
+        transactional_email.send_payment_confirmation(
+            user_ref, plan_id, amount_minor, currency, result.get("credits_added"),
+            result.get("billing_cycle_end"), payment_id,
+        )
     return result
 
 

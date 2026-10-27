@@ -82,6 +82,13 @@ class RailwayCronTests(unittest.TestCase):
         self.assertNotIn("janitor", self.calls)
         self.assertNotIn("payment_reconciliation", self.calls)
 
+    def test_plan_expiry_reminders_run_at_most_once_an_hour(self):
+        sends = []
+        send = lambda db: sends.append(db) or {"sent": 0}
+        first = railway_cron.send_plan_expiry_reminders(self.redis, "db", send=send)
+        second = railway_cron.send_plan_expiry_reminders(self.redis, "db", send=send)
+        self.assertEqual((first, second, sends), ({"sent": 0}, {"skipped": "ran_this_hour"}, ["db"]))
+
     def test_due_retry_is_promoted_and_a_worker_is_woken(self):
         queue = Queue("caption_export_jobs", connection=self.redis)
         job = queue.enqueue_at(datetime.now(timezone.utc) - timedelta(seconds=5), noop)

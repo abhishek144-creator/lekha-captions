@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import CaptionStudioLogo from './CaptionStudioLogo';
 import DismissibleNotice from './DismissibleNotice';
+import FeedbackButton from './FeedbackButton';
 import { isSubscriptionExpired } from '@/lib/subscription';
 import {
   Upload,
@@ -191,6 +192,8 @@ export default function DashboardHeader({
 
           </div>
         )}
+
+        <FeedbackButton email={user?.email || ''} />
 
         {hasVideo && (
           <>
