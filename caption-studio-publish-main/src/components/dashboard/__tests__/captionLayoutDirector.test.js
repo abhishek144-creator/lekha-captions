@@ -11,7 +11,7 @@ import {
   planCaptionLayouts,
   setCaptionLayout,
 } from '../captionLayoutDirector'
-import { buildEmotionalCaptionPlan, getTemplatePhaseTypes } from '../emotionalTemplateUtils'
+import { buildEmotionalCaptionPlan, getTemplatePhaseTypes, selectSemanticEmphasis } from '../emotionalTemplateUtils'
 
 const measure = (text, size) => String(text).length * size * 0.5
 const frame = { width: 360, height: 640 }
@@ -307,7 +307,10 @@ describe('emotionally intelligent rules', () => {
 
   it('does not highlight the same word in two captions in a row', () => {
     const [first, second] = plan([caption('a', 'discipline beats talent', 0, 2), caption('b', 'discipline builds habits slowly', 2.5, 5)])
-    expect(wordsOf('discipline beats talent')[first.heroIndex]).toBe('discipline')
+    // No word in the first line has semantic evidence: no hero is invented
+    // (the old fallback promoted ranked[0] and highlighted it in a CPT).
+    expect(first.heroIndex).toBe(-1)
+    expect(first.keywordIndices).toEqual([])
     expect(wordsOf('discipline builds habits slowly')[second.heroIndex]).not.toBe('discipline')
   })
 
@@ -331,5 +334,112 @@ describe('emotionally intelligent rules', () => {
     const cpt = applyCaptionLayout(templated, { mode: 'cpt', motion: 'word', plan: { heroIndex: 2, captionIndex: 1 } })
     expect(cpt.template_phase_index).toBe(0)
     expect(cpt.imp_word_indices).toEqual([2])
+  })
+})
+
+// 2026-10-27 caption-intelligence rebuild: hook priority, emotion as a ranking
+// signal only, restrained highlights and user looks across templates.
+describe('hook and CPT visibility', () => {
+  const scene = (inner) => `<div class="sb" data-si="0"><div class="cap"><div class="scene">${inner}</div></div></div>`
+  const markup = [
+    scene('<div class="nline plainwrap"><span class="w on">still</span></div>'),
+    scene('<div class="cpt pyramid"><div class="ln"><span class="w">BIG</span></div></div>'),
+    scene('<div class="nline"><span class="w" data-lc-anim="rise">moving</span></div>'),
+  ].join('')
+  const templated = (captions, id = 'T1') => captions.map((item) => ({ ...item, template_markup: markup, template_20_id: id }))
+  const shortScript = () => [
+    caption('a', 'आज की कहानी', 0, 1.4),
+    caption('b', 'शिप देख रहे हो', 1.5, 2.6),
+    caption('c', 'वो शिप नहीं है', 2.8, 3.9),
+    caption('d', 'बल्कि एक क्लब हाउस है।', 4.1, 5.6),
+    caption('e', 'we raised 10 lakh rupees', 6, 7.5),
+    caption('f', 'in just 30 days!', 7.6, 9),
+  ]
+
+  it('opens a templated video with the hook CPT even without a keyword or loudness', () => {
+    const quietOpening = Array.from({ length: 90 }, (_, i) => (i < 14 ? 0.05 : 0.9))
+    const [hook] = planCaptionLayouts(templated(shortScript()), { waveformData: quietOpening, duration: 9 })
+    expect(hook.mode).toBe('cpt')
+    const { captions } = autoLayoutCaptions(templated(shortScript()), { waveformData: quietOpening, duration: 9, frame, measure })
+    expect(captions[0].template_phase_index).toBe(1)
+    // Nothing earned emphasis in this line, so the styled phase highlights nothing.
+    expect(captions[0].imp_word_indices).toEqual([])
+  })
+
+  it('does not let an AI emotion label remove the hook CPT', () => {
+    const read = attachCaptionEmotions(templated(shortScript()), shortScript().map((line) => ({
+      id: line.id, type: 'narration', emotion: 'neutral', intensity: 0.05, keywords: [],
+    })))
+    const [hook] = planCaptionLayouts(read, { duration: 9 })
+    expect(hook.mode).toBe('cpt')
+  })
+
+  it('makes a question opening the hook, and leaves filler openings quiet', () => {
+    const [question] = planCaptionLayouts(templated([caption('q', 'want to know the secret?', 0, 1.6), caption('z', 'here it is', 2, 3)]), { duration: 3 })
+    expect(question.mode).toBe('cpt')
+    const [filler] = planCaptionLayouts(templated([caption('f', 'so okay', 0, 1.2), caption('z', 'here it is', 2, 3)]), { duration: 3 })
+    expect(filler.mode).not.toBe('cpt')
+  })
+
+  it('gives roughly one hero line in three, never two within three captions', () => {
+    const captions = templated(shortScript())
+    const loud = Array.from({ length: 90 }, () => 0.9)
+    const plans = planCaptionLayouts(captions, { waveformData: loud, duration: 9 })
+    const cptIndexes = plans.filter((plan) => plan.mode === 'cpt').map((plan) => plan.captionIndex)
+    expect(cptIndexes.length).toBeGreaterThanOrEqual(2)
+    expect(cptIndexes.length).toBeLessThanOrEqual(Math.round(captions.length / 3))
+    cptIndexes.slice(1).forEach((index, i) => expect(index - cptIndexes[i]).toBeGreaterThanOrEqual(3))
+  })
+
+  it('needs a hero word for a plain (template-free) CPT', () => {
+    const [plain] = planCaptionLayouts([caption('a', 'मेरे पीछे जो आप', 0, 1.4), caption('b', 'here it is', 2, 3)], { duration: 3 })
+    expect(plain.mode).not.toBe('cpt')
+  })
+
+  it('plans identically for identical input', () => {
+    const once = planCaptionLayouts(templated(shortScript()), { duration: 9 })
+    const twice = planCaptionLayouts(templated(shortScript()), { duration: 9 })
+    expect(twice).toEqual(once)
+  })
+
+  it('keeps a look the user chose when another template is applied', () => {
+    const [chosen] = setCaptionLayout(templated(shortScript()), 'c', { mode: 'cpt', motion: 'word' }, { duration: 9, frame, measure })
+      .filter((item) => item.id === 'c')
+    expect(chosen.layoutSource).toBe('user')
+    expect(chosen.template_phase_index).toBe(1)
+    // Template B puts its styled phase last; the user's CPT follows it there.
+    const otherMarkup = [
+      scene('<div class="nline plainwrap"><span class="w on">still</span></div>'),
+      scene('<div class="nline"><span class="w" data-lc-anim="rise">moving</span></div>'),
+      scene('<div class="cpt pyramid"><div class="ln"><span class="w">BIG</span></div></div>'),
+    ].join('')
+    const switched = { ...chosen, template_markup: otherMarkup, template_20_id: 'T2', template_phase_index: 0 }
+    const { captions } = autoLayoutCaptions([switched], { duration: 9, frame, measure })
+    expect(captions[0].layoutSource).toBe('user')
+    expect(captions[0].template_phase_index).toBe(2)
+    expect(captions[0].imp_word_indices).toEqual(chosen.imp_word_indices)
+  })
+})
+
+describe('negation keeps its meaning', () => {
+  const pick = (text, language) => {
+    const words = text.split(' ')
+    const { impWordIndices } = selectSemanticEmphasis(words, language)
+    return impWordIndices.map((index) => words[index])
+  }
+
+  it('emphasises NOT rather than the negated word', () => {
+    expect(pick('This is not what I expected')).toEqual(['not'])
+    expect(pick('We did not win the match')).toEqual(['not'])
+    expect(pick('मैं बाज़ार में नहीं जाऊंगा।', 'hindi')).toEqual(['नहीं'])
+  })
+
+  it('leaves a sentence-level interjection and unnegated meaning alone', () => {
+    expect(pick('No, we launched it today')).toEqual(['launched'])
+    expect(pick('we raised 10 lakh rupees')).toEqual(['10'])
+  })
+
+  it('highlights nothing when no word carries the line', () => {
+    expect(pick('so that is it for now')).toEqual([])
   })
 })

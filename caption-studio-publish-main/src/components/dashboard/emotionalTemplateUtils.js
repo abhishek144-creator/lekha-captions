@@ -14,10 +14,12 @@ export const EMPHASIS_STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'being', 'but', 'by',
   'do', 'does', 'for', 'from', 'had', 'has', 'have', 'he', 'her', 'here',
   'him', 'his', 'how', 'i', 'if', 'in', 'is', 'it', 'its', 'me', 'my',
-  'no', 'not', 'of', 'on', 'or', 'our', 'she', 'so', 'than', 'that', 'the',
+  'of', 'on', 'or', 'our', 'she', 'so', 'than', 'that', 'the',
   'their', 'them', 'then', 'there', 'these', 'they', 'this', 'to', 'too',
   'up', 'us', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'who',
   'why', 'will', 'with', 'you', 'your',
+  // Negations (no, not, नहीं, ना, मत) are deliberately absent: they are scored
+  // by NEGATIONS in selectSemanticEmphasis, because they carry the meaning.
   'am', 'just', 'really', 'very', 'also', 'about', 'into', 'over', 'some', 'any',
   'all', 'can', 'could', 'would', 'should', 'get', 'got', 'go', 'going', 'gonna',
   'wanna', 'its', "it's", "i'm", "that's", "you're", "we're", "they're", "there's",
@@ -26,8 +28,8 @@ export const EMPHASIS_STOP_WORDS = new Set([
   'ही', 'भी', 'ने', 'लिए', 'कि', 'जो', 'वो', 'यह', 'ये', 'वह', 'वे', 'मैं',
   'हम', 'आप', 'तुम', 'मुझे', 'मेरे', 'मेरा', 'मेरी', 'हमारा', 'हमारी', 'आपका', 'आपकी', 'आपको',
   'उनका', 'उनकी', 'उनको', 'इस', 'उस', 'इन', 'उन', 'है', 'हैं', 'था', 'थे', 'थी',
-  'हो', 'होगा', 'होगी', 'होंगे', 'रहा', 'रही', 'रहे', 'कर', 'करके', 'किया', 'करना', 'नहीं',
-  'ना', 'मत', 'बस', 'अब', 'तब', 'यहाँ', 'वहाँ', 'कहाँ', 'क्यों', 'कैसे', 'क्या', 'आज',
+  'हो', 'होगा', 'होगी', 'होंगे', 'रहा', 'रही', 'रहे', 'कर', 'करके', 'किया', 'करना',
+  'बस', 'अब', 'तब', 'यहाँ', 'वहाँ', 'कहाँ', 'क्यों', 'कैसे', 'क्या', 'आज',
   'कल',
   // Positions, quantities and helper verbs: they frame a sentence, they don't
   // carry it ("मेरे पीछे जो आप शिप देख" highlights शिप, not पीछे).
@@ -81,6 +83,17 @@ const actionLeads = new Set(languageRules.actionLeads.split(/\s+/))
 const actionTails = new Set(languageRules.actionTails.split(/\s+/))
 const isActionWord = word => semanticActions.has(word) || (/^[a-z]+$/u.test(word || '') && ['s', 'ed', 'ing'].some(suffix => word.endsWith(suffix) && semanticActions.has(word.slice(0, -suffix.length))))
 const clauseStarters = new Set(languageRules.clauseStarters.split(/\s+/))
+// Words that reverse a sentence. Emphasising the word they negate alone
+// ("I did not WIN") says the opposite of what was spoken, so a negated
+// candidate hands its emphasis to the negation ("I did NOT win").
+const NEGATIONS = new Set([
+  'not', 'never', 'no', "don't", "doesn't", "didn't", "can't", 'cannot', "won't", "isn't", "aren't", "wasn't",
+  "weren't", "shouldn't", "wouldn't", "couldn't", 'nothing', 'nobody', 'nahi', 'nahin',
+  'नहीं', 'ना', 'मत', 'कभी', 'नही', 'இல்லை', 'లేదు', 'కాదు', 'না', 'নয়', 'نہیں', 'nunca', 'jamais', 'nicht', 'nie', 'não',
+])
+const NEGATION_SCOPE = 3
+// A negation followed by punctuation is an interjection ("No, it worked").
+const negates = (words, index) => index < words.length - 1 && !/[,;:.!?।]$/u.test(String(words[index]).trim())
 
 // A conservative local reading when no stored semantic analysis exists.
 // Length alone cannot earn emphasis. Numbers, names, main actions, emotional
@@ -88,8 +101,12 @@ const clauseStarters = new Set(languageRules.clauseStarters.split(/\s+/))
 export function selectSemanticEmphasis(words = [], language = '') {
   const stopWords = getEmphasisStopWords(words.join(' '), language)
   const normalized = words.map(normalizeEmphasisWord)
+  const negationAt = normalized.map((word, index) => NEGATIONS.has(word) && negates(words, index))
   const candidates = normalized.map((word, index) => {
     if (!word || stopWords.has(word)) return { index, score: -1 }
+    // A sentence-level negation is positive evidence on its own.
+    if (negationAt[index]) return { index, score: 3 }
+    if (NEGATIONS.has(word)) return { index, score: -1 }
     let score = 0
     if (/\p{N}/u.test(word)) score += 5
     if (isActionWord(word)) score += 3.5
@@ -109,7 +126,11 @@ export function selectSemanticEmphasis(words = [], language = '') {
     if (/[!！]$/.test(words[index])) score += 1
     return { index, score }
   }).filter(item => item.score >= 2.5).sort((a, b) => b.score - a.score || (normalized[a.index] < normalized[b.index] ? -1 : normalized[a.index] > normalized[b.index] ? 1 : 0) || a.index - b.index)
-  const chosen = candidates[0]?.index ?? -1
+  let chosen = candidates[0]?.index ?? -1
+  // The negation keeps the contrast when the chosen word is inside its scope.
+  for (let lead = chosen - 1; chosen >= 0 && lead >= Math.max(0, chosen - NEGATION_SCOPE); lead -= 1) {
+    if (negationAt[lead]) { chosen = lead; break }
+  }
   return { impWordIndex: chosen, impWordIndices: chosen < 0 ? [] : [chosen], emphasisColor: '' }
 }
 
