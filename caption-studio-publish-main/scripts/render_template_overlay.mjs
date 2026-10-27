@@ -1,5 +1,6 @@
 import { buildRuntimeScript, ADVANCED_TEMPLATE_VARIANTS, TEMPLATE_CANVAS_FONT_SCALE, LINE_ANIMATION_DEFS, SIDEBAR_TEMPLATE_WORD_STAGGER_SECONDS, SIDEBAR_TEMPLATE_POSITION_STAGGER_SECONDS } from './render_template_page_runtime.mjs'
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { isAdvancedTemplateId, extractHtmlStyle } from '../src/components/dashboard/templateTextRules.js';
 import { fileURLToPath } from 'url';
@@ -146,8 +147,82 @@ function extractOriginalTemplateRuntimeCss(originalTemplateHtml) {
   return start >= 0 ? style.slice(start) : style;
 }
 
+// Opening a render page costs about as much as capturing a few dozen frames,
+// so short timelines stay on one page.
+const MIN_CAPTURED_FRAMES_PER_RENDER_PAGE = 60;
+const DEFAULT_MAX_RENDER_PAGES = 4;
+const MAX_RENDER_PAGES = 8;
 
+// Containers usually report the host's cores to Node. A cgroup v2 CPU quota is
+// the limit the render worker actually gets.
+async function availableRenderCpus() {
+  let cpus = os.availableParallelism();
+  try {
+    const [quota, period] = (await fs.readFile('/sys/fs/cgroup/cpu.max', 'utf8')).trim().split(/\s+/);
+    if (quota !== 'max' && Number(quota) > 0 && Number(period) > 0) {
+      cpus = Math.min(cpus, Math.max(1, Math.floor(Number(quota) / Number(period))));
+    }
+  } catch {
+    // No cgroup v2 quota (Windows, macOS, or an unlimited container).
+  }
+  return cpus;
+}
 
+// Each render page is its own Chromium process, which uses about two cores
+// while it captures. TEMPLATE_OVERLAY_PAGES overrides the default; 1 keeps the
+// single-page path.
+async function resolveRenderPageCount(capturedFrameCount) {
+  const requested = Number.parseInt(process.env.TEMPLATE_OVERLAY_PAGES || '', 10);
+  const configured = Number.isFinite(requested) && requested > 0
+    ? Math.min(requested, MAX_RENDER_PAGES)
+    : Math.min(DEFAULT_MAX_RENDER_PAGES, Math.max(1, Math.floor((await availableRenderCpus()) / 2)));
+  return Math.max(1, Math.min(configured, Math.floor(capturedFrameCount / MIN_CAPTURED_FRAMES_PER_RENDER_PAGE)));
+}
+
+// Returns the first segment index of each page's chunk. A page may only start
+// where the single-page render rebuilds the overlay DOM: at a captured frame
+// whose set of active captions differs from the previous captured frame.
+// Sidebar (LC/Studio/Picks) DOM is otherwise reused and carries state between
+// frames. Chunks are balanced by captured frames, since blank frames are free.
+function planRenderChunkStarts(frameSignatures, pageCount) {
+  const captured = [];
+  const candidates = [];
+  let capturedSoFar = 0;
+  let previousSignature = null;
+  frameSignatures.forEach((signature, index) => {
+    captured.push(capturedSoFar);
+    if (!signature) return;
+    if (index > 0 && signature !== previousSignature) candidates.push(index);
+    previousSignature = signature;
+    capturedSoFar += 1;
+  });
+  const starts = [0];
+  for (let chunk = 1; chunk < pageCount; chunk += 1) {
+    const target = (capturedSoFar * chunk) / pageCount;
+    const previous = starts[starts.length - 1];
+    let best = -1;
+    for (const candidate of candidates) {
+      if (candidate <= previous) continue;
+      if (best === -1 || Math.abs(captured[candidate] - target) < Math.abs(captured[best] - target)) best = candidate;
+    }
+    if (best !== -1) starts.push(best);
+  }
+  return starts;
+}
+
+// A render browser can take minutes to shut down gracefully (seen with LC
+// templates), long after its frames are on disk. Give it a few seconds, then
+// kill the process so the export is not held up.
+async function closeBrowserQuickly(targetBrowser) {
+  let timer;
+  const closed = targetBrowser.close().then(() => true, () => false);
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), 5000);
+  });
+  const closedInTime = await Promise.race([closed, timedOut]);
+  clearTimeout(timer);
+  if (!closedInTime) targetBrowser.process()?.kill('SIGKILL');
+}
 
 async function main() {
   const payloadPath = process.argv[2];
@@ -2291,85 +2366,94 @@ async function main() {
   }
   if (!browser) browser = await puppeteer.launch(browserLaunchOptions(viewport));
 
+  // Extra render pages each get their own Chromium process: tabs sharing one
+  // browser are hidden behind the front tab (stalling requestAnimationFrame)
+  // and funnel screenshots through a single compositor.
+  const extraBrowsers = [];
   try {
-    const page = isolatedContext ? await isolatedContext.newPage() : await browser.newPage();
-    await page.setViewport(viewport);
-    // Font stylesheets can take longer than Puppeteer's 30-second default on
-    // cold CI runners. Keep the wait bounded, but leave enough room for the
-    // same assets the export subsequently verifies via document.fonts.ready.
-    page.setDefaultNavigationTimeout(60_000);
-    const allowRemoteFonts = !(process.env.RENDER_FONT_BUNDLE_REQUIRED === '1'
-      && process.env.PREFER_PACKAGED_RENDER_FONTS === '1');
-    const pendingFontRequests = new Set();
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      const rawUrl = request.url();
-      if (rawUrl.startsWith('https:')) pendingFontRequests.add(rawUrl);
-      if (rawUrl === 'about:blank' || rawUrl.startsWith('data:')) {
-        request.continue();
-        return;
-      }
-      try {
-        const parsed = new URL(rawUrl);
-        if (allowRemoteFonts && parsed.protocol === 'https:' && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(parsed.hostname)) {
+    // Every render page loads the same document, so frames captured on any of
+    // them are interchangeable (see renderChunk below).
+    const openRenderPage = async (owner) => {
+      const page = await owner.newPage();
+      await page.setViewport(viewport);
+      // Font stylesheets can take longer than Puppeteer's 30-second default on
+      // cold CI runners. Keep the wait bounded, but leave enough room for the
+      // same assets the export subsequently verifies via document.fonts.ready.
+      page.setDefaultNavigationTimeout(60_000);
+      const allowRemoteFonts = !(process.env.RENDER_FONT_BUNDLE_REQUIRED === '1'
+        && process.env.PREFER_PACKAGED_RENDER_FONTS === '1');
+      const pendingFontRequests = new Set();
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        const rawUrl = request.url();
+        if (rawUrl.startsWith('https:')) pendingFontRequests.add(rawUrl);
+        if (rawUrl === 'about:blank' || rawUrl.startsWith('data:')) {
           request.continue();
           return;
         }
-      } catch {
-        // Invalid and non-network URLs are blocked below.
-      }
-      request.abort('blockedbyclient');
-    });
-    page.on('requestfinished', (request) => pendingFontRequests.delete(request.url()));
-    page.on('requestfailed', (request) => pendingFontRequests.delete(request.url()));
-    const pageErrors = [];
-    page.on('pageerror', (error) => {
-      pageErrors.push(error?.stack || error?.message || String(error));
-    });
-    page.on('console', (message) => {
-      if (message.type() === 'error') {
-        pageErrors.push(message.text());
-      }
-    });
-    await page.setContent(`
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
-          <link rel="preconnect" href="https://fonts.googleapis.com">
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-          ${exportFontLinks}
-          <style>${bundledRenderFontCss}\n${runtimeCss}</style>
-        </head>
-        <body>
-          <div id="overlay-root"></div>
-          <script>window.__exportCanvasScale = ${JSON.stringify(exportCssScale)};</script>
-          <script>window.__exportScriptFontMaps = ${JSON.stringify(exportScriptFontMaps)};</script>
-          <script>window.__basicTemplateMarkupMap = ${JSON.stringify(basicTemplateMarkupMap)};</script>
-          ${basicTemplateInlineSource ? `<script>${basicTemplateInlineSource}</script>` : ''}
-          <script>${templateTextRulesSource}</script>
-          <script>${buildRuntimeScript(advancedTemplateBlockMarkup)}</script>
-        </body>
-      </html>
-    // Packaged fonts need DOM initialization and the explicit font-readiness
-    // checks below. Chromium network-idle tracking can stall on a large inline
-    // font bundle even with no outstanding network requests.
-    `, { waitUntil: allowRemoteFonts ? 'networkidle0' : 'domcontentloaded' }).catch((error) => {
-      throw new Error(`[Template DOM] ${error.message}; pending fonts: ${JSON.stringify([...pendingFontRequests])}; page errors: ${pageErrors.slice(-5).join(' | ')}`);
-    });
+        try {
+          const parsed = new URL(rawUrl);
+          if (allowRemoteFonts && parsed.protocol === 'https:' && ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(parsed.hostname)) {
+            request.continue();
+            return;
+          }
+        } catch {
+          // Invalid and non-network URLs are blocked below.
+        }
+        request.abort('blockedbyclient');
+      });
+      page.on('requestfinished', (request) => pendingFontRequests.delete(request.url()));
+      page.on('requestfailed', (request) => pendingFontRequests.delete(request.url()));
+      const pageErrors = [];
+      page.on('pageerror', (error) => {
+        pageErrors.push(error?.stack || error?.message || String(error));
+      });
+      page.on('console', (message) => {
+        if (message.type() === 'error') {
+          pageErrors.push(message.text());
+        }
+      });
+      await page.setContent(`
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            ${exportFontLinks}
+            <style>${bundledRenderFontCss}\n${runtimeCss}</style>
+          </head>
+          <body>
+            <div id="overlay-root"></div>
+            <script>window.__exportCanvasScale = ${JSON.stringify(exportCssScale)};</script>
+            <script>window.__exportScriptFontMaps = ${JSON.stringify(exportScriptFontMaps)};</script>
+            <script>window.__basicTemplateMarkupMap = ${JSON.stringify(basicTemplateMarkupMap)};</script>
+            ${basicTemplateInlineSource ? `<script>${basicTemplateInlineSource}</script>` : ''}
+            <script>${templateTextRulesSource}</script>
+            <script>${buildRuntimeScript(advancedTemplateBlockMarkup)}</script>
+          </body>
+        </html>
+      // Packaged fonts need DOM initialization and the explicit font-readiness
+      // checks below. Chromium network-idle tracking can stall on a large inline
+      // font bundle even with no outstanding network requests.
+      `, { waitUntil: allowRemoteFonts ? 'networkidle0' : 'domcontentloaded' }).catch((error) => {
+        throw new Error(`[Template DOM] ${error.message}; pending fonts: ${JSON.stringify([...pendingFontRequests])}; page errors: ${pageErrors.slice(-5).join(' | ')}`);
+      });
 
-    await page.addStyleTag({ content: captionCss });
-    await page.addStyleTag({ content: advancedCaptionCss });
-    await page.addStyleTag({ content: originalTemplateCss });
-    if (hasBasicTemplate) {
-      await page.addStyleTag({ content: APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES });
-    }
-    const renderPayloadType = await page.evaluate(() => typeof window.__renderPayload);
-    if (renderPayloadType !== 'function') {
-      throw new Error(`[Template DOM] overlay runtime did not initialize __renderPayload. Page errors: ${pageErrors.join(' | ') || 'none'}`);
-    }
-    await page.evaluate(() => document.fonts.ready);
+      await page.addStyleTag({ content: captionCss });
+      await page.addStyleTag({ content: advancedCaptionCss });
+      await page.addStyleTag({ content: originalTemplateCss });
+      if (hasBasicTemplate) {
+        await page.addStyleTag({ content: APPLIED_BASIC_TEMPLATE_HOST_OVERRIDES });
+      }
+      const renderPayloadType = await page.evaluate(() => typeof window.__renderPayload);
+      if (renderPayloadType !== 'function') {
+        throw new Error(`[Template DOM] overlay runtime did not initialize __renderPayload. Page errors: ${pageErrors.join(' | ') || 'none'}`);
+      }
+      await page.evaluate(() => document.fonts.ready);
+      return page;
+    };
 
     const segments = [];
     const points = new Set([0, Number(payload.duration || 0)]);
@@ -2603,12 +2687,59 @@ async function main() {
 
     console.log(`[Template DOM] segments=${segments.length} template_timing=${templateUsesPreviewTiming} sidebar_timing=${templateUsesSidebarTiming} sample_fps=${adaptiveTemplateSampleFps}`);
 
-    const frameLines = [];
-    const frameFiles = [];
-    const completenessAudits = [];
-    const wordPositionAudits = [];
     const lastIndex = segments.length - 1;
     const blankFramePath = path.join(outputDir, 'frame-blank.png');
+    const segmentRenderTime = (segment) => {
+      const sampleOffset = Math.min(
+        Math.max(0, segment.duration / 2),
+        1 / (adaptiveTemplateSampleFps * 2),
+      );
+      return Math.min(segment.end - 0.0005, segment.start + sampleOffset);
+    };
+    // Matches the active caption signature __renderPayload keys DOM reuse on;
+    // empty for frames that are not captured (the blank frame is reused).
+    const frameSignatures = segments.map((segment) => {
+      const renderTime = segmentRenderTime(segment);
+      return (payload.captions || []).filter((caption) => {
+        const start = Number(caption.start_time ?? 0);
+        const end = Number(caption.end_time ?? start);
+        return renderTime >= start && renderTime < end;
+      }).map((caption) => [
+        caption?.id || '',
+        Number(caption?.start_time ?? 0),
+        Number(caption?.end_time ?? caption?.start_time ?? 0),
+      ].join(':')).join('|');
+    });
+
+    // The debug dump below inspects the main page's final DOM, so keep the
+    // whole render on that page when it is enabled.
+    const requestedPageCount = process.env.TEMPLATE_OVERLAY_DEBUG === '1'
+      ? 1
+      : await resolveRenderPageCount(frameSignatures.filter(Boolean).length);
+    const plannedChunkStarts = planRenderChunkStarts(frameSignatures, requestedPageCount);
+    // Settle every launch before going on, so no extra browser starts after
+    // the cleanup below has already closed the others.
+    const [mainPageResult, ...extraPageResults] = await Promise.allSettled([
+      openRenderPage(isolatedContext || browser),
+      ...plannedChunkStarts.slice(1).map(async () => {
+        try {
+          const extraBrowser = await puppeteer.launch(browserLaunchOptions(viewport));
+          extraBrowsers.push(extraBrowser);
+          return await openRenderPage(extraBrowser);
+        } catch (error) {
+          // Extra pages only speed the render up; capture on the pages that opened.
+          console.warn(`[Template DOM] extra render page unavailable: ${error?.message || error}`);
+          return null;
+        }
+      }),
+    ]);
+    if (mainPageResult.status === 'rejected') throw mainPageResult.reason;
+    const page = mainPageResult.value;
+    const renderPages = [page, ...extraPageResults.map((result) => result.value).filter(Boolean)];
+    const chunkStarts = renderPages.length === plannedChunkStarts.length
+      ? plannedChunkStarts
+      : planRenderChunkStarts(frameSignatures, renderPages.length);
+    console.log(`[Template DOM] render_pages=${chunkStarts.length} chunk_starts=${chunkStarts.join(',')}`);
 
     await page.evaluate(() => {
       const root = document.getElementById('overlay-root');
@@ -2624,77 +2755,182 @@ async function main() {
       optimizeForSpeed: true,
     });
 
-    for (let index = 0; index < segments.length; index += 1) {
-      const segment = segments[index];
-      const sampleOffset = Math.min(
-        Math.max(0, segment.duration / 2),
-        1 / (adaptiveTemplateSampleFps * 2),
-      );
-      const renderTime = Math.min(segment.end - 0.0005, segment.start + sampleOffset);
-      const framePath = path.join(outputDir, `frame-${String(index).padStart(5, '0')}.png`);
-      const hasActiveCaptions = (payload.captions || []).some((caption) => {
-        const start = Number(caption.start_time ?? 0);
-        const end = Number(caption.end_time ?? start);
-        return renderTime >= start && renderTime < end;
-      });
-
-      let renderedFramePath = blankFramePath;
-      if (hasActiveCaptions) {
+    // Renders segments [fromIndex, toIndex) on one page. Results are returned
+    // per chunk and concatenated in chunk order, so frames.txt and the audits
+    // keep the order a single-page render produces.
+    const renderChunk = async (page, fromIndex, toIndex) => {
+      const frameLines = [];
+      const frameFiles = [];
+      const completenessAudits = [];
+      const wordPositionAudits = [];
+      const chunkStartedAt = performance.now();
+      // Layout depends on which fonts have already loaded: a face that arrives
+      // after a sidebar caption was measured leaves that caption laid out with
+      // fallback metrics. Bring this page to the font state the single-page
+      // render has here by drawing (without capturing) the last frame of every
+      // earlier caption set.
+      const warmUpTimes = [];
+      const warmedSignatures = new Set();
+      for (let index = fromIndex - 1; index >= 0; index -= 1) {
+        const signature = frameSignatures[index];
+        if (!signature || warmedSignatures.has(signature)) continue;
+        warmedSignatures.add(signature);
+        warmUpTimes.unshift(segmentRenderTime(segments[index]));
+      }
+      for (const warmUpTime of warmUpTimes) {
         await page.evaluate(async (currentPayload, currentTime) => {
-          try {
-            window.__renderPayload(currentPayload, currentTime);
-            // Fonts are requested lazily when caption glyphs enter the DOM.
-            // The empty-page fonts.ready above cannot settle their geometry.
-            // Rebuild measured word offsets after a newly used font arrives.
-            void document.getElementById('overlay-root').offsetWidth;
-            if (document.fonts.status === 'loading') {
-              let fontTimeout;
-              try {
-                await Promise.race([
-                  document.fonts.ready,
-                  new Promise((_, reject) => {
-                    fontTimeout = setTimeout(() => reject(new Error('Caption fonts did not settle within 15 seconds')), 15000);
-                  }),
-                ]);
-              } finally {
-                clearTimeout(fontTimeout);
-              }
-              window.__renderPayload(currentPayload, currentTime);
-            }
-            if (window.__activateTemplateAnimations) {
-              await window.__activateTemplateAnimations();
-            } else {
-              await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-            }
-          } catch (error) {
-            throw new Error(`[Template DOM] renderPayload failed at ${currentTime.toFixed(3)}s: ${error?.stack || error?.message || error}`);
-          }
+          window.__renderPayload(currentPayload, currentTime);
+          void document.getElementById('overlay-root').offsetWidth;
+          if (window.__activateTemplateAnimations) await window.__activateTemplateAnimations();
+          void document.getElementById('overlay-root').offsetWidth;
+          await document.fonts.ready;
+        }, payload, warmUpTime);
+      }
+      for (let index = fromIndex; index < toIndex; index += 1) {
+        const segment = segments[index];
+        const renderTime = segmentRenderTime(segment);
+        const framePath = path.join(outputDir, `frame-${String(index).padStart(5, '0')}.png`);
+        const hasActiveCaptions = Boolean(frameSignatures[index]);
 
-          let animations = [];
-          try {
-            animations = document.getAnimations({ subtree: true });
-          } catch (error) {
-            throw new Error(`[Template DOM] getAnimations failed at ${currentTime.toFixed(3)}s: ${error?.stack || error?.message || error}`);
-          }
-          animations.forEach((animation) => {
+        let renderedFramePath = blankFramePath;
+        if (hasActiveCaptions) {
+          await page.evaluate(async (currentPayload, currentTime) => {
             try {
-              const target = animation.effect?.target?.element || animation.effect?.target;
-              const shell = target?.closest?.(
-                '.caption-line-animation-shell, .template-caption-shell, .lekha-sidebar-export-template-shell, .lekha-applied-basic-template-host',
-              );
+              window.__renderPayload(currentPayload, currentTime);
+              // Fonts are requested lazily when caption glyphs enter the DOM.
+              // The empty-page fonts.ready above cannot settle their geometry.
+              // Rebuild measured word offsets after a newly used font arrives.
+              void document.getElementById('overlay-root').offsetWidth;
+              if (document.fonts.status === 'loading') {
+                let fontTimeout;
+                try {
+                  await Promise.race([
+                    document.fonts.ready,
+                    new Promise((_, reject) => {
+                      fontTimeout = setTimeout(() => reject(new Error('Caption fonts did not settle within 15 seconds')), 15000);
+                    }),
+                  ]);
+                } finally {
+                  clearTimeout(fontTimeout);
+                }
+                window.__renderPayload(currentPayload, currentTime);
+              }
+              if (window.__activateTemplateAnimations) {
+                await window.__activateTemplateAnimations();
+              } else {
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              }
+            } catch (error) {
+              throw new Error(`[Template DOM] renderPayload failed at ${currentTime.toFixed(3)}s: ${error?.stack || error?.message || error}`);
+            }
+
+            let animations = [];
+            try {
+              animations = document.getAnimations({ subtree: true });
+            } catch (error) {
+              throw new Error(`[Template DOM] getAnimations failed at ${currentTime.toFixed(3)}s: ${error?.stack || error?.message || error}`);
+            }
+            animations.forEach((animation) => {
+              try {
+                const target = animation.effect?.target?.element || animation.effect?.target;
+                const shell = target?.closest?.(
+                  '.caption-line-animation-shell, .template-caption-shell, .lekha-sidebar-export-template-shell, .lekha-applied-basic-template-host',
+                );
+                const captionStart = Number(shell?.dataset?.captionStart || 0);
+                const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
+                const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
+                const block = target?.closest?.('.lekha-applied-advanced-template');
+                const blockType = block?.dataset?.templateBlockType || 'styled';
+                const wordCount = block
+                  ? Math.max(
+                      1,
+                      block.querySelectorAll('.w, .kf-word').length
+                        || String(block.textContent || '').trim().split(/\s+/).filter(Boolean).length,
+                    )
+                  : 1;
+                const animationElapsedMs = block && window.__getAdvancedPlaybackElapsedMs
+                  ? window.__getAdvancedPlaybackElapsedMs(
+                      blockType,
+                      wordCount,
+                      Math.max(0, (captionEnd - captionStart) * 1000),
+                      captionElapsedMs,
+                    )
+                  : captionElapsedMs;
+                animation.pause();
+                animation.currentTime = animationElapsedMs;
+              } catch {
+                // Some browser-managed animations cannot be seeked; leave them at their rendered state.
+              }
+            });
+            // LC accent colors are opaque hex values, but entrance keyframes such
+            // as fade/rise/pop interpolate `opacity`. When a frame lands inside
+            // that interpolation, the keyword has the right color but is composited
+            // at partial alpha and looks washed out compared with the template and
+            // canvas previews. Promote only highlights that have actually started
+            // appearing; opacity:0 nodes remain hidden until their authored delay.
+            // Walk animated wrappers too, because LC4/LC5 can fade a whole line.
+            const lcHighlightSelector = [
+              '.hero',
+              '.is-emphasis',
+              '.ns3hero',
+              '.ns3box',
+              '.ns3mark',
+              '.ns3bracket',
+              '.ns3dot',
+              '[data-hero-emphasis="true"]',
+              '.box',
+            ].join(', ');
+            document.querySelectorAll(
+              '.lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] .sb.active',
+            ).forEach((block) => {
+              block.querySelectorAll(lcHighlightSelector).forEach((highlight) => {
+                const visibleOpacity = Number.parseFloat(getComputedStyle(highlight).opacity);
+                if (!Number.isFinite(visibleOpacity) || visibleOpacity <= 0.001) return;
+                let node = highlight;
+                while (node && node !== block) {
+                  const opacity = Number.parseFloat(getComputedStyle(node).opacity);
+                  if (Number.isFinite(opacity) && opacity > 0.001 && opacity < 1) {
+                    node.style.setProperty('opacity', '1', 'important');
+                  }
+                  node = node.parentElement;
+                }
+              });
+            });
+            document.querySelectorAll('.lekha-applied-advanced-template.active').forEach((block) => {
+              if (block.closest('[data-caption-cpt="true"]')) return;
+              block.style.transition = 'none';
+              block.style.opacity = '1';
+              block.style.visibility = 'visible';
+
+              const shell = block.closest('.template-caption-shell');
               const captionStart = Number(shell?.dataset?.captionStart || 0);
               const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
               const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
-              const block = target?.closest?.('.lekha-applied-advanced-template');
-              const blockType = block?.dataset?.templateBlockType || 'styled';
-              const wordCount = block
-                ? Math.max(
-                    1,
-                    block.querySelectorAll('.w, .kf-word').length
-                      || String(block.textContent || '').trim().split(/\s+/).filter(Boolean).length,
-                  )
-                : 1;
-              const animationElapsedMs = block && window.__getAdvancedPlaybackElapsedMs
+              const keyframeTemplateId = Array.from(window.__keyframeAdvancedTemplateIds || [])
+                .find((id) => block.classList.contains(id + '-block'));
+              if (keyframeTemplateId && window.__seekKeyframeTemplateAnimations) {
+                // T41–T52: seek the authored CSS keyframes relative to this caption,
+                // exactly like the editor canvas does while playing.
+                window.__seekKeyframeTemplateAnimations(block, {
+                  elapsedMs: captionElapsedMs,
+                  captionDurationMs: Math.max(0, (captionEnd - captionStart) * 1000),
+                  settled: false,
+                });
+                return;
+              }
+              const blockType = block.dataset.templateBlockType || 'styled';
+              const timing = window.__advancedTemplateTiming || {};
+              const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+              const easeOut = (value) => 1 - Math.pow(1 - clamp(value), 3);
+              const setImportant = (element, property, value) => {
+                element?.style?.setProperty?.(property, value, 'important');
+              };
+              const wordCount = Math.max(
+                1,
+                block.querySelectorAll('.w, .kf-word').length
+                  || String(block.textContent || '').trim().split(/\s+/).filter(Boolean).length,
+              );
+              const animationElapsedMs = window.__getAdvancedPlaybackElapsedMs
                 ? window.__getAdvancedPlaybackElapsedMs(
                     blockType,
                     wordCount,
@@ -2702,680 +2938,613 @@ async function main() {
                     captionElapsedMs,
                   )
                 : captionElapsedMs;
-              animation.pause();
-              animation.currentTime = animationElapsedMs;
-            } catch {
-              // Some browser-managed animations cannot be seeked; leave them at their rendered state.
-            }
-          });
-          // LC accent colors are opaque hex values, but entrance keyframes such
-          // as fade/rise/pop interpolate `opacity`. When a frame lands inside
-          // that interpolation, the keyword has the right color but is composited
-          // at partial alpha and looks washed out compared with the template and
-          // canvas previews. Promote only highlights that have actually started
-          // appearing; opacity:0 nodes remain hidden until their authored delay.
-          // Walk animated wrappers too, because LC4/LC5 can fade a whole line.
-          const lcHighlightSelector = [
-            '.hero',
-            '.is-emphasis',
-            '.ns3hero',
-            '.ns3box',
-            '.ns3mark',
-            '.ns3bracket',
-            '.ns3dot',
-            '[data-hero-emphasis="true"]',
-            '.box',
-          ].join(', ');
-          document.querySelectorAll(
-            '.lekha-sidebar-export-template-shell[data-template-source="lekha-lc"] .sb.active',
-          ).forEach((block) => {
-            block.querySelectorAll(lcHighlightSelector).forEach((highlight) => {
-              const visibleOpacity = Number.parseFloat(getComputedStyle(highlight).opacity);
-              if (!Number.isFinite(visibleOpacity) || visibleOpacity <= 0.001) return;
-              let node = highlight;
-              while (node && node !== block) {
-                const opacity = Number.parseFloat(getComputedStyle(node).opacity);
-                if (Number.isFinite(opacity) && opacity > 0.001 && opacity < 1) {
-                  node.style.setProperty('opacity', '1', 'important');
-                }
-                node = node.parentElement;
+
+              if (blockType === 'karaoke') {
+                const words = Array.from(block.querySelectorAll('.kf-word'));
+                const perWord = Number(timing.holdMs || 1650) / Math.max(1, words.length + 0.5);
+                words.forEach((word, index) => {
+                  const fill = word.querySelector('.kf-fill');
+                  if (!fill) return;
+                  const progress = clamp((animationElapsedMs - (index * perWord)) / perWord);
+                  fill.style.animation = 'none';
+                  fill.style.transition = 'none';
+                  fill.style.clipPath = `inset(0 ${(1 - progress) * 100}% 0 0)`;
+                });
+                return;
               }
-            });
-          });
-          document.querySelectorAll('.lekha-applied-advanced-template.active').forEach((block) => {
-            if (block.closest('[data-caption-cpt="true"]')) return;
-            block.style.transition = 'none';
-            block.style.opacity = '1';
-            block.style.visibility = 'visible';
 
-            const shell = block.closest('.template-caption-shell');
-            const captionStart = Number(shell?.dataset?.captionStart || 0);
-            const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
-            const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
-            const keyframeTemplateId = Array.from(window.__keyframeAdvancedTemplateIds || [])
-              .find((id) => block.classList.contains(id + '-block'));
-            if (keyframeTemplateId && window.__seekKeyframeTemplateAnimations) {
-              // T41–T52: seek the authored CSS keyframes relative to this caption,
-              // exactly like the editor canvas does while playing.
-              window.__seekKeyframeTemplateAnimations(block, {
-                elapsedMs: captionElapsedMs,
-                captionDurationMs: Math.max(0, (captionEnd - captionStart) * 1000),
-                settled: false,
-              });
-              return;
-            }
-            const blockType = block.dataset.templateBlockType || 'styled';
-            const timing = window.__advancedTemplateTiming || {};
-            const clamp = (value) => Math.max(0, Math.min(1, Number(value) || 0));
-            const easeOut = (value) => 1 - Math.pow(1 - clamp(value), 3);
-            const setImportant = (element, property, value) => {
-              element?.style?.setProperty?.(property, value, 'important');
-            };
-            const wordCount = Math.max(
-              1,
-              block.querySelectorAll('.w, .kf-word').length
-                || String(block.textContent || '').trim().split(/\s+/).filter(Boolean).length,
-            );
-            const animationElapsedMs = window.__getAdvancedPlaybackElapsedMs
-              ? window.__getAdvancedPlaybackElapsedMs(
-                  blockType,
-                  wordCount,
-                  Math.max(0, (captionEnd - captionStart) * 1000),
-                  captionElapsedMs,
-                )
-              : captionElapsedMs;
+              if (blockType === 'styled') {
+                const styledDurationMs = block.classList.contains('t25-b0')
+                  ? 700
+                  : block.classList.contains('t25-b1')
+                    ? 500
+                    : Number(timing.styledDurationMs || 850);
+                const progress = clamp(animationElapsedMs / Math.max(1, styledDurationMs));
+                const eased = easeOut(progress);
+                block.querySelectorAll('.hand-txt').forEach((element) => {
+                  setImportant(element, 'animation', 'none');
+                  setImportant(element, 'transition', 'none');
+                  setImportant(element, 'opacity', String(progress));
+                  setImportant(element, 'transform', `translateX(${12 * (1 - eased)}px) rotate(${0.5 * (1 - eased)}deg)`);
+                  setImportant(element, 'filter', `blur(${2 * (1 - eased)}px)`);
+                });
+                block.querySelectorAll('.soft-rise').forEach((element) => {
+                  setImportant(element, 'animation', 'none');
+                  setImportant(element, 'transition', 'none');
+                  setImportant(element, 'opacity', String(progress));
+                  setImportant(element, 'transform', `translateY(${8 * (1 - eased)}px)`);
+                  setImportant(element, 'filter', 'none');
+                });
+                return;
+              }
 
-            if (blockType === 'karaoke') {
-              const words = Array.from(block.querySelectorAll('.kf-word'));
-              const perWord = Number(timing.holdMs || 1650) / Math.max(1, words.length + 0.5);
-              words.forEach((word, index) => {
-                const fill = word.querySelector('.kf-fill');
-                if (!fill) return;
-                const progress = clamp((animationElapsedMs - (index * perWord)) / perWord);
-                fill.style.animation = 'none';
-                fill.style.transition = 'none';
-                fill.style.clipPath = `inset(0 ${(1 - progress) * 100}% 0 0)`;
-              });
-              return;
-            }
+              if (!blockType.startsWith('wbw-')) return;
+              const sequential = blockType === 'wbw-seq'
+                || blockType === 'wbw-seq-fade'
+                || blockType === 'wbw-seq-flip';
+              block.querySelectorAll('.w').forEach((word, fallbackIndex) => {
+                const parsedIndex = Number(word.dataset.i);
+                const index = Number.isFinite(parsedIndex) ? parsedIndex : fallbackIndex;
+                const isImp = word.dataset.imp === 'true';
+                const impClass = word.dataset.impCls || '';
+                const wordBlockType = word.dataset.lineMotion || blockType;
+                const isEvidenceEmphasis = wordBlockType === 't39-evidence' && isImp;
+                const lineDelayMs = Number(word.dataset.lineDelay || 0);
+                const battleMotion = word.dataset.battleMotion || '';
+                const battleIndex = Number.isFinite(Number(word.dataset.battleIndex))
+                  ? Number(word.dataset.battleIndex)
+                  : index;
+                const delayMs = sequential
+                  ? index * Number(timing.sequentialStaggerMs || 145)
+                  : battleMotion
+                    ? (battleIndex * 58) + lineDelayMs + (isImp ? 24 : 0)
+                    : (index * Number(timing.wordStaggerMs || 45))
+                    + (isImp ? Number(timing.emphasisDelayMs || 60) : 0)
+                    + lineDelayMs;
+                const durationMs = isEvidenceEmphasis
+                  ? 360
+                  : sequential
+                  ? Number(timing.sequentialDurationMs || 180)
+                  : battleMotion
+                    ? (isImp ? 380 : 320)
+                    : isImp
+                    ? Number(timing.emphasisDurationMs || 300)
+                    : Number(timing.wordDurationMs || 210);
+                const progress = clamp((animationElapsedMs - delayMs) / durationMs);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                setImportant(word, 'animation', 'none');
+                setImportant(word, 'transition', 'none');
+                setImportant(word, 'opacity', String(progress));
+                setImportant(word, 'clip-path', 'none');
+                setImportant(word, 'transform-origin', 'initial');
+                setImportant(word, 'filter', 'none');
+                setImportant(word, 'text-shadow', 'none');
 
-            if (blockType === 'styled') {
-              const styledDurationMs = block.classList.contains('t25-b0')
-                ? 700
-                : block.classList.contains('t25-b1')
-                  ? 500
-                  : Number(timing.styledDurationMs || 850);
-              const progress = clamp(animationElapsedMs / Math.max(1, styledDurationMs));
-              const eased = easeOut(progress);
-              block.querySelectorAll('.hand-txt').forEach((element) => {
-                setImportant(element, 'animation', 'none');
-                setImportant(element, 'transition', 'none');
-                setImportant(element, 'opacity', String(progress));
-                setImportant(element, 'transform', `translateX(${12 * (1 - eased)}px) rotate(${0.5 * (1 - eased)}deg)`);
-                setImportant(element, 'filter', `blur(${2 * (1 - eased)}px)`);
-              });
-              block.querySelectorAll('.soft-rise').forEach((element) => {
-                setImportant(element, 'animation', 'none');
-                setImportant(element, 'transition', 'none');
-                setImportant(element, 'opacity', String(progress));
-                setImportant(element, 'transform', `translateY(${8 * (1 - eased)}px)`);
-                setImportant(element, 'filter', 'none');
-              });
-              return;
-            }
-
-            if (!blockType.startsWith('wbw-')) return;
-            const sequential = blockType === 'wbw-seq'
-              || blockType === 'wbw-seq-fade'
-              || blockType === 'wbw-seq-flip';
-            block.querySelectorAll('.w').forEach((word, fallbackIndex) => {
-              const parsedIndex = Number(word.dataset.i);
-              const index = Number.isFinite(parsedIndex) ? parsedIndex : fallbackIndex;
-              const isImp = word.dataset.imp === 'true';
-              const impClass = word.dataset.impCls || '';
-              const wordBlockType = word.dataset.lineMotion || blockType;
-              const isEvidenceEmphasis = wordBlockType === 't39-evidence' && isImp;
-              const lineDelayMs = Number(word.dataset.lineDelay || 0);
-              const battleMotion = word.dataset.battleMotion || '';
-              const battleIndex = Number.isFinite(Number(word.dataset.battleIndex))
-                ? Number(word.dataset.battleIndex)
-                : index;
-              const delayMs = sequential
-                ? index * Number(timing.sequentialStaggerMs || 145)
-                : battleMotion
-                  ? (battleIndex * 58) + lineDelayMs + (isImp ? 24 : 0)
-                  : (index * Number(timing.wordStaggerMs || 45))
-                  + (isImp ? Number(timing.emphasisDelayMs || 60) : 0)
-                  + lineDelayMs;
-              const durationMs = isEvidenceEmphasis
-                ? 360
-                : sequential
-                ? Number(timing.sequentialDurationMs || 180)
-                : battleMotion
-                  ? (isImp ? 380 : 320)
-                  : isImp
-                  ? Number(timing.emphasisDurationMs || 300)
-                  : Number(timing.wordDurationMs || 210);
-              const progress = clamp((animationElapsedMs - delayMs) / durationMs);
-              const eased = 1 - Math.pow(1 - progress, 3);
-              setImportant(word, 'animation', 'none');
-              setImportant(word, 'transition', 'none');
-              setImportant(word, 'opacity', String(progress));
-              setImportant(word, 'clip-path', 'none');
-              setImportant(word, 'transform-origin', 'initial');
-              setImportant(word, 'filter', 'none');
-              setImportant(word, 'text-shadow', 'none');
-
-              if (battleMotion === 'sweep-left') {
-                setImportant(word, 'transform', `translateX(${-34 * (1 - eased)}px)`);
-              } else if (battleMotion === 'lift-up') {
-                setImportant(word, 'transform', `translateY(${28 * (1 - eased)}px)`);
-              } else if (isEvidenceEmphasis) {
-                setImportant(word, 'transform', `translateY(${18 * (1 - eased)}px) scale(${0.72 + (0.28 * eased)}) rotate(${-2 * (1 - eased)}deg)`);
-                setImportant(word, 'text-shadow', `0 0 ${4 + (10 * eased)}px currentColor`);
-              } else if (sequential) {
-                if (blockType === 'wbw-seq-fade') {
-                  setImportant(word, 'transform', 'none');
-                } else if (blockType === 'wbw-seq-flip') {
-                  setImportant(word, 'transform', `perspective(320px) rotateX(${-90 * (1 - eased)}deg)`);
-                  setImportant(word, 'transform-origin', 'center bottom');
-                } else {
-                  setImportant(word, 'transform', `scale(${0.82 + (0.18 * eased)})`);
-                }
-              } else if (wordBlockType === 't16-stack') {
-                setImportant(word, 'transform', `translateY(${24 * (1 - eased)}px) scale(${0.92 + (0.08 * eased)})`);
-                setImportant(word, 'filter', `blur(${4 * (1 - eased)}px)`);
-              } else if (wordBlockType === 't16-neon') {
-                setImportant(word, 'transform', `scale(${0.86 + (0.14 * eased)})`);
-                setImportant(word, 'filter', `brightness(${0.75 + (0.25 * eased)})`);
-                setImportant(word, 'text-shadow', `0 0 ${4 + (12 * eased)}px rgba(0,229,255,${0.25 + (0.35 * eased)})`);
-              } else if (wordBlockType === 't16-diagonal') {
-                setImportant(word, 'transform', `translate(${28 * (1 - eased)}px, ${-20 * (1 - eased)}px) rotate(${-4 * (1 - eased)}deg)`);
-              } else if (wordBlockType === 't16-impact') {
-                setImportant(word, 'transform', `translateX(${-36 * (1 - eased)}px) scale(${1 + (0.1 * (1 - eased))})`);
-              } else if (wordBlockType === 't24-wipe') {
-                setImportant(word, 'opacity', '1');
-                setImportant(word, 'transform', `translateY(${10 * (1 - eased)}px)`);
-                setImportant(word, 'clip-path', `inset(${(1 - eased) * 100}% 0 0 0)`);
-              } else if (wordBlockType === 't24-drift') {
-                setImportant(word, 'transform', `translate(${6 * (1 - eased)}px, ${10 * (1 - eased)}px) rotate(${1 * (1 - eased)}deg)`);
-                setImportant(word, 'filter', `blur(${2 * (1 - eased)}px)`);
-              } else if (wordBlockType === 't24-slide') {
-                setImportant(word, 'transform', `translateX(${-14 * (1 - eased)}px)`);
-              } else if (wordBlockType === 't24-stamp') {
-                setImportant(word, 'transform', `scale(${1.08 - (0.08 * eased)})`);
-                setImportant(word, 'text-shadow', `0 0 ${7 * eased}px rgba(249,115,22,${0.2 + (0.18 * eased)})`);
-              } else if (wordBlockType === 't24-inner') {
-                setImportant(word, 'transform', `translateY(${8 * (1 - eased)}px) scale(${0.94 + (0.06 * eased)})`);
-                setImportant(word, 'filter', `blur(${2 * (1 - eased)}px)`);
-              } else if (wordBlockType === 't26-shutter') {
-                setImportant(word, 'opacity', progress > 0.08 ? '1' : '0');
-                setImportant(word, 'transform', `translateY(${18 * (1 - eased)}px) skewX(${-8 * (1 - eased)}deg)`);
-                setImportant(word, 'clip-path', `inset(0 0 ${(1 - eased) * 100}% 0)`);
-              } else if (wordBlockType === 't26-snap') {
-                setImportant(word, 'transform', `translateX(${-32 * (1 - eased)}px) rotate(${-3 * (1 - eased)}deg)`);
-              } else if (wordBlockType === 't26-kick') {
-                setImportant(word, 'transform', `translate(${18 * (1 - eased)}px, ${-16 * (1 - eased)}px) scale(${1 + (0.08 * (1 - eased))})`);
-              } else if (wordBlockType === 't26-tag') {
-                setImportant(word, 'transform', `scale(${0.82 + (0.18 * eased)})`);
-                setImportant(word, 'filter', `contrast(${0.75 + (0.25 * eased)})`);
-              } else if (wordBlockType === 't29-shutter') {
-                setImportant(word, 'opacity', progress > 0.12 ? '1' : '0');
-                setImportant(word, 'transform', `scaleX(${0.72 + (0.28 * eased)}) translateY(${14 * (1 - eased)}px)`);
-                setImportant(word, 'clip-path', `inset(0 ${(1 - eased) * 48}% 0 ${(1 - eased) * 48}%)`);
-              } else if (wordBlockType === 't29-recoil') {
-                setImportant(word, 'transform', `translateY(${-22 * (1 - eased)}px) scale(${1.14 - (0.14 * eased)})`);
-              } else if (wordBlockType === 't29-charge') {
-                setImportant(word, 'transform', `translate(${36 * (1 - eased)}px, ${-10 * (1 - eased)}px) skewX(${-10 * (1 - eased)}deg)`);
-              } else if (wordBlockType === 't29-clamp') {
-                setImportant(word, 'transform', `scaleY(${0.72 + (0.28 * eased)})`);
-                setImportant(word, 'clip-path', `inset(${(1 - eased) * 42}% 0 ${(1 - eased) * 42}% 0)`);
-              } else if (isImp) {
-                const entrance = window.__advancedImpEntrances?.[impClass] || 'opposite';
-                const effect = entrance === 'opposite'
-                  ? (wordBlockType === 'wbw-rise' ? 'opposite-slide' : 'opposite-rise')
-                  : entrance;
-                if (effect === 'wipe') {
-                  setImportant(word, 'opacity', '1');
-                  setImportant(word, 'transform', 'none');
-                  setImportant(word, 'clip-path', `inset(0 ${(1 - eased) * 100}% 0 0)`);
-                } else if (effect === 'wipe-up') {
-                  setImportant(word, 'opacity', '1');
-                  setImportant(word, 'transform', 'none');
-                  setImportant(word, 'clip-path', impClass === 'imp-underline'
-                    ? 'inset(0 0 0 0)'
-                    : `inset(${(1 - eased) * 100}% 0 0 0)`);
-                } else if (effect === 'roll') {
-                  setImportant(word, 'transform', `rotateX(${-90 * (1 - eased)}deg)`);
-                  setImportant(word, 'transform-origin', 'center bottom');
-                } else if (effect === 'opposite-slide') {
-                  setImportant(word, 'transform', `translateX(${-28 * (1 - eased)}px)`);
-                } else {
+                if (battleMotion === 'sweep-left') {
+                  setImportant(word, 'transform', `translateX(${-34 * (1 - eased)}px)`);
+                } else if (battleMotion === 'lift-up') {
                   setImportant(word, 'transform', `translateY(${28 * (1 - eased)}px)`);
-                }
-              } else if (wordBlockType === 'wbw-slide') {
-                setImportant(word, 'transform', `translateX(${-16 * (1 - eased)}px)`);
-              } else {
-                setImportant(word, 'transform', `translateY(${20 * (1 - eased)}px)`);
-              }
-              word.classList.toggle('in', progress > 0);
-              word.classList.toggle('fx', progress >= 1 && impClass === 'imp-flicker');
-            });
-          });
-          // All animation clocks above are paused and explicitly seeked. A
-          // forced layout makes those styles capture-ready without waiting for
-          // a real-time animation frame for every exported overlay image.
-          void document.getElementById('overlay-root')?.offsetHeight;
-        }, payload, renderTime);
-
-        if (shouldAuditWordPositions) {
-          const frameWordPositions = await page.evaluate((currentPayload, currentTime) => {
-            const root = document.getElementById('overlay-root');
-            const rootRect = root?.getBoundingClientRect();
-            if (!rootRect?.width || !rootRect?.height) return [];
-
-            const nodesByKey = new Map();
-            root.querySelectorAll('[data-word-key]').forEach((node) => {
-              const key = node.getAttribute('data-word-key');
-              if (!key) return;
-              const isActiveTemplateWord = Boolean(node.closest(
-                '.sb.active, .sblock.active, .lekha-applied-advanced-template.active',
-              ));
-              if (!nodesByKey.has(key) || isActiveTemplateWord) nodesByKey.set(key, node);
-            });
-            const activeCaptions = (currentPayload.captions || []).filter((caption) => {
-              const start = Number(caption.start_time ?? 0);
-              const end = Number(caption.end_time ?? start);
-              return currentTime >= start && currentTime < end;
-            });
-
-            return activeCaptions.flatMap((caption) => Object.entries(caption.word_styles || {})
-              .filter(([, wordStyle]) => {
-                const hasAbsolutePosition = (
-                  Number.isFinite(Number(wordStyle?.abs_x_pct))
-                  && Number.isFinite(Number(wordStyle?.abs_y_pct))
-                  && (
-                    Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
-                    || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
-                  )
-                );
-                const hasRelativeOffset = (
-                  Math.abs(Number(wordStyle?.x || 0)) > 0.01
-                  || Math.abs(Number(wordStyle?.y || 0)) > 0.01
-                );
-                return hasAbsolutePosition || hasRelativeOffset;
-              })
-              .map(([key, wordStyle]) => {
-                const node = nodesByKey.get(key);
-                if (!node) {
-                  return { key, found: false };
-                }
-                const markedTargets = [
-                  ...(node.matches('[data-export-word-position-target="true"]') ? [node] : []),
-                  ...node.querySelectorAll('[data-export-word-position-target="true"]'),
-                ];
-                const rects = (markedTargets.length ? markedTargets : [node])
-                  .map((target) => target.getBoundingClientRect())
-                  .filter((rect) => rect.width > 0 && rect.height > 0);
-                if (!rects.length) {
-                  return { key, found: true, visible: false };
-                }
-                const left = Math.min(...rects.map((rect) => rect.left));
-                const top = Math.min(...rects.map((rect) => rect.top));
-                const right = Math.max(...rects.map((rect) => rect.right));
-                const bottom = Math.max(...rects.map((rect) => rect.bottom));
-                const hasAbsolutePosition = (
-                  Number.isFinite(Number(wordStyle.abs_x_pct))
-                  && Number.isFinite(Number(wordStyle.abs_y_pct))
-                  && (
-                    Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
-                    || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
-                  )
-                );
-                // A `translate` that is merely *set* proves nothing: CSS
-                // transforms are ignored on non-replaced inline boxes, so a
-                // dragged word can carry the right value and still never move.
-                // Measure the offset the browser actually honours by dropping
-                // the translate, re-measuring, and restoring it.
-                const positionTarget = markedTargets[0] || node;
-                const motionTarget = node.querySelector('[data-cpt-word-motion="true"]') || positionTarget;
-                const targetDisplay = getComputedStyle(positionTarget).display;
-                const measureCenter = (element) => {
-                  const box = element.getBoundingClientRect();
-                  return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-                };
-                const translatedCenter = measureCenter(positionTarget);
-                const clippingAncestors = [];
-                let clippingNode = positionTarget.parentElement;
-                while (clippingNode && clippingNode !== root.parentElement) {
-                  const clippingStyle = getComputedStyle(clippingNode);
-                  const clipsX = /hidden|clip/.test(clippingStyle.overflowX);
-                  const clipsY = /hidden|clip/.test(clippingStyle.overflowY);
-                  if (clipsX || clipsY) {
-                    const clippingRect = clippingNode.getBoundingClientRect();
-                    const positionedRect = positionTarget.getBoundingClientRect();
-                    if (
-                      (clipsX && (
-                        positionedRect.left < clippingRect.left - 0.5
-                        || positionedRect.right > clippingRect.right + 0.5
-                      ))
-                      || (clipsY && (
-                        positionedRect.top < clippingRect.top - 0.5
-                        || positionedRect.bottom > clippingRect.bottom + 0.5
-                      ))
-                    ) {
-                      clippingAncestors.push(
-                        clippingNode.className
-                        || clippingNode.id
-                        || clippingNode.tagName,
-                      );
-                    }
+                } else if (isEvidenceEmphasis) {
+                  setImportant(word, 'transform', `translateY(${18 * (1 - eased)}px) scale(${0.72 + (0.28 * eased)}) rotate(${-2 * (1 - eased)}deg)`);
+                  setImportant(word, 'text-shadow', `0 0 ${4 + (10 * eased)}px currentColor`);
+                } else if (sequential) {
+                  if (blockType === 'wbw-seq-fade') {
+                    setImportant(word, 'transform', 'none');
+                  } else if (blockType === 'wbw-seq-flip') {
+                    setImportant(word, 'transform', `perspective(320px) rotateX(${-90 * (1 - eased)}deg)`);
+                    setImportant(word, 'transform-origin', 'center bottom');
+                  } else {
+                    setImportant(word, 'transform', `scale(${0.82 + (0.18 * eased)})`);
                   }
-                  if (clippingNode === root) break;
-                  clippingNode = clippingNode.parentElement;
+                } else if (wordBlockType === 't16-stack') {
+                  setImportant(word, 'transform', `translateY(${24 * (1 - eased)}px) scale(${0.92 + (0.08 * eased)})`);
+                  setImportant(word, 'filter', `blur(${4 * (1 - eased)}px)`);
+                } else if (wordBlockType === 't16-neon') {
+                  setImportant(word, 'transform', `scale(${0.86 + (0.14 * eased)})`);
+                  setImportant(word, 'filter', `brightness(${0.75 + (0.25 * eased)})`);
+                  setImportant(word, 'text-shadow', `0 0 ${4 + (12 * eased)}px rgba(0,229,255,${0.25 + (0.35 * eased)})`);
+                } else if (wordBlockType === 't16-diagonal') {
+                  setImportant(word, 'transform', `translate(${28 * (1 - eased)}px, ${-20 * (1 - eased)}px) rotate(${-4 * (1 - eased)}deg)`);
+                } else if (wordBlockType === 't16-impact') {
+                  setImportant(word, 'transform', `translateX(${-36 * (1 - eased)}px) scale(${1 + (0.1 * (1 - eased))})`);
+                } else if (wordBlockType === 't24-wipe') {
+                  setImportant(word, 'opacity', '1');
+                  setImportant(word, 'transform', `translateY(${10 * (1 - eased)}px)`);
+                  setImportant(word, 'clip-path', `inset(${(1 - eased) * 100}% 0 0 0)`);
+                } else if (wordBlockType === 't24-drift') {
+                  setImportant(word, 'transform', `translate(${6 * (1 - eased)}px, ${10 * (1 - eased)}px) rotate(${1 * (1 - eased)}deg)`);
+                  setImportant(word, 'filter', `blur(${2 * (1 - eased)}px)`);
+                } else if (wordBlockType === 't24-slide') {
+                  setImportant(word, 'transform', `translateX(${-14 * (1 - eased)}px)`);
+                } else if (wordBlockType === 't24-stamp') {
+                  setImportant(word, 'transform', `scale(${1.08 - (0.08 * eased)})`);
+                  setImportant(word, 'text-shadow', `0 0 ${7 * eased}px rgba(249,115,22,${0.2 + (0.18 * eased)})`);
+                } else if (wordBlockType === 't24-inner') {
+                  setImportant(word, 'transform', `translateY(${8 * (1 - eased)}px) scale(${0.94 + (0.06 * eased)})`);
+                  setImportant(word, 'filter', `blur(${2 * (1 - eased)}px)`);
+                } else if (wordBlockType === 't26-shutter') {
+                  setImportant(word, 'opacity', progress > 0.08 ? '1' : '0');
+                  setImportant(word, 'transform', `translateY(${18 * (1 - eased)}px) skewX(${-8 * (1 - eased)}deg)`);
+                  setImportant(word, 'clip-path', `inset(0 0 ${(1 - eased) * 100}% 0)`);
+                } else if (wordBlockType === 't26-snap') {
+                  setImportant(word, 'transform', `translateX(${-32 * (1 - eased)}px) rotate(${-3 * (1 - eased)}deg)`);
+                } else if (wordBlockType === 't26-kick') {
+                  setImportant(word, 'transform', `translate(${18 * (1 - eased)}px, ${-16 * (1 - eased)}px) scale(${1 + (0.08 * (1 - eased))})`);
+                } else if (wordBlockType === 't26-tag') {
+                  setImportant(word, 'transform', `scale(${0.82 + (0.18 * eased)})`);
+                  setImportant(word, 'filter', `contrast(${0.75 + (0.25 * eased)})`);
+                } else if (wordBlockType === 't29-shutter') {
+                  setImportant(word, 'opacity', progress > 0.12 ? '1' : '0');
+                  setImportant(word, 'transform', `scaleX(${0.72 + (0.28 * eased)}) translateY(${14 * (1 - eased)}px)`);
+                  setImportant(word, 'clip-path', `inset(0 ${(1 - eased) * 48}% 0 ${(1 - eased) * 48}%)`);
+                } else if (wordBlockType === 't29-recoil') {
+                  setImportant(word, 'transform', `translateY(${-22 * (1 - eased)}px) scale(${1.14 - (0.14 * eased)})`);
+                } else if (wordBlockType === 't29-charge') {
+                  setImportant(word, 'transform', `translate(${36 * (1 - eased)}px, ${-10 * (1 - eased)}px) skewX(${-10 * (1 - eased)}deg)`);
+                } else if (wordBlockType === 't29-clamp') {
+                  setImportant(word, 'transform', `scaleY(${0.72 + (0.28 * eased)})`);
+                  setImportant(word, 'clip-path', `inset(${(1 - eased) * 42}% 0 ${(1 - eased) * 42}% 0)`);
+                } else if (isImp) {
+                  const entrance = window.__advancedImpEntrances?.[impClass] || 'opposite';
+                  const effect = entrance === 'opposite'
+                    ? (wordBlockType === 'wbw-rise' ? 'opposite-slide' : 'opposite-rise')
+                    : entrance;
+                  if (effect === 'wipe') {
+                    setImportant(word, 'opacity', '1');
+                    setImportant(word, 'transform', 'none');
+                    setImportant(word, 'clip-path', `inset(0 ${(1 - eased) * 100}% 0 0)`);
+                  } else if (effect === 'wipe-up') {
+                    setImportant(word, 'opacity', '1');
+                    setImportant(word, 'transform', 'none');
+                    setImportant(word, 'clip-path', impClass === 'imp-underline'
+                      ? 'inset(0 0 0 0)'
+                      : `inset(${(1 - eased) * 100}% 0 0 0)`);
+                  } else if (effect === 'roll') {
+                    setImportant(word, 'transform', `rotateX(${-90 * (1 - eased)}deg)`);
+                    setImportant(word, 'transform-origin', 'center bottom');
+                  } else if (effect === 'opposite-slide') {
+                    setImportant(word, 'transform', `translateX(${-28 * (1 - eased)}px)`);
+                  } else {
+                    setImportant(word, 'transform', `translateY(${28 * (1 - eased)}px)`);
+                  }
+                } else if (wordBlockType === 'wbw-slide') {
+                  setImportant(word, 'transform', `translateX(${-16 * (1 - eased)}px)`);
+                } else {
+                  setImportant(word, 'transform', `translateY(${20 * (1 - eased)}px)`);
                 }
-                const inlineTranslate = positionTarget.style.getPropertyValue('translate');
-                const inlineTranslatePriority = positionTarget.style.getPropertyPriority('translate');
-                positionTarget.style.setProperty('translate', 'none', 'important');
-                void positionTarget.getBoundingClientRect();
-                const untranslatedCenter = measureCenter(positionTarget);
-                positionTarget.style.removeProperty('translate');
-                if (inlineTranslate) {
-                  positionTarget.style.setProperty('translate', inlineTranslate, inlineTranslatePriority);
-                }
-                void positionTarget.getBoundingClientRect();
-                return {
-                  key,
-                  found: true,
-                  visible: true,
-                  mode: hasAbsolutePosition ? 'absolute' : 'relative',
-                  expected_x_pct: hasAbsolutePosition ? Number(wordStyle.abs_x_pct) : null,
-                  expected_y_pct: hasAbsolutePosition ? Number(wordStyle.abs_y_pct) : null,
-                  source_x: Number(wordStyle.x || 0),
-                  source_y: Number(wordStyle.y || 0),
-                  applied_translate: getComputedStyle(positionTarget).translate,
-                  target_display: targetDisplay,
-                  target_font_family: getComputedStyle(positionTarget).fontFamily,
-                  target_font_size: getComputedStyle(positionTarget).fontSize,
-                  target_color: getComputedStyle(positionTarget).color,
-                  target_inline_style: positionTarget.getAttribute('style') || '',
-                  absolute_cpt_emphasis: node.dataset.absoluteCptEmphasis || null,
-                  word_opacity: Number.parseFloat(getComputedStyle(node).opacity || '1'),
-                  target_opacity: Number.parseFloat(getComputedStyle(motionTarget).opacity || '1'),
-                  target_animation_name: getComputedStyle(motionTarget).animationName,
-                  clipped_by_overflow: clippingAncestors.length > 0,
-                  clipping_ancestors: clippingAncestors,
-                  effective_dx: translatedCenter.x - untranslatedCenter.x,
-                  effective_dy: translatedCenter.y - untranslatedCenter.y,
-                  actual_x_pct: (((left + right) / 2 - rootRect.left) / rootRect.width) * 100,
-                  actual_y_pct: (((top + bottom) / 2 - rootRect.top) / rootRect.height) * 100,
-                };
-              }));
+                word.classList.toggle('in', progress > 0);
+                word.classList.toggle('fx', progress >= 1 && impClass === 'imp-flicker');
+              });
+            });
+            // All animation clocks above are paused and explicitly seeked. A
+            // forced layout makes those styles capture-ready without waiting for
+            // a real-time animation frame for every exported overlay image.
+            void document.getElementById('overlay-root')?.offsetHeight;
           }, payload, renderTime);
-          wordPositionAudits.push({ time: renderTime, words: frameWordPositions });
-        }
 
-        const hasCaptionEndingAtSegment = (payload.captions || []).some((caption) => {
-          const end = Number(caption.end_time ?? caption.start_time ?? 0);
-          const isTemplate = Boolean(
-            caption.template_id
-            || caption.template_20_id
-            || caption.applied_template_style?.template_id
-            || caption.applied_template_style?.template_20_id
-            || payload.style?.template_id
-            || payload.style?.template_20_id
-          );
-          return (isTemplate || payload.__geometry_audit) && Math.abs(end - segment.end) <= 0.002;
-        });
-        const endingCaptionAudits = hasCaptionEndingAtSegment
-          ? await page.evaluate((currentPayload, currentTime, segmentEnd) => {
-          const normalizeTokens = (value) => String(value || '')
-            .normalize('NFC')
-            .trim()
-            .toLocaleLowerCase()
-            .split(/\s+/)
-            .filter(Boolean);
-          const isVisibleTextParent = (element, boundary) => {
-            if (!(element instanceof HTMLElement)) return false;
-            const rect = element.getBoundingClientRect();
-            if (rect.width <= 0 || rect.height <= 0) return false;
-            let node = element;
-            while (node && node !== boundary.parentElement) {
-              const computed = getComputedStyle(node);
-              if (
-                computed.display === 'none'
-                || computed.visibility === 'hidden'
-                || Number.parseFloat(computed.opacity || '1') <= 0.001
-              ) {
-                return false;
-              }
-              if (node === boundary) break;
-              node = node.parentElement;
-            }
-            return true;
-          };
-          const containsWordSequence = (renderedTokens, expectedTokens) => {
-            let cursor = 0;
-            for (const token of renderedTokens) {
-              if (token === expectedTokens[cursor]) cursor += 1;
-              if (cursor === expectedTokens.length) return true;
-            }
-            return expectedTokens.length === 0;
-          };
+          if (shouldAuditWordPositions) {
+            const frameWordPositions = await page.evaluate((currentPayload, currentTime) => {
+              const root = document.getElementById('overlay-root');
+              const rootRect = root?.getBoundingClientRect();
+              if (!rootRect?.width || !rootRect?.height) return [];
 
-          const activeCaptions = (currentPayload.captions || []).filter((caption) => {
-            const start = Number(caption.start_time ?? 0);
-            const end = Number(caption.end_time ?? start);
-            return currentTime >= start && currentTime < end;
-          });
+              const nodesByKey = new Map();
+              root.querySelectorAll('[data-word-key]').forEach((node) => {
+                const key = node.getAttribute('data-word-key');
+                if (!key) return;
+                const isActiveTemplateWord = Boolean(node.closest(
+                  '.sb.active, .sblock.active, .lekha-applied-advanced-template.active',
+                ));
+                if (!nodesByKey.has(key) || isActiveTemplateWord) nodesByKey.set(key, node);
+              });
+              const activeCaptions = (currentPayload.captions || []).filter((caption) => {
+                const start = Number(caption.start_time ?? 0);
+                const end = Number(caption.end_time ?? start);
+                return currentTime >= start && currentTime < end;
+              });
 
-          return activeCaptions.map((caption, activeIndex) => {
+              return activeCaptions.flatMap((caption) => Object.entries(caption.word_styles || {})
+                .filter(([, wordStyle]) => {
+                  const hasAbsolutePosition = (
+                    Number.isFinite(Number(wordStyle?.abs_x_pct))
+                    && Number.isFinite(Number(wordStyle?.abs_y_pct))
+                    && (
+                      Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
+                      || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
+                    )
+                  );
+                  const hasRelativeOffset = (
+                    Math.abs(Number(wordStyle?.x || 0)) > 0.01
+                    || Math.abs(Number(wordStyle?.y || 0)) > 0.01
+                  );
+                  return hasAbsolutePosition || hasRelativeOffset;
+                })
+                .map(([key, wordStyle]) => {
+                  const node = nodesByKey.get(key);
+                  if (!node) {
+                    return { key, found: false };
+                  }
+                  const markedTargets = [
+                    ...(node.matches('[data-export-word-position-target="true"]') ? [node] : []),
+                    ...node.querySelectorAll('[data-export-word-position-target="true"]'),
+                  ];
+                  const rects = (markedTargets.length ? markedTargets : [node])
+                    .map((target) => target.getBoundingClientRect())
+                    .filter((rect) => rect.width > 0 && rect.height > 0);
+                  if (!rects.length) {
+                    return { key, found: true, visible: false };
+                  }
+                  const left = Math.min(...rects.map((rect) => rect.left));
+                  const top = Math.min(...rects.map((rect) => rect.top));
+                  const right = Math.max(...rects.map((rect) => rect.right));
+                  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+                  const hasAbsolutePosition = (
+                    Number.isFinite(Number(wordStyle.abs_x_pct))
+                    && Number.isFinite(Number(wordStyle.abs_y_pct))
+                    && (
+                      Math.abs(Number(wordStyle.abs_x_pct)) > 0.01
+                      || Math.abs(Number(wordStyle.abs_y_pct)) > 0.01
+                    )
+                  );
+                  // A `translate` that is merely *set* proves nothing: CSS
+                  // transforms are ignored on non-replaced inline boxes, so a
+                  // dragged word can carry the right value and still never move.
+                  // Measure the offset the browser actually honours by dropping
+                  // the translate, re-measuring, and restoring it.
+                  const positionTarget = markedTargets[0] || node;
+                  const motionTarget = node.querySelector('[data-cpt-word-motion="true"]') || positionTarget;
+                  const targetDisplay = getComputedStyle(positionTarget).display;
+                  const measureCenter = (element) => {
+                    const box = element.getBoundingClientRect();
+                    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+                  };
+                  const translatedCenter = measureCenter(positionTarget);
+                  const clippingAncestors = [];
+                  let clippingNode = positionTarget.parentElement;
+                  while (clippingNode && clippingNode !== root.parentElement) {
+                    const clippingStyle = getComputedStyle(clippingNode);
+                    const clipsX = /hidden|clip/.test(clippingStyle.overflowX);
+                    const clipsY = /hidden|clip/.test(clippingStyle.overflowY);
+                    if (clipsX || clipsY) {
+                      const clippingRect = clippingNode.getBoundingClientRect();
+                      const positionedRect = positionTarget.getBoundingClientRect();
+                      if (
+                        (clipsX && (
+                          positionedRect.left < clippingRect.left - 0.5
+                          || positionedRect.right > clippingRect.right + 0.5
+                        ))
+                        || (clipsY && (
+                          positionedRect.top < clippingRect.top - 0.5
+                          || positionedRect.bottom > clippingRect.bottom + 0.5
+                        ))
+                      ) {
+                        clippingAncestors.push(
+                          clippingNode.className
+                          || clippingNode.id
+                          || clippingNode.tagName,
+                        );
+                      }
+                    }
+                    if (clippingNode === root) break;
+                    clippingNode = clippingNode.parentElement;
+                  }
+                  const inlineTranslate = positionTarget.style.getPropertyValue('translate');
+                  const inlineTranslatePriority = positionTarget.style.getPropertyPriority('translate');
+                  positionTarget.style.setProperty('translate', 'none', 'important');
+                  void positionTarget.getBoundingClientRect();
+                  const untranslatedCenter = measureCenter(positionTarget);
+                  positionTarget.style.removeProperty('translate');
+                  if (inlineTranslate) {
+                    positionTarget.style.setProperty('translate', inlineTranslate, inlineTranslatePriority);
+                  }
+                  void positionTarget.getBoundingClientRect();
+                  return {
+                    key,
+                    found: true,
+                    visible: true,
+                    mode: hasAbsolutePosition ? 'absolute' : 'relative',
+                    expected_x_pct: hasAbsolutePosition ? Number(wordStyle.abs_x_pct) : null,
+                    expected_y_pct: hasAbsolutePosition ? Number(wordStyle.abs_y_pct) : null,
+                    source_x: Number(wordStyle.x || 0),
+                    source_y: Number(wordStyle.y || 0),
+                    applied_translate: getComputedStyle(positionTarget).translate,
+                    target_display: targetDisplay,
+                    target_font_family: getComputedStyle(positionTarget).fontFamily,
+                    target_font_size: getComputedStyle(positionTarget).fontSize,
+                    target_color: getComputedStyle(positionTarget).color,
+                    target_inline_style: positionTarget.getAttribute('style') || '',
+                    absolute_cpt_emphasis: node.dataset.absoluteCptEmphasis || null,
+                    word_opacity: Number.parseFloat(getComputedStyle(node).opacity || '1'),
+                    target_opacity: Number.parseFloat(getComputedStyle(motionTarget).opacity || '1'),
+                    target_animation_name: getComputedStyle(motionTarget).animationName,
+                    clipped_by_overflow: clippingAncestors.length > 0,
+                    clipping_ancestors: clippingAncestors,
+                    effective_dx: translatedCenter.x - untranslatedCenter.x,
+                    effective_dy: translatedCenter.y - untranslatedCenter.y,
+                    actual_x_pct: (((left + right) / 2 - rootRect.left) / rootRect.width) * 100,
+                    actual_y_pct: (((top + bottom) / 2 - rootRect.top) / rootRect.height) * 100,
+                  };
+                }));
+            }, payload, renderTime);
+            wordPositionAudits.push({ time: renderTime, words: frameWordPositions });
+          }
+
+          const hasCaptionEndingAtSegment = (payload.captions || []).some((caption) => {
             const end = Number(caption.end_time ?? caption.start_time ?? 0);
             const isTemplate = Boolean(
               caption.template_id
               || caption.template_20_id
               || caption.applied_template_style?.template_id
               || caption.applied_template_style?.template_20_id
-              || currentPayload.style?.template_id
-              || currentPayload.style?.template_20_id
+              || payload.style?.template_id
+              || payload.style?.template_20_id
             );
-            if ((!isTemplate && !currentPayload.__geometry_audit) || Math.abs(end - segmentEnd) > 0.002) return null;
-            const anchor = document.querySelector(`[data-caption-render-index="${activeIndex}"]`);
-            if (!anchor) {
-              return {
-                captionId: String(caption.id || ''),
-                complete: false,
-                expectedWords: normalizeTokens(caption.text),
-                renderedWords: [],
-                reason: 'missing caption anchor',
-              };
-            }
-
-            const walker = document.createTreeWalker(anchor, NodeFilter.SHOW_TEXT);
-            const visibleText = [];
-            const visualWords = [];
-            let textNode = walker.nextNode();
-            while (textNode) {
-              if (
-                String(textNode.nodeValue || '').trim()
-                && isVisibleTextParent(textNode.parentElement, anchor)
-              ) {
-                visibleText.push(textNode.nodeValue);
-                for (const match of String(textNode.nodeValue || '').matchAll(/\S+/g)) {
-                  const range = document.createRange();
-                  range.setStart(textNode, match.index);
-                  range.setEnd(textNode, match.index + match[0].length);
-                  const rect = Array.from(range.getClientRects())
-                    .find((item) => item.width > 0 && item.height > 0);
-                  range.detach?.();
-                  if (!rect) continue;
-                  visualWords.push({
-                    text: match[0].normalize('NFC').toLocaleLowerCase(),
-                    top: rect.top,
-                    left: rect.left,
-                  });
-                }
-              }
-              textNode = walker.nextNode();
-            }
-            const expectedWords = normalizeTokens(caption.text);
-            const renderedWords = normalizeTokens(visibleText.join(' '));
-            const dedupedVisualWords = visualWords.filter((word, wordIndex) => (
-              visualWords.findIndex((candidate) => (
-                candidate.text === word.text
-                && Math.abs(candidate.top - word.top) < 0.5
-                && Math.abs(candidate.left - word.left) < 0.5
-              )) === wordIndex
-            ));
-            const visualLines = new Map();
-            dedupedVisualWords.forEach((word, wordIndex) => {
-              const lineKey = Math.round(word.top / 4) * 4;
-              const lineWords = visualLines.get(lineKey) || [];
-              lineWords.push({ ...word, wordIndex });
-              visualLines.set(lineKey, lineWords);
-            });
-            const renderedLineTexts = Array.from(visualLines.entries())
-              .sort(([topA], [topB]) => topA - topB)
-              .map(([, lineWords]) => lineWords
-                .sort((left, right) => left.left - right.left || left.wordIndex - right.wordIndex)
-                .map((word) => word.text)
-                .join(' ')
-                .trim())
+            return (isTemplate || payload.__geometry_audit) && Math.abs(end - segment.end) <= 0.002;
+          });
+          const endingCaptionAudits = hasCaptionEndingAtSegment
+            ? await page.evaluate((currentPayload, currentTime, segmentEnd) => {
+            const normalizeTokens = (value) => String(value || '')
+              .normalize('NFC')
+              .trim()
+              .toLocaleLowerCase()
+              .split(/\s+/)
               .filter(Boolean);
-            const expectedLineTexts = Array.isArray(caption.preview_template_line_texts)
-              ? caption.preview_template_line_texts
-                .map((line) => normalizeTokens(line).join(' '))
-                .filter(Boolean)
-              : [];
-            const lineComplete = expectedLineTexts.length === 0
-              || (
-                expectedLineTexts.length === renderedLineTexts.length
-                && expectedLineTexts.every((line, lineIndex) => line === renderedLineTexts[lineIndex])
-              );
-            const emphasisByLine = new Map();
-            Array.from(anchor.querySelectorAll('.is-emphasis')).forEach((word) => {
-              if (!isVisibleTextParent(word, anchor)) return;
-              const line = word.parentElement || anchor;
-              const lineWords = emphasisByLine.get(line) || [];
-              const styles = getComputedStyle(word);
-              lineWords.push({
-                text: String(word.textContent || '').trim(),
-                color: styles.color,
-                underlined: styles.textDecorationLine.includes('underline')
-                  || (styles.borderBottomStyle !== 'none' && parseFloat(styles.borderBottomWidth) > 0),
-              });
-              emphasisByLine.set(line, lineWords);
+            const isVisibleTextParent = (element, boundary) => {
+              if (!(element instanceof HTMLElement)) return false;
+              const rect = element.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) return false;
+              let node = element;
+              while (node && node !== boundary.parentElement) {
+                const computed = getComputedStyle(node);
+                if (
+                  computed.display === 'none'
+                  || computed.visibility === 'hidden'
+                  || Number.parseFloat(computed.opacity || '1') <= 0.001
+                ) {
+                  return false;
+                }
+                if (node === boundary) break;
+                node = node.parentElement;
+              }
+              return true;
+            };
+            const containsWordSequence = (renderedTokens, expectedTokens) => {
+              let cursor = 0;
+              for (const token of renderedTokens) {
+                if (token === expectedTokens[cursor]) cursor += 1;
+                if (cursor === expectedTokens.length) return true;
+              }
+              return expectedTokens.length === 0;
+            };
+
+            const activeCaptions = (currentPayload.captions || []).filter((caption) => {
+              const start = Number(caption.start_time ?? 0);
+              const end = Number(caption.end_time ?? start);
+              return currentTime >= start && currentTime < end;
             });
-            const pairedEmphasisLines = Array.from(emphasisByLine.values())
-              .filter((lineWords) => lineWords.length >= 2);
-            // Highlighted = the semantic keyword(s) plus the template's own hero
-            // word(s). The hero pass can strip .is-emphasis and leave only an
-            // inline accent colour, so that colour counts as a highlight too.
-            const highlightedWords = Array.from(anchor.querySelectorAll('.w, .wbw-word, .sw, .sw-w, .is-emphasis'))
-              .filter((word) => isVisibleTextParent(word, anchor) && (
-                word.matches('.is-emphasis, [data-hero-emphasis="true"], .hero, .ns3hero, .ns3box, .ns3mark, .ns3bracket, .ns3dot')
-                || Boolean(word.style.getPropertyValue('color'))
-              ))
-              .map((word) => {
-                const styles = getComputedStyle(word);
+
+            return activeCaptions.map((caption, activeIndex) => {
+              const end = Number(caption.end_time ?? caption.start_time ?? 0);
+              const isTemplate = Boolean(
+                caption.template_id
+                || caption.template_20_id
+                || caption.applied_template_style?.template_id
+                || caption.applied_template_style?.template_20_id
+                || currentPayload.style?.template_id
+                || currentPayload.style?.template_20_id
+              );
+              if ((!isTemplate && !currentPayload.__geometry_audit) || Math.abs(end - segmentEnd) > 0.002) return null;
+              const anchor = document.querySelector(`[data-caption-render-index="${activeIndex}"]`);
+              if (!anchor) {
                 return {
+                  captionId: String(caption.id || ''),
+                  complete: false,
+                  expectedWords: normalizeTokens(caption.text),
+                  renderedWords: [],
+                  reason: 'missing caption anchor',
+                };
+              }
+
+              const walker = document.createTreeWalker(anchor, NodeFilter.SHOW_TEXT);
+              const visibleText = [];
+              const visualWords = [];
+              let textNode = walker.nextNode();
+              while (textNode) {
+                if (
+                  String(textNode.nodeValue || '').trim()
+                  && isVisibleTextParent(textNode.parentElement, anchor)
+                ) {
+                  visibleText.push(textNode.nodeValue);
+                  for (const match of String(textNode.nodeValue || '').matchAll(/\S+/g)) {
+                    const range = document.createRange();
+                    range.setStart(textNode, match.index);
+                    range.setEnd(textNode, match.index + match[0].length);
+                    const rect = Array.from(range.getClientRects())
+                      .find((item) => item.width > 0 && item.height > 0);
+                    range.detach?.();
+                    if (!rect) continue;
+                    visualWords.push({
+                      text: match[0].normalize('NFC').toLocaleLowerCase(),
+                      top: rect.top,
+                      left: rect.left,
+                    });
+                  }
+                }
+                textNode = walker.nextNode();
+              }
+              const expectedWords = normalizeTokens(caption.text);
+              const renderedWords = normalizeTokens(visibleText.join(' '));
+              const dedupedVisualWords = visualWords.filter((word, wordIndex) => (
+                visualWords.findIndex((candidate) => (
+                  candidate.text === word.text
+                  && Math.abs(candidate.top - word.top) < 0.5
+                  && Math.abs(candidate.left - word.left) < 0.5
+                )) === wordIndex
+              ));
+              const visualLines = new Map();
+              dedupedVisualWords.forEach((word, wordIndex) => {
+                const lineKey = Math.round(word.top / 4) * 4;
+                const lineWords = visualLines.get(lineKey) || [];
+                lineWords.push({ ...word, wordIndex });
+                visualLines.set(lineKey, lineWords);
+              });
+              const renderedLineTexts = Array.from(visualLines.entries())
+                .sort(([topA], [topB]) => topA - topB)
+                .map(([, lineWords]) => lineWords
+                  .sort((left, right) => left.left - right.left || left.wordIndex - right.wordIndex)
+                  .map((word) => word.text)
+                  .join(' ')
+                  .trim())
+                .filter(Boolean);
+              const expectedLineTexts = Array.isArray(caption.preview_template_line_texts)
+                ? caption.preview_template_line_texts
+                  .map((line) => normalizeTokens(line).join(' '))
+                  .filter(Boolean)
+                : [];
+              const lineComplete = expectedLineTexts.length === 0
+                || (
+                  expectedLineTexts.length === renderedLineTexts.length
+                  && expectedLineTexts.every((line, lineIndex) => line === renderedLineTexts[lineIndex])
+                );
+              const emphasisByLine = new Map();
+              Array.from(anchor.querySelectorAll('.is-emphasis')).forEach((word) => {
+                if (!isVisibleTextParent(word, anchor)) return;
+                const line = word.parentElement || anchor;
+                const lineWords = emphasisByLine.get(line) || [];
+                const styles = getComputedStyle(word);
+                lineWords.push({
                   text: String(word.textContent || '').trim(),
                   color: styles.color,
-                  fontWeight: styles.fontWeight,
-                };
+                  underlined: styles.textDecorationLine.includes('underline')
+                    || (styles.borderBottomStyle !== 'none' && parseFloat(styles.borderBottomWidth) > 0),
+                });
+                emphasisByLine.set(line, lineWords);
               });
-            return {
-              captionId: String(caption.id || ''),
-              complete: containsWordSequence(renderedWords, expectedWords) && lineComplete,
-              expectedWords,
-              renderedWords,
-              expectedLineTexts,
-              renderedLineTexts,
-              pairedEmphasisLines,
-              pairedEmphasisColorsMatch: pairedEmphasisLines.every((lineWords) => (
-                new Set(lineWords.map((word) => word.color)).size === 1
-              )),
-              pairedEmphasisUnderlinesMatch: pairedEmphasisLines.every((lineWords) => (
-                !lineWords.some((word) => word.underlined)
-                || lineWords.every((word) => word.underlined)
-              )),
-              highlightedWords,
-              highlightedWeightsMatch: new Set(highlightedWords.map((word) => word.fontWeight)).size <= 1,
-              // Opt-in (TEMPLATE_OVERLAY_GEOMETRY_AUDIT=1): each word's centre and
-              // size as a fraction of the frame, to compare with the canvas.
-              wordGeometry: currentPayload.__geometry_audit
-                ? Array.from(anchor.querySelectorAll('[data-word-key]'))
-                  .filter((word) => isVisibleTextParent(word, anchor))
-                  .map((word) => {
-                    const visual = word.querySelector('[data-source-word-visual="true"], [data-word-drag-visual="true"]') || word;
-                    const rect = visual.getBoundingClientRect();
-                    const styles = getComputedStyle(visual);
+              const pairedEmphasisLines = Array.from(emphasisByLine.values())
+                .filter((lineWords) => lineWords.length >= 2);
+              // Highlighted = the semantic keyword(s) plus the template's own hero
+              // word(s). The hero pass can strip .is-emphasis and leave only an
+              // inline accent colour, so that colour counts as a highlight too.
+              const highlightedWords = Array.from(anchor.querySelectorAll('.w, .wbw-word, .sw, .sw-w, .is-emphasis'))
+                .filter((word) => isVisibleTextParent(word, anchor) && (
+                  word.matches('.is-emphasis, [data-hero-emphasis="true"], .hero, .ns3hero, .ns3box, .ns3mark, .ns3bracket, .ns3dot')
+                  || Boolean(word.style.getPropertyValue('color'))
+                ))
+                .map((word) => {
+                  const styles = getComputedStyle(word);
+                  return {
+                    text: String(word.textContent || '').trim(),
+                    color: styles.color,
+                    fontWeight: styles.fontWeight,
+                  };
+                });
+              return {
+                captionId: String(caption.id || ''),
+                complete: containsWordSequence(renderedWords, expectedWords) && lineComplete,
+                expectedWords,
+                renderedWords,
+                expectedLineTexts,
+                renderedLineTexts,
+                pairedEmphasisLines,
+                pairedEmphasisColorsMatch: pairedEmphasisLines.every((lineWords) => (
+                  new Set(lineWords.map((word) => word.color)).size === 1
+                )),
+                pairedEmphasisUnderlinesMatch: pairedEmphasisLines.every((lineWords) => (
+                  !lineWords.some((word) => word.underlined)
+                  || lineWords.every((word) => word.underlined)
+                )),
+                highlightedWords,
+                highlightedWeightsMatch: new Set(highlightedWords.map((word) => word.fontWeight)).size <= 1,
+                // Opt-in (TEMPLATE_OVERLAY_GEOMETRY_AUDIT=1): each word's centre and
+                // size as a fraction of the frame, to compare with the canvas.
+                wordGeometry: currentPayload.__geometry_audit
+                  ? Array.from(anchor.querySelectorAll('[data-word-key]'))
+                    .filter((word) => isVisibleTextParent(word, anchor))
+                    .map((word) => {
+                      const visual = word.querySelector('[data-source-word-visual="true"], [data-word-drag-visual="true"]') || word;
+                      const rect = visual.getBoundingClientRect();
+                      const styles = getComputedStyle(visual);
+                      return {
+                        text: String(visual.textContent || '').trim(),
+                        wordIndex: Number(String(word.dataset.wordKey).slice(String(caption.id).length + 1)),
+                        cx: (rect.left + rect.width / 2) / window.innerWidth,
+                        cy: (rect.top + rect.height / 2) / window.innerHeight,
+                        fs: Number.parseFloat(styles.fontSize) / window.innerWidth,
+                        family: styles.fontFamily,
+                        weight: styles.fontWeight,
+                        width: rect.width / window.innerWidth,
+                        color: styles.webkitTextFillColor || styles.color,
+                        emphasis: word.classList.contains('is-emphasis'),
+                      };
+                    })
+                  : undefined,
+                boxGeometry: currentPayload.__geometry_audit
+                  ? ['#overlay-root', ':scope', '.lekha-sidebar-export-template-shell', '.sb.active, .sblock.active', '.cpt, .nline', '.lc-card, .card'].map((selector) => {
+                    const element = selector === ':scope'
+                      ? anchor
+                      : (selector === '#overlay-root' ? document.querySelector(selector) : anchor.querySelector(selector));
+                    if (!element) return null;
+                    const rect = element.getBoundingClientRect();
                     return {
-                      text: String(visual.textContent || '').trim(),
-                      wordIndex: Number(String(word.dataset.wordKey).slice(String(caption.id).length + 1)),
-                      cx: (rect.left + rect.width / 2) / window.innerWidth,
-                      cy: (rect.top + rect.height / 2) / window.innerHeight,
-                      fs: Number.parseFloat(styles.fontSize) / window.innerWidth,
-                      family: styles.fontFamily,
-                      weight: styles.fontWeight,
-                      width: rect.width / window.innerWidth,
-                      color: styles.webkitTextFillColor || styles.color,
-                      emphasis: word.classList.contains('is-emphasis'),
+                      selector,
+                      transform: getComputedStyle(element).transform,
+                      left: rect.left / window.innerWidth,
+                      right: rect.right / window.innerWidth,
+                      top: rect.top / window.innerHeight,
+                      bottom: rect.bottom / window.innerHeight,
                     };
                   })
-                : undefined,
-              boxGeometry: currentPayload.__geometry_audit
-                ? ['#overlay-root', ':scope', '.lekha-sidebar-export-template-shell', '.sb.active, .sblock.active', '.cpt, .nline', '.lc-card, .card'].map((selector) => {
-                  const element = selector === ':scope'
-                    ? anchor
-                    : (selector === '#overlay-root' ? document.querySelector(selector) : anchor.querySelector(selector));
-                  if (!element) return null;
-                  const rect = element.getBoundingClientRect();
-                  return {
-                    selector,
-                    transform: getComputedStyle(element).transform,
-                    left: rect.left / window.innerWidth,
-                    right: rect.right / window.innerWidth,
-                    top: rect.top / window.innerHeight,
-                    bottom: rect.bottom / window.innerHeight,
-                  };
-                })
-                : undefined,
-              script: caption.__export_script || 'latin',
-            };
-          }).filter(Boolean);
-          }, payload, renderTime, segment.end)
-          : [];
-        completenessAudits.push(...endingCaptionAudits);
-        const incompleteAudit = endingCaptionAudits.find((audit) => !audit.complete);
-        if (incompleteAudit) {
-          throw new Error(
-            `[Template DOM] incomplete final template frame for caption ${incompleteAudit.captionId}: `
-            + `expected=${JSON.stringify(incompleteAudit.expectedWords)} `
-            + `rendered=${JSON.stringify(incompleteAudit.renderedWords)} `
-            + `expected_lines=${JSON.stringify(incompleteAudit.expectedLineTexts)} `
-            + `rendered_lines=${JSON.stringify(incompleteAudit.renderedLineTexts)}`
-          );
+                  : undefined,
+                script: caption.__export_script || 'latin',
+              };
+            }).filter(Boolean);
+            }, payload, renderTime, segment.end)
+            : [];
+          completenessAudits.push(...endingCaptionAudits);
+          const incompleteAudit = endingCaptionAudits.find((audit) => !audit.complete);
+          if (incompleteAudit) {
+            throw new Error(
+              `[Template DOM] incomplete final template frame for caption ${incompleteAudit.captionId}: `
+              + `expected=${JSON.stringify(incompleteAudit.expectedWords)} `
+              + `rendered=${JSON.stringify(incompleteAudit.renderedWords)} `
+              + `expected_lines=${JSON.stringify(incompleteAudit.expectedLineTexts)} `
+              + `rendered_lines=${JSON.stringify(incompleteAudit.renderedLineTexts)}`
+            );
+          }
+
+          const disk = await fs.statfs(outputDir);
+          if (Number(disk.bavail) * Number(disk.bsize) < 256 * 1024 * 1024) {
+            throw new Error('Insufficient temporary disk space for overlay frames');
+          }
+          await page.screenshot({
+            path: framePath,
+            omitBackground: true,
+            optimizeForSpeed: true,
+          });
+          renderedFramePath = framePath;
         }
 
-        const disk = await fs.statfs(outputDir);
-        if (Number(disk.bavail) * Number(disk.bsize) < 256 * 1024 * 1024) {
-          throw new Error('Insufficient temporary disk space for overlay frames');
+        frameFiles.push(renderedFramePath);
+        frameLines.push(`file '${toForwardSlash(renderedFramePath).replace(/'/g, "'\\''")}'`);
+        if (index < lastIndex) {
+          frameLines.push(`duration ${segment.duration.toFixed(6)}`);
         }
-        await page.screenshot({
-          path: framePath,
-          omitBackground: true,
-          optimizeForSpeed: true,
-        });
-        renderedFramePath = framePath;
       }
+      if (chunkStarts.length > 1) {
+        console.log(`[Template DOM] segments ${fromIndex}-${toIndex - 1} captured in ${((performance.now() - chunkStartedAt) / 1000).toFixed(2)}s`);
+      }
+      return { frameLines, frameFiles, completenessAudits, wordPositionAudits };
+    };
 
-      frameFiles.push(renderedFramePath);
-      frameLines.push(`file '${toForwardSlash(renderedFramePath).replace(/'/g, "'\\''")}'`);
-      if (index < lastIndex) {
-        frameLines.push(`duration ${segment.duration.toFixed(6)}`);
-      }
-    }
+    const chunkResults = await Promise.all(chunkStarts.map((fromIndex, chunk) => renderChunk(
+      renderPages[chunk],
+      fromIndex,
+      chunkStarts[chunk + 1] ?? segments.length,
+    )));
+    const frameLines = chunkResults.flatMap((result) => result.frameLines);
+    const frameFiles = chunkResults.flatMap((result) => result.frameFiles);
+    const completenessAudits = chunkResults.flatMap((result) => result.completenessAudits);
+    const wordPositionAudits = chunkResults.flatMap((result) => result.wordPositionAudits);
 
     if (process.env.TEMPLATE_OVERLAY_DEBUG === '1') {
       const debugInfo = await page.evaluate(() => {
@@ -3433,6 +3602,7 @@ async function main() {
       );
     }
   } finally {
+    await Promise.all(extraBrowsers.map(closeBrowserQuickly));
     if (isolatedContext) {
       try {
         await isolatedContext.close();

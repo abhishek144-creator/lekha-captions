@@ -522,7 +522,7 @@ TRANSCRIPTION_CACHE_MAX_BYTES = 900_000
 CLIENT_TIME_TO_FIRST_CAPTION_MAX_MS = 2 * 3600 * 1000
 RENDER_CACHE_DIR = os.path.join(CACHE_DIR, "renders")
 DEAD_LETTER_DIR = os.path.join(CACHE_DIR, "dead_letter")
-EXPORT_RENDERER_VERSION = "2026-10-26-source-audio-word-clock-v60"
+EXPORT_RENDERER_VERSION = "2026-10-27-parallel-frame-capture-v61"
 
 _CLIENT_RENDER_HINT_FIELDS = {
     "word_layouts",
