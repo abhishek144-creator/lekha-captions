@@ -1893,7 +1893,8 @@ export default function VideoPlayer({
                   return (
                     <div
                       key={`cpt-word-v-${i}`}
-                      className="absolute border-l border-dashed border-[#66f2ff] shadow-[0_0_8px_rgba(102,242,255,0.65)]"
+                      className={guide.kind === 'safe' ? 'absolute border-l border-dashed border-[#ffb35c] shadow-[0_0_8px_rgba(255,179,92,0.6)]' : 'absolute border-l border-dashed border-[#66f2ff] shadow-[0_0_8px_rgba(102,242,255,0.65)]'}
+                      data-cpt-guide-kind={guide.kind}
                       style={{
                         left: `${guide.x}px`,
                         top: `${y1}px`,
@@ -1909,13 +1910,41 @@ export default function VideoPlayer({
                   return (
                     <div
                       key={`cpt-word-h-${i}`}
-                      className="absolute border-t border-dashed border-[#66f2ff] shadow-[0_0_8px_rgba(102,242,255,0.65)]"
+                      className={guide.kind === 'safe' ? 'absolute border-t border-dashed border-[#ffb35c] shadow-[0_0_8px_rgba(255,179,92,0.6)]' : 'absolute border-t border-dashed border-[#66f2ff] shadow-[0_0_8px_rgba(102,242,255,0.65)]'}
+                      data-cpt-guide-kind={guide.kind}
                       style={{
                         left: `${x1}px`,
                         top: `${guide.y}px`,
                         width: `${width}px`,
                       }}
                     />
+                  );
+                }
+
+                if (guide.type === 'overlap' || guide.type === 'suggestion') {
+                  // Overlap is allowed: the overlapped word is outlined, and the
+                  // smallest clearing move is offered (Shift on release).
+                  const isSuggestion = guide.type === 'suggestion';
+                  return (
+                    <div
+                      key={`cpt-word-${guide.type}-${i}`}
+                      data-cpt-guide={guide.type}
+                      className={isSuggestion
+                        ? 'absolute rounded-sm border border-dashed border-[#7CFFB2] bg-[#7CFFB2]/10'
+                        : 'absolute rounded-sm border border-[#ff6b8a]/80'}
+                      style={{
+                        left: `${Math.min(guide.left, guide.right)}px`,
+                        top: `${Math.min(guide.top, guide.bottom)}px`,
+                        width: `${Math.abs(guide.right - guide.left)}px`,
+                        height: `${Math.abs(guide.bottom - guide.top)}px`,
+                      }}
+                    >
+                      {isSuggestion && (
+                        <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black/75 px-1.5 py-0.5 text-[10px] text-[#7CFFB2]">
+                          Shift: avoid overlap
+                        </span>
+                      )}
+                    </div>
                   );
                 }
 

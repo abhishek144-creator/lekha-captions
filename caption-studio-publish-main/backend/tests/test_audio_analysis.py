@@ -47,7 +47,9 @@ class AudioAnalysisTests(unittest.TestCase):
             cleaned = [w for c in result['captions'] for w in c['words']]
             self.assertEqual(cleaned, [w for w in raw_words if w['word'] != 'उम्म'])
             self.assertEqual(sarvam.return_value.speech_to_text.transcribe.call_args.kwargs['mode'], 'verbatim')
-            processor.client.audio.transcriptions.create.assert_not_called()
+            # One whisper request times Sarvam's words; none transcribes again.
+            processor.client.audio.transcriptions.create.assert_called_once()
+            self.assertEqual(processor.client.audio.transcriptions.create.call_args.kwargs['language'], 'hi')
 
     def test_cloud_draft_keeps_only_analysis_for_its_source(self):
         from backend.drafts import normalize_draft

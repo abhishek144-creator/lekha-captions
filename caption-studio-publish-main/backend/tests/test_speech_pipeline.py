@@ -15,12 +15,40 @@ class SpeechPipelineTests(unittest.TestCase):
     def group(self, words):
         return self.processor._post_process_captions(self.processor._group_words_by_speech_pace(words))
 
-    def test_natural_clause_instead_of_fixed_word_cuts(self):
+    def test_auto_phrases_are_short_and_cut_at_natural_joins(self):
         words = timed('I want to go to the market because I need some fresh vegetables.')
         captions = self.group(words)
         self.assertEqual([c['text'] for c in captions],
-                         ['I want to go to the market', 'because I need some fresh vegetables.'])
+                         ['I want to go', 'to the market', 'because I need', 'some fresh vegetables.'])
         self.assertEqual([w for c in captions for w in c['words']], words)
+
+    def test_auto_never_puts_a_paragraph_on_screen(self):
+        # Regression: the 2026-10-26 grouper allowed 14 words / 84 characters.
+        text = ('So today I want to talk about how we work and it is something that we do every day here. '
+                'मेरे पीछे जो आप शिप देख रहे हो वो शिप नहीं है बल्कि एक क्लब हाउस है।')
+        for step in (0.12, 0.3, 0.6):
+            with self.subTest(step=step):
+                captions = self.group(timed(text, step=step))
+                self.assertEqual(' '.join(c['text'] for c in captions), text)
+                self.assertTrue(all(len(c['words']) <= 5 for c in captions), [c['text'] for c in captions])
+                self.assertTrue(all(len(c['text']) <= 32 for c in captions), [c['text'] for c in captions])
+
+    def test_auto_breaks_at_a_short_pause_but_not_inside_a_join(self):
+        words = timed('we ship today', step=0.3) + timed('and celebrate', start=1.25)
+        self.assertEqual([c['text'] for c in self.group(words)], ['we ship today', 'and celebrate'])
+        # A 0.35 s hesitation between "the" and its noun is not a phrase end.
+        joined = timed('look at the', step=0.3) + timed('ship now', start=1.25)
+        self.assertNotIn('look at the', [c['text'] for c in self.group(joined)])
+
+    def test_slow_speech_gets_fewer_words_than_fast_speech(self):
+        text = 'discipline beats talent when talent does not work hard and that is the whole lesson for today'
+        slow = self.group(timed(text, step=0.7))
+        fast = self.group(timed(text, step=0.15))
+        self.assertGreater(len(slow), len(fast))
+        self.assertEqual(' '.join(c['text'] for c in slow), text)
+        self.assertTrue(all(len(c['words']) <= 4 for c in slow), [c['text'] for c in slow])
+        # No caption is a lone conjunction.
+        self.assertNotIn('and', [c['text'] for c in slow + fast])
 
     def test_silence_is_not_filled_by_previous_caption(self):
         words = timed('Wait here.') + timed('Now continue.', start=5)
