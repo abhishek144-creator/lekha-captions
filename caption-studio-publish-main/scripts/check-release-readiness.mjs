@@ -390,7 +390,7 @@ assertIncludes("production admission enforces predicted work", backendMain, "EXP
 assertIncludes("predicted-work admission is atomic with queue insertion", queueAdmission, "pipeline.hset(work_key, job_id, requested_work)")
 assertIncludes("export status exposes queue position", backendMain, '"queue_position": queue_prediction.get("queue_position")')
 assertIncludes("export status predicts completion from work ahead", queueMetrics, '"estimated_completion_seconds"')
-assertIncludes("customer export UI shows queue position", readText("src/components/dashboard/ExportPanel.jsx"), "estimated completion")
+assertExcludes("customer export UI omits queue position", readText("src/components/dashboard/ExportPanel.jsx"), "Starting render capacity")
 assertIncludes("tiered queue reconciliation uses the recorded queue", backendMain, "_queue_for_export_job_record")
 assertIncludes("Cloud Scheduler verifies Google OIDC tokens", schedulerAuth, "verify_oauth2_token")
 assertIncludes("maintenance endpoints are extracted from the application module", backendMain, "create_maintenance_router")

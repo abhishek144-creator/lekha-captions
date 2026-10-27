@@ -18,7 +18,7 @@ const plans = [
     features: [
       '15 video credits / month',
       'Max 3 min per video',
-      'Max 3 videos / day',
+      'Max 5 videos / day',
       'No watermark',
       '100+ caption styles',
       'Available transcription language choices',
@@ -40,7 +40,7 @@ const plans = [
     features: [
       '45 video credits / month',
       'Max 3 min per video',
-      'Max 5 videos / day',
+      'Max 7 videos / day',
       'No watermark',
       '100+ caption styles',
       'Available transcription and translation language choices',
@@ -258,7 +258,7 @@ export function HomePricingSection() {
                     String(getPlanCredits(plans[2], billing)),
                   ],
                   ['Max Video Length', '3 min', '3 min', '3 min'],
-                  ['Daily Limit', '3/day', '5/day', 'Unlimited'],
+                  ['Daily Limit', '5/day', '7/day', 'Unlimited'],
                   ['Export Quality', '1080p', '1080p + 4K', '1080p + 4K'],
                   ['Transcription language choices', 'Included', 'Included', 'Included'],
                   ['Translation', '—', '✓', '✓'],

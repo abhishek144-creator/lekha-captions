@@ -683,7 +683,7 @@ def export_status(job_id: str, request: Request):
         "render_ms": job.get("render_ms"),
         "finalization_ms": job.get("finalization_ms"),
         "total_ms": job.get("total_ms"),
-        "error": "Export failed. Please retry or contact support." if job.get("error") else None,
+        "error": export_jobs._public_export_error(job.get("error")),
     }
 
 
@@ -695,7 +695,7 @@ def export_result(job_id: str, request: Request):
     export_jobs._require_export_job_access(request, job)
     job = _reconcile_export_job(job_id, job)
     if job.get("status") != "completed":
-        return {"success": False, "status": job.get("status", "unknown"), "error": "Export failed. Please retry or contact support." if job.get("error") else None}
+        return {"success": False, "status": job.get("status", "unknown"), "error": export_jobs._public_export_error(job.get("error"))}
     payload = job.get("payload") or {}
     if not payload:
         return {"success": False, "status": "completed", "error": "Result payload missing"}

@@ -104,7 +104,7 @@ class ApiContractTests(unittest.TestCase):
             "subscription_tier": "creator",
             "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),
             "credits_remaining": 40,
-            "export_timestamps": [1_700_000_000.0 - 60] * 5,
+            "export_timestamps": [1_700_000_000.0 - 60] * 7,
         }
 
         with patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False):
@@ -112,6 +112,18 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertFalse(allowed)
         self.assertIn("Limit reached", detail)
+
+    def test_paid_plan_daily_export_boundaries(self):
+        now = 1_700_000_000.0
+        with patch.object(main.settings, "DISABLE_EXPORT_DAILY_LIMIT", False):
+            for plan, limit in (("starter", 5), ("starter_yearly", 5), ("creator", 7), ("creator_yearly", 7)):
+                with self.subTest(plan=plan):
+                    user = {"subscription_tier": plan, "subscription_expiry": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat(), "credits_remaining": 40, "export_timestamps": [now - 60] * (limit - 1)}
+                    self.assertTrue(main.export_jobs._evaluate_export_policy(user, now)[0])
+                    user["export_timestamps"].append(now - 30)
+                    allowed, detail, _ = main.export_jobs._evaluate_export_policy(user, now)
+                    self.assertFalse(allowed)
+                    self.assertIn(f"{limit} videos per 24 hours", detail)
 
     def test_export_payload_discards_browser_render_measurements(self):
         payload = {
@@ -776,6 +788,16 @@ class ApiContractTests(unittest.TestCase):
         res = self.client.get("/api/export-status/missing-job")
         self.assertEqual(res.status_code, 404)
         self.assertIn("detail", res.json())
+
+    @patch("main.firebase_admin_setup.verify_token", return_value={"uid": "owner-uid"})
+    def test_export_status_exposes_only_safe_daily_limit(self, _verify_token):
+        job_id = "job-policy-error"
+        job = {"uid": "owner-uid", "status": "failed", "error": "Limit reached: You can only export 3 videos per 24 hours."}
+        main.app_state._export_jobs[job_id] = job
+        headers = {"Authorization": "Bearer owner-token"}
+        self.assertEqual(self.client.get(f"/api/export-status/{job_id}", headers=headers).json()["error"], job["error"])
+        job["error"] = "private /tmp/path and credentials"
+        self.assertEqual(self.client.get(f"/api/export-status/{job_id}", headers=headers).json()["error"], "Export failed. Please retry or contact support.")
 
     @patch("main.firebase_admin_setup.verify_token")
     def test_export_status_requires_owner_auth(self, mock_verify_token):
