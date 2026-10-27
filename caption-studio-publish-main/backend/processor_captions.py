@@ -89,6 +89,10 @@ class CaptionTextMixin:
             'tamil': {'அம்'}, 'ta': {'அம்'},
             'telugu': {'ఉమ్', 'ఉహ్'}, 'te': {'ఉమ్', 'ఉహ్'},
             'hinglish': english_hesitations | {'उम्म', 'उह'},
+            'tanglish': english_hesitations | {'அம்'},
+            'tenglish': english_hesitations | {'ఉమ్', 'ఉహ్'},
+            'kanglish': english_hesitations,
+            'manglish': english_hesitations,
         }.get(language, set())
         cleaned = []
         for index, word in enumerate(parsed):

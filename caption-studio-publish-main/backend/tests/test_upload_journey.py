@@ -146,13 +146,17 @@ class SpokenLanguageRoutingTests(unittest.IsolatedAsyncioTestCase):
             'nepali': 'ne-IN', 'konkani': 'kok-IN', 'kashmiri': 'ks-IN',
             'sindhi': 'sd-IN', 'sanskrit': 'sa-IN', 'santali': 'sat-IN',
             'manipuri': 'mni-IN', 'bodo': 'brx-IN', 'maithili': 'mai-IN',
-            'dogri': 'doi-IN', 'hinglish': 'hi-IN',
+            'dogri': 'doi-IN', 'hinglish': 'hi-IN', 'tanglish': 'ta-IN',
+            'tenglish': 'te-IN', 'kanglish': 'kn-IN', 'manglish': 'ml-IN',
         }
+        codemix = {'hinglish', 'tanglish', 'tenglish', 'kanglish', 'manglish'}
         for language, code in languages.items():
             with self.subTest(language=language), patch('processor.run_media_command', side_effect=_write_output), patch('processor.SarvamAI') as sarvam, patch.object(self.processor, '_transcribe_with_sarvam', return_value=self.words) as transcribe:
                 result = await self.processor.generate_captions_only('video.mp4', target_language=language)
                 self.assertEqual(result.get('transcription_source'), 'sarvam')
                 self.assertEqual(transcribe.call_args.args[2], code)
+                # Mixed speech keeps English words in English letters.
+                self.assertEqual(transcribe.call_args.kwargs['mode'], 'codemix' if language in codemix else 'verbatim')
                 sarvam.assert_called_once()
         # Exactly one alignment request per transcription, never a failover.
         self.assertEqual(len(self.whisper_calls()), len(languages))
@@ -268,9 +272,11 @@ class SarvamChunkTimestampTests(unittest.TestCase):
     def test_long_audio_reaches_sarvam_in_pieces_with_shifted_timestamps(self):
         processor = VideoProcessor(fonts_dir="flat_fonts")
         calls = []
+        modes = []
 
         def fake_transcribe(**kwargs):
             calls.append(kwargs["language_code"])
+            modes.append(kwargs["mode"])
             return SimpleNamespace(timestamps={
                 "words": [f"शब्द{len(calls)} दूसरा"], "start_time_seconds": [1.0], "end_time_seconds": [2.0],
             })
@@ -280,8 +286,9 @@ class SarvamChunkTimestampTests(unittest.TestCase):
         with patch.object(processor, "_get_video_duration", return_value=70.0), \
                 patch("processor.run_media_command", return_value=SimpleNamespace(stderr="")), \
                 patch("builtins.open", unittest.mock.mock_open(read_data=b"")):
-            words = processor._transcribe_with_sarvam(client, "audio.mp3", "hi-IN")
+            words = processor._transcribe_with_sarvam(client, "audio.mp3", "hi-IN", mode="codemix")
         self.assertEqual(calls, ["hi-IN", "hi-IN", "hi-IN"])
+        self.assertEqual(modes, ["codemix", "codemix", "codemix"])  # every piece keeps the mode
         self.assertEqual([w["start"] for w in words][::2], [1.0, 30.0, 59.0])
         self.assertEqual(words[-1]["end"], 60.0)
 
