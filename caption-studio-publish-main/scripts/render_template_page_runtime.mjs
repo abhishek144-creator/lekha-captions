@@ -2369,6 +2369,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
     const buildAbsoluteCptMarkup = (caption, globalStyle, time) => {
       const words = buildWordMeta(caption);
       const currentIndex = getCurrentWordIndex(caption, time);
+      const revealTimes = getCaptionWordRevealTimes(caption, Math.max(1, words.length));
       const emphasisIndices = new Set(normalizeImpWordIndices(
         caption.imp_word_index,
         caption.imp_word_indices || [],
@@ -2394,20 +2395,26 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           const scaleX = Number(wordStyle.textScaleX || 1) || 1;
           const rotation = Number(wordStyle.rotation || 0) || 0;
           const boxWidth = Number(wordStyle.boxWidth || 0) || 0;
+          // The entrance picked in the word editor plays from this word's reveal
+          // (the compositor seeks it from data-word-animation-start), as on the
+          // canvas. Centring, rotation and stretch use the individual transform
+          // properties, so the entrance keyframes' transform composes with them
+          // instead of replacing the centring.
+          const entrance = getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1);
           const inline = [
             'position:absolute',
             'left:' + Number(wordStyle.abs_x_pct) + '%',
             'top:' + Number(wordStyle.abs_y_pct) + '%',
-            'transform:translate(-50%,-50%)'
-              + (rotation ? ' rotate(' + rotation + 'deg)' : '')
-              + (Math.abs(scaleX - 1) > 0.001 ? ' scaleX(' + scaleX + ')' : ''),
+            'translate:-50% -50%',
+            rotation ? 'rotate:' + rotation + 'deg' : '',
+            Math.abs(scaleX - 1) > 0.001 ? 'scale:' + scaleX + ' 1' : '',
             'transform-origin:center center',
             'display:' + (boxWidth ? 'block' : 'inline-block'),
             'z-index:80',
             'white-space:' + (boxWidth ? 'normal' : 'nowrap'),
             'overflow:visible',
             'opacity:' + (index > currentIndex ? '0' : '1'),
-            'animation:none',
+            'animation:' + (entrance || 'none'),
             'transition:none',
             'font-family:&quot;' + escapeHtml(
               wordStyle.cptPaintedFontFamily
@@ -2447,6 +2454,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           return '<span data-word-key="' + escapeHtml(word.key) + '"'
             + ' data-absolute-cpt-word="true"'
             + ' data-absolute-cpt-emphasis="' + (isEmphasis ? 'true' : 'false') + '"'
+            + (entrance ? ' data-word-animation-start="' + Number(revealTimes[index] ?? caption.start_time ?? 0) + '"' : '')
             + ' style="' + inline.join(';') + '">'
             + escapeHtml(transformText(word.text, globalStyle))
             + '</span>';

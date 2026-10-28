@@ -321,14 +321,18 @@ try {
   await page.click('button[title="Undo"]')
   await page.waitForSelector('[data-text-element-layer="true"]')
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.isTextElement))
-  // A new text box lasts to the end of the video, and text typed into it is
-  // kept when playback starts while the box is still being edited (it used to
-  // be lost: the edit only saved on blur, and the box left the screen).
+  // A new text box spans the block under the playhead (the caption shown, or
+  // 3 s) and never the rest of the video, and text typed into it is kept when
+  // playback starts while the box is still being edited (it used to be lost:
+  // the edit only saved on blur, and the box left the screen).
   {
     const stored = JSON.parse(await page.evaluate(() => localStorage.getItem('captionEditorState')))
     const box = stored.captions.find((item) => item.isTextElement)
     const videoDuration = await page.evaluate(() => document.querySelector('.lekha-video-frame video')?.duration || 0)
-    if (videoDuration > 0) assert.ok(Math.abs(box.end_time - videoDuration) < 0.05, `a new text box should run to the end of the video (${box.end_time} vs ${videoDuration})`)
+    const block = stored.captions.find((item) => !item.isTextElement && box.start_time >= item.start_time && box.start_time < item.end_time)
+    if (block) assert.ok(Math.abs(box.end_time - block.end_time) < 0.05, `a new text box should end with the caption under the playhead (${box.end_time} vs ${block.end_time})`)
+    else assert.ok(box.end_time - box.start_time <= 3.05, `a new text box away from captions lasts about 3 s (${box.start_time}-${box.end_time})`)
+    if (videoDuration > 0) assert.ok(box.end_time <= videoDuration + 0.05, `a new text box never runs past the video (${box.end_time} vs ${videoDuration})`)
     await page.$eval('[data-text-element-layer="true"]', (element) => element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
     await page.waitForSelector('[data-text-element-layer="true"] [contenteditable="true"]')
     await page.$eval('[data-text-element-layer="true"] [contenteditable="true"]', (editable) => {

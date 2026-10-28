@@ -2472,8 +2472,13 @@ async function main() {
       points.add(start);
       points.add(end);
       const lineAnimation = LINE_ANIMATION_DEFS[String(caption.animation || '')];
-      const animatedWordStyles = Object.values(caption.word_styles || {})
-        .filter((wordStyle) => wordStyle && LINE_ANIMATION_DEFS[String(wordStyle.animation || '')]);
+      const animatedWordEntries = Object.entries(caption.word_styles || {})
+        .filter(([, wordStyle]) => wordStyle && LINE_ANIMATION_DEFS[String(wordStyle.animation || '')]);
+      const animatedWordStyles = animatedWordEntries.map(([, wordStyle]) => wordStyle);
+      // A CPT word's entrance starts at its reveal, so sample up to the last one's end.
+      const cptWordRevealTimes = animatedWordEntries.length && captionHasCptWordStyles(caption)
+        ? getCaptionWordRevealTimes(caption, Math.max(1, String(caption.text || '').trim().split(/\s+/).filter(Boolean).length))
+        : [];
       if (lineAnimation || animatedWordStyles.length) {
         const lineSpeed = Math.max(0.1, Number(caption.animation_speed || 1));
         const lineWindowSeconds = lineAnimation
@@ -2481,13 +2486,15 @@ async function main() {
               ? Math.max(0, end - start)
               : Math.min(Math.max(0, end - start), (lineAnimation[1] / lineSpeed) / 1000))
           : 0;
-        const wordWindowSeconds = animatedWordStyles.reduce((maxWindow, wordStyle) => {
+        const wordWindowSeconds = animatedWordEntries.reduce((maxWindow, [key, wordStyle]) => {
           const definition = LINE_ANIMATION_DEFS[String(wordStyle.animation || '')];
           const speed = Math.max(0.1, Number(wordStyle.animationSpeed || 1));
           const windowSeconds = definition[3] === 'infinite'
             ? Math.max(0, end - start)
             : (definition[1] / speed) / 1000;
-          return Math.max(maxWindow, windowSeconds);
+          const wordRevealTime = Number(cptWordRevealTimes[Number(String(key).split('-').pop())]);
+          const revealDelay = Number.isFinite(wordRevealTime) ? Math.max(0, wordRevealTime - start) : 0;
+          return Math.max(maxWindow, revealDelay + windowSeconds);
         }, 0);
         const animationEnd = Math.min(end, start + Math.max(lineWindowSeconds, wordWindowSeconds));
         for (
@@ -2839,6 +2846,13 @@ async function main() {
                 const captionStart = Number(shell?.dataset?.captionStart || 0);
                 const captionEnd = Number(shell?.dataset?.captionEnd || captionStart);
                 const captionElapsedMs = Math.max(0, (currentTime - captionStart) * 1000);
+                // A CPT word's own entrance runs from the word's reveal, not the caption start.
+                const wordAnimationStart = Number(target?.closest?.('[data-word-animation-start]')?.dataset?.wordAnimationStart);
+                if (Number.isFinite(wordAnimationStart)) {
+                  animation.pause();
+                  animation.currentTime = Math.max(0, (currentTime - wordAnimationStart) * 1000);
+                  return;
+                }
                 const block = target?.closest?.('.lekha-applied-advanced-template');
                 const blockType = block?.dataset?.templateBlockType || 'styled';
                 const wordCount = block

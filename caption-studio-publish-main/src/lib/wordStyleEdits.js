@@ -73,3 +73,17 @@ export const getPopupWordText = (captions, popup) => {
   const owner = captions.find((caption) => caption.id === wordPopupTargetId(popup))
   return String(owner?.text || '').split(/\s+/).filter(Boolean)[popup?.wordIndex] || popup?.word
 }
+
+// Background on/off for one word: the popup's Background switch and the
+// selected word's toolbar button. On gives a translucent black box; off also
+// clears a highlight gradient, which paints the same box.
+export const DEFAULT_WORD_BACKGROUND = { backgroundColor: '#000000', backgroundOpacity: 0.65 }
+
+export const wordHasBackground = (style = {}) => Boolean(style.backgroundColor || style.highlightGradient)
+
+/** @type {(style: Record<string, any>, enabled: boolean) => Record<string, any>} */
+export const setWordBackground = (style = {}, enabled) => (enabled
+  ? { ...style, ...DEFAULT_WORD_BACKGROUND }
+  : { ...style, backgroundColor: '', highlightGradient: '', backgroundOpacity: 0 })
+
+export const toggleWordBackground = (style = {}) => setWordBackground(style, !wordHasBackground(style))
