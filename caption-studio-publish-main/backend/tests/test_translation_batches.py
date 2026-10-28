@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -31,6 +32,22 @@ class TranslationBatchTests(unittest.TestCase):
     def test_gives_up_when_the_retry_also_fails(self):
         with patch.object(language_api, "_translate_lines", return_value=None):
             self.assertIsNone(language_api._translate_in_batches(None, ["1"], "Hindi", "m"))
+
+    def test_mixed_language_targets_ask_for_native_script_with_english_words(self):
+        seen = []
+
+        class Completions:
+            def create(self, **kwargs):
+                seen.append(kwargs["messages"][0]["content"])
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='{"lines": ["x"]}'))])
+
+        client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()))
+        for target, base in (("tanglish", "Tamil"), ("Hinglish", "Hindi"), ("manglish", "Malayalam")):
+            self.assertEqual(language_api._translate_lines(client, ["hi"], target, "m"), ["x"])
+            self.assertIn(f"{base} words in {base} script", seen[-1])
+            self.assertIn("English (Latin) letters", seen[-1])
+        language_api._translate_lines(client, ["hi"], "tamil", "m")
+        self.assertIn("to tamil.", seen[-1])
 
     def test_requests_up_to_the_export_caption_limit_are_accepted(self):
         from api_models import TranslateRequest

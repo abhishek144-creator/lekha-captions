@@ -43,6 +43,7 @@ export const EMPHASIS_STOP_WORDS = new Set([
 const languageAliases = {
   english: 'en', hindi: 'hi', hinglish: 'hi', tamil: 'ta', telugu: 'te', bengali: 'bn',
   marathi: 'mr', gujarati: 'gu', kannada: 'kn', malayalam: 'ml', punjabi: 'pa', urdu: 'ur',
+  tanglish: 'ta', tenglish: 'te', kanglish: 'kn', manglish: 'ml',
   french: 'fr', spanish: 'es', german: 'de', portuguese: 'pt', arabic: 'ar', russian: 'ru',
 }
 const inferredScriptLanguage = text => {

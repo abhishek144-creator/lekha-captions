@@ -58,6 +58,9 @@ SARVAM_MIN_SEGMENT_SECONDS = 10.0
 # Whisper language codes for the Sarvam languages whisper also recognizes,
 # used only to steer its word timings for Sarvam's words.
 WHISPER_INDIC_CODES = {"hi", "bn", "kn", "ml", "mr", "pa", "ta", "te", "gu", "as", "ur", "ne"}
+# Mixed-language speech. Sarvam's codemix mode writes the Indian-language
+# words in their own script and the English words in English letters.
+CODEMIX_LANGUAGES = {"hinglish", "tanglish", "tenglish", "kanglish", "manglish"}
 _SILENCE_RE = re.compile(r"silence_(start|end): (-?\d+(?:\.\d+)?)")
 
 
@@ -440,7 +443,8 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
         self._ensure_fallback_font()
 
 
-    def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code, speech_words=None, audio_window=None):
+    def _transcribe_with_sarvam(self, sarvam_client, audio_p, lang_code, speech_words=None, audio_window=None,
+                                mode="verbatim"):
         """Timed words for the whole file, one Sarvam request per <=29 s piece.
 
         `speech_words` are whisper's word timings for the same audio. They
@@ -460,7 +464,8 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 offset = slice_pcm(audio_p, focused_piece, audio_window['start'], audio_window['end'])
                 relative_words = [{**word, 'start': word['start'] - offset, 'end': word['end'] - offset}
                                   for word in speech_words if word['end'] > offset and word['start'] < audio_window['end']]
-                result = self._transcribe_with_sarvam(sarvam_client, focused_piece, lang_code, relative_words)
+                result = self._transcribe_with_sarvam(sarvam_client, focused_piece, lang_code, relative_words,
+                                                      mode=mode)
                 return [{**word, 'start': round(word['start'] + offset, 6), 'end': round(word['end'] + offset, 6)}
                         for word in result]
             finally:
@@ -471,7 +476,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 response = sarvam_client.speech_to_text.transcribe(
                     file=f,
                     model="saaras:v3",
-                    mode="verbatim",
+                    mode=mode,
                     language_code=lang_code,
                     request_options={"max_retries": 0, "additional_body_parameters": {"with_timestamps": True}}
                 )
@@ -734,6 +739,8 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 'kashmiri': 'ks-IN', 'sindhi': 'sd-IN', 'sanskrit': 'sa-IN',
                 'santali': 'sat-IN', 'manipuri': 'mni-IN', 'bodo': 'brx-IN',
                 'maithili': 'mai-IN', 'dogri': 'doi-IN', 'hinglish': 'hi-IN',
+                'tanglish': 'ta-IN', 'tenglish': 'te-IN', 'kanglish': 'kn-IN',
+                'manglish': 'ml-IN',
             }
 
             # Whisper ISO 639-1 language codes for non-Indian languages
@@ -827,8 +834,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                     print(f"[Transcribe] Whisper word timings for alignment: {len(alignment_words)}")
 
                     try:
+                        sarvam_mode = "codemix" if target_language.lower() in CODEMIX_LANGUAGES else "verbatim"
                         words = self._transcribe_with_sarvam(sarvam_client, provider_audio_p, lang_code,
-                                                            alignment_words, audio_window=audio_focus.get('window'))
+                                                            alignment_words, audio_window=audio_focus.get('window'),
+                                                            mode=sarvam_mode)
                         words = self._clean_transcript_words(words, "verbatim", target_language)
                         print(f"[Sarvam] Parsed {len(words)} words from response")
                         if words:

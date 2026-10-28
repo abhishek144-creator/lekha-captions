@@ -43,6 +43,15 @@ describe('language default caption fonts', () => {
     expect(getDefaultCaptionFont('This is a mostly English line with नमस्ते', 'hinglish').font_family).toBe('Noto Sans Devanagari')
   })
 
+  it('gives codemix captions the native face, which also draws their English words', () => {
+    expect(getDefaultCaptionFont('இந்த video-ல ஒரு simple trick', 'tanglish').font_family).toBe('Noto Sans Tamil')
+    expect(getDefaultCaptionFont('ఈ video లో ఒక simple trick', 'tenglish').font_family).toBe('Noto Sans Telugu')
+    expect(getDefaultCaptionFont('ಈ video ಅಲ್ಲಿ ಒಂದು simple trick', 'kanglish').font_family).toBe('Noto Sans Kannada')
+    expect(getDefaultCaptionFont('ഈ video യിൽ ഒരു simple trick', 'manglish').font_family).toBe('Noto Sans Malayalam')
+    // A line Sarvam wrote entirely in English letters stays on the Latin face.
+    expect(getDefaultCaptionFont('battery saver on', 'tanglish').font_family).toBe('Inter')
+  })
+
   it('returns the same native default on upload and when None removes a template', () => {
     for (const [text] of samples) {
       const result = buildTemplateApplication({ templateStyle: {}, captionStyle: { ...defaultCaptionStyle, template_id: 't12' }, captions: [{ id: 'line', text }] })

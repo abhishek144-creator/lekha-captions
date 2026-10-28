@@ -103,6 +103,7 @@ const SARVAM_SPOKEN_LANGUAGES = new Set([
   'punjabi', 'tamil', 'telugu', 'gujarati', 'assamese',
   'urdu', 'nepali', 'konkani', 'kashmiri', 'sindhi', 'sanskrit',
   'santali', 'manipuri', 'bodo', 'maithili', 'dogri', 'hinglish',
+  'tanglish', 'tenglish', 'kanglish', 'manglish',
 ]);
 const COLLAPSED_TIMELINE_HEIGHT = 42;
 const EXPANDED_TIMELINE_HEIGHT = 204;

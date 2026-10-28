@@ -204,6 +204,21 @@ def _translate_in_batches(client, texts, target_language, model, batch_size=TRAN
     return translated
 
 
+# Mixed-language targets read the way Sarvam's codemix transcription writes
+# them, so a translated caption matches a transcribed one.
+CODEMIX_TRANSLATION_TARGETS = {
+    language: (f"{name}: everyday {base} mixed with English, the {base} words in {base} script "
+               "and the English words in English (Latin) letters")
+    for language, name, base in (
+        ("hinglish", "Hinglish", "Hindi"),
+        ("tanglish", "Tanglish", "Tamil"),
+        ("tenglish", "Tenglish", "Telugu"),
+        ("kanglish", "Kanglish", "Kannada"),
+        ("manglish", "Manglish", "Malayalam"),
+    )
+}
+
+
 def _translate_lines(client, texts, target_language, model, strict=False):
     """Translate caption lines as a JSON array, one output per input.
 
@@ -211,8 +226,9 @@ def _translate_lines(client, texts, target_language, model, strict=False):
     format split them apart, miscounted, and paid for a retry. Returns None
     when the model does not return exactly one string per input line.
     """
+    target_description = CODEMIX_TRANSLATION_TARGETS.get(str(target_language).lower(), target_language)
     instruction = (
-        f"Translate each caption in the JSON array \"lines\" to {target_language}. "
+        f"Translate each caption in the JSON array \"lines\" to {target_description}. "
         'Reply with JSON {"lines": [...]} containing exactly one translated string per input, '
         "in the same order. Keep empty strings empty and keep line breaks inside a caption."
     )

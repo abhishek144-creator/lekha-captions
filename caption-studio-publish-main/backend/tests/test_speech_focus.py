@@ -102,6 +102,14 @@ class SpeechFocusTests(unittest.TestCase):
         self.assertNotEqual(_build_process_cache_path('media', 'hindi', 0, 0, 'clean', 'main'),
                             _build_process_cache_path('media', 'hindi', 0, 0, 'clean', 'all'))
 
+    def test_hinglish_cache_entries_from_verbatim_transcription_are_not_reused(self):
+        import hashlib
+        from backend.media_records import _build_process_cache_path
+        old_key = hashlib.sha256(b'v7:media:hinglish:0:0:clean:main').hexdigest()
+        self.assertNotIn(old_key, _build_process_cache_path('media', 'Hinglish', 0, 0, 'clean', 'main'))
+        self.assertNotEqual(_build_process_cache_path('media', 'hinglish', 0, 0, 'clean', 'main'),
+                            _build_process_cache_path('media', 'hindi', 0, 0, 'clean', 'main'))
+
     @unittest.skipUnless(shutil.which('ffmpeg'), 'FFmpeg not installed')
     def test_whisper_failover_uses_full_length_focused_audio_and_keeps_measured_times(self):
         with tempfile.TemporaryDirectory() as folder:
