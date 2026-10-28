@@ -31,7 +31,8 @@ class ProjectDuplicateRequest(ProjectRequest):
     name: str = Field(default="", max_length=120)
 
 
-def create_project_router(authenticate, get_database, validate_file_id, assert_upload_owner):
+def create_project_router(authenticate, get_database, validate_file_id, assert_upload_owner,
+                          check_save_rate=None):
     router = APIRouter()
 
     def database():
@@ -53,6 +54,8 @@ def create_project_router(authenticate, get_database, validate_file_id, assert_u
     @router.post("/api/draft/save")
     def save_account_draft(req: DraftRequest):
         uid = authenticate(req.id_token)["uid"]
+        if check_save_rate is not None:
+            check_save_rate(uid)
         db = database()
         if not req.draft or not validate_file_id(str(req.draft.get("fileId") or "")):
             raise HTTPException(422, "Project requires a valid media reference")

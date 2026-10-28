@@ -105,6 +105,33 @@ def _load_upload_metadata(file_id: str) -> Dict[str, Any]:
     return metadata
 
 
+SOURCE_EXPIRED_DETAIL = (
+    "SOURCE_EXPIRED: The source video has expired. Relink the original video to "
+    "transcribe or render it again."
+)
+
+
+def _protect_source_for_job(file_id: str, uid: str):
+    """Refuse a job whose source video has expired; otherwise keep it for the job.
+
+    Only durable uploads are checked. A storage or Firestore error never
+    blocks the job here: the worker still reports a missing source itself.
+    """
+    metadata = _load_upload_metadata(file_id)
+    remote_path = str(metadata.get("remote_path") or "")
+    if str(metadata.get("uid") or "") != str(uid) or not remote_path.startswith("uploads/"):
+        return
+    try:
+        available = firebase_admin_setup.protect_source_for_job(remote_path)
+    except Exception as error:
+        observability._note_firestore_error(error, "source_protection")
+        observability._json_log("warning", "source_protection_failed", file_id=file_id,
+                                error_type=type(error).__name__)
+        return
+    if not available:
+        raise HTTPException(status_code=410, detail=SOURCE_EXPIRED_DETAIL)
+
+
 def _remember_source_duration(file_id: str, duration_seconds: float):
     if not math.isfinite(duration_seconds) or duration_seconds <= 0:
         return

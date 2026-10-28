@@ -204,6 +204,16 @@ async def _export_video_impl(req, request, response):
         }):
             raise HTTPException(status_code=409, detail="Export with this idempotency key is already in progress.")
 
+    # A completed export replays above even after its source expired. A new
+    # render needs the source: refuse an expired one, and keep a live one
+    # until this job can finish.
+    try:
+        await to_thread(media_records._protect_source_for_job, req.file_id, uid)
+    except HTTPException:
+        if idem_key:
+            await to_thread(request_guards._idem_delete, idem_key)
+        raise
+
     # Per-user concurrent export guard.
     export_job_id = str(uuid.uuid4())
     if not await to_thread(request_guards._acquire_export_slot, uid, export_job_id):
@@ -388,6 +398,7 @@ async def _create_export_batch(req, request):
         try:
             await to_thread(media_records._assert_upload_owner, item.file_id, uid)
             await to_thread(media_records._assert_upload_clean, item.file_id)
+            await to_thread(media_records._protect_source_for_job, item.file_id, uid)
             safe_snapshot = safe_snapshots[index]
             duration_hint = await to_thread(media_records._source_duration_hint, item.file_id, uid)
             capacity = estimate_render_capacity(duration_hint, safe_snapshot)
@@ -792,6 +803,7 @@ def export_replay(job_id: str, request: Request):
         return {"success": True, "export_job_id": job_id, "status": "completed", "idempotent_replay": True}
     if not request_snapshot:
         raise HTTPException(status_code=400, detail="No request snapshot found to replay")
+    media_records._protect_source_for_job(str(request_snapshot.get("file_id") or ""), uid)
     new_job_id = str(uuid.uuid4())
     if not request_guards._acquire_export_slot(uid, new_job_id):
         raise HTTPException(

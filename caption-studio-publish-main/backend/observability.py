@@ -20,18 +20,26 @@ try:
     from . import settings
     from . import app_state
     from . import firebase_admin_setup
+    from . import optional_deps
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
     import app_state
     import firebase_admin_setup
+    import optional_deps
 
 try:
     from google.api_core import exceptions as google_api_exceptions
     # 400-class Firestore answers (e.g. InvalidArgument for nested arrays or an
     # oversized document) mean the row itself can never be stored.
     _REJECTED_TELEMETRY_ROW_ERRORS = (ValueError, TypeError, google_api_exceptions.BadRequest)
+    # The Firebase project has no billing, so Firestore answers RESOURCE_EXHAUSTED
+    # once a free daily quota (reads, writes or deletes) is used up.
+    _FIRESTORE_QUOTA_ERRORS = (google_api_exceptions.ResourceExhausted,)
 except ImportError:
     _REJECTED_TELEMETRY_ROW_ERRORS = (ValueError, TypeError)
+    _FIRESTORE_QUOTA_ERRORS = ()
+
+FIRESTORE_QUOTA_ALERT_KEY = "firestore_quota_exhausted"
 
 
 def _utcnow() -> datetime:
@@ -56,8 +64,25 @@ def _json_log(level: str, event: str, **fields):
         app_state._logger.info(line)
 
 
-def _send_alert(text: str):
-    _json_log("warning", "ops_alert", text=text)
+def _capture_alert(text: str, key: str = ""):
+    """Record the alert in Sentry, whose issue alerts email the owner."""
+    sentry = optional_deps.sentry_sdk
+    if settings._IS_TEST or not settings.SENTRY_DSN or sentry is None:
+        return
+    try:
+        with sentry.new_scope() as scope:
+            scope.set_tag("ops_alert", key or "general")
+            if key:
+                # One Sentry issue per alert kind, whatever numbers the text holds.
+                scope.fingerprint = ["ops-alert", key]
+            sentry.capture_message(text, level="warning")
+    except Exception as error:
+        _json_log("warning", "alert_sentry_failed", error=type(error).__name__)
+
+
+def _send_alert(text: str, key: str = ""):
+    _json_log("warning", "ops_alert", text=text, **({"alert_key": key} if key else {}))
+    _capture_alert(text, key)
     if not settings.SLACK_ALERT_WEBHOOK_URL:
         return False
     try:
@@ -73,6 +98,36 @@ def _send_alert(text: str):
     except Exception as e:
         _json_log("warning", "alert_webhook_failed", error=str(e))
         return False
+
+
+def _send_alert_once(key: str, text: str, ttl_seconds: int = 3600) -> bool:
+    """Send at most one alert per key and period across every replica."""
+    now = time.time()
+    if now - app_state._ops_alert_sent_at.get(key, 0.0) < ttl_seconds:
+        return False
+    app_state._ops_alert_sent_at[key] = now
+    if app_state._redis_client is not None:
+        try:
+            if not app_state._redis_client.set(f"ops_alert:{key}", "1", nx=True, ex=max(60, int(ttl_seconds))):
+                return False
+        except Exception:
+            pass  # An alert must still go out while Redis is unhealthy.
+    _send_alert(text, key=key)
+    return True
+
+
+def _note_firestore_error(error: BaseException, scope: str) -> bool:
+    """Alert when Firestore refuses work for quota. Returns True for quota errors."""
+    if not _FIRESTORE_QUOTA_ERRORS or not isinstance(error, _FIRESTORE_QUOTA_ERRORS):
+        return False
+    _json_log("warning", "firestore_quota_exhausted", scope=scope, error=str(error)[:300])
+    _send_alert_once(
+        FIRESTORE_QUOTA_ALERT_KEY,
+        "[Lekha] Firestore refused requests for quota: a free daily limit (reads, writes or "
+        "deletes) is used up. Sign-in, saves, credits and exports fail until it resets at "
+        "midnight Pacific time. Check Firebase console > Firestore > Usage.",
+    )
+    return True
 
 
 def _urlopen_https_only(req, timeout: int = 5):
@@ -133,6 +188,7 @@ def _persist_telemetry_rows_individually(db, rows) -> int:
         except _REJECTED_TELEMETRY_ROW_ERRORS as error:
             _json_log("error", "telemetry_row_rejected", collection=collection_name, error=type(error).__name__)
         except Exception as error:
+            _note_firestore_error(error, "telemetry")
             deferred = rows[index:]
             with app_state._telemetry_lock:
                 for row in reversed(deferred):
@@ -205,12 +261,39 @@ def _track_event(event: str, payload: Optional[Dict[str, Any]] = None):
             app_state._redis_client.expire(redis_daily_key, 120 * 24 * 3600)
         except Exception:
             pass
+    # Counted in Redis (above) and logged, not written to Firestore per event:
+    # every Firestore write spends the free daily quota the whole app shares.
+    # The cron service copies each day's totals to `analytics_daily`.
     _json_log("info", "analytics_event", name=event, payload=payload or {})
-    _enqueue_telemetry("analytics_events", {
-        "event": event,
-        "payload": payload or {},
-        "timestamp": _utcnow().isoformat() + "Z",
-    }, retention_days=30)
+
+
+ANALYTICS_DAILY_COLLECTION = "analytics_daily"
+
+
+def _persist_daily_analytics_totals(db, day_keys) -> int:
+    """Copy Redis daily event counts to one Firestore document per day."""
+    if db is None or app_state._redis_client is None:
+        return 0
+    written = 0
+    for day_key in day_keys:
+        raw = app_state._redis_client.hgetall(f"analytics:daily:{day_key}") or {}
+        counts = {}
+        for name, value in raw.items():
+            name = name.decode("utf-8", "replace") if isinstance(name, bytes) else str(name)
+            try:
+                counts[name] = int(value)
+            except (TypeError, ValueError):
+                continue
+        if not counts:
+            continue
+        db.collection(ANALYTICS_DAILY_COLLECTION).document(day_key).set({
+            "day": day_key,
+            "counts": counts,
+            "total": sum(counts.values()),
+            "updated_at": datetime.now(timezone.utc),
+        })
+        written += 1
+    return written
 
 
 def _track_latency_sample(path: str, duration_ms: int, max_samples: int = 300):

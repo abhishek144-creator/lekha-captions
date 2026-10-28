@@ -13,6 +13,14 @@ from google.cloud import firestore
 PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 MAX_PROJECTS_PER_ACCOUNT = 100
 MAX_DRAFT_CAPTIONS = 1000
+RECOVERY_SNAPSHOTS = 5
+# Firestore runs on the free daily write quota. Autosave writes the current
+# draft every time; a recovery snapshot is written at most once a minute.
+RECOVERY_SNAPSHOT_INTERVAL_SECONDS = 60
+
+
+def _now():
+    return datetime.now(timezone.utc)
 
 
 def normalize_project_id(value, *, create=False):
@@ -162,15 +170,27 @@ def save_draft(db, uid, value, expected_revision, project_id=""):
         if not snapshot.exists and len(list_projects(db, uid, MAX_PROJECTS_PER_ACCOUNT + 1)) >= MAX_PROJECTS_PER_ACCOUNT:
             raise HTTPException(409, "Project limit reached. Delete an old project before creating another.")
         revision = expected_revision + 1
+        now = _now()
+        snapshot_count = int(previous.get("snapshot_count") or 0)
+        last_snapshot_at = previous.get("snapshot_at")
+        try:
+            snapshot_age = (now - datetime.fromisoformat(last_snapshot_at)).total_seconds()
+        except (TypeError, ValueError):
+            snapshot_age = None
+        write_snapshot = snapshot_age is None or snapshot_age >= RECOVERY_SNAPSHOT_INTERVAL_SECONDS
         payload = {
             "project_id": project_id,
             "revision": revision,
             "digest": digest,
             "draft": draft,
-            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "saved_at": now.isoformat(),
+            "snapshot_count": snapshot_count + 1 if write_snapshot else snapshot_count,
+            "snapshot_at": now.isoformat() if write_snapshot else last_snapshot_at,
         }
         tx.set(current, payload)
-        tx.set(current.collection("revisions").document(str(revision % 5)), payload)
+        if write_snapshot:
+            slot = str(snapshot_count % RECOVERY_SNAPSHOTS)
+            tx.set(current.collection("revisions").document(slot), payload)
         return payload
     return save(db.transaction())
 

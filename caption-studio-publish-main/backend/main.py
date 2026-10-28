@@ -284,6 +284,12 @@ async def request_logging_middleware(request: Request, call_next):
             replica_id=settings.RAILWAY_REPLICA_ID,
             error=str(e),
         )
+        if observability._note_firestore_error(e, scope=request.url.path):
+            return request_security._apply_security_headers(JSONResponse(status_code=503, content={
+                "success": False, "error": {"code": "SERVICE_BUSY",
+                "message": "Lekha Captions is over capacity right now. Your edits are kept in this browser; please try again later.",
+                "request_id": rid},
+            }, headers={"X-Request-Id": rid, "Cache-Control": "no-store", "Retry-After": "900"}))
         return request_security._apply_security_headers(JSONResponse(status_code=500, content={
             "success": False, "error": {"code": "INTERNAL_ERROR",
             "message": "Something went wrong. Please contact support with this request ID.", "request_id": rid},
@@ -489,6 +495,7 @@ app.include_router(create_project_router(
     firebase_admin_setup.get_db,
     media_records._validate_file_id,
     media_records._assert_upload_owner,
+    request_guards._enforce_draft_save_rate,
 ))
 
 

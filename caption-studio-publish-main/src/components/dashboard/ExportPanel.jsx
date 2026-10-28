@@ -24,6 +24,7 @@ import {
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
 import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
+import { isSourceExpiredError } from '@/lib/apiErrorPolicy';
 import { boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from './exportDelivery.js'
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
@@ -192,7 +193,7 @@ const exportQueue = {
   }
 };
 
-export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, captionTrackLabel, onUpgradeClick, sourceUnavailable = false }) {
+export default function ExportPanel({ open, onClose, captions, captionStyle, waveformData, duration, fileId, originalFileName, captionTrackLabel, onUpgradeClick, sourceUnavailable = false, onSourceExpired }) {
   const { currentUser, userData, refreshUserData } = useAuth();
   // Use auth context directly for consistent, up-to-date auth & credit checks
   const isSignedIn = !!currentUser;
@@ -1033,6 +1034,11 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       if (error?.exportStatus === 'failed') {
         removeActiveExport(currentUser?.uid, fileId);
         setRecoverableExport(null);
+      }
+      if (isSourceExpiredError(error)) {
+        onSourceExpired?.();
+        toast({ title: 'The source video has expired', description: 'Relink the original video to render again. Subtitle downloads remain available.' });
+        return;
       }
       notifyExportFailure(error, acceptedExportJobId);
     } finally {

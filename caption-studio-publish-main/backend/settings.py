@@ -395,6 +395,12 @@ ANALYTICS_RATE_LIMIT = 120  # max client analytics events per hour per IP
 
 SUPPORT_RATE_LIMIT = 5  # max public support submissions per hour per IP
 
+# Cloud draft saves per account per minute. The editor autosaves at most once
+# every 10 seconds, so only a runaway or scripted client reaches this; each
+# save is a Firestore write against the project's free daily quota.
+DRAFT_SAVE_USER_RATE_LIMIT = 20
+DRAFT_SAVE_RATE_WINDOW = 60
+
 # Counters that the release gate (`_build_slo_snapshot`) and failure-ratio
 # alerting read as ground truth. The public /api/analytics/track endpoint must
 # never let a client write these — otherwise an unauthenticated caller could

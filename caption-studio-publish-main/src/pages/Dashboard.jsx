@@ -1642,6 +1642,7 @@ export default function Dashboard() {
               onClose={() => setIsExportPanelOpen(false)}
               captions={captions}
               sourceUnavailable={sourceUnavailable || !videoUrl}
+              onSourceExpired={() => setSourceUnavailable(true)}
               captionTrackLabel={captionTracks.find((track) => track.id === activeCaptionTrackId)?.label || 'Original'}
               captionStyle={captionStyle}
               waveformData={waveformData}

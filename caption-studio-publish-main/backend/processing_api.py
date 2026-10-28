@@ -88,6 +88,7 @@ async def process_video(req: api_models.ProcessRequest, request: Request, respon
     if not media_records._validate_file_id(req.file_id):
         raise HTTPException(400, "Invalid file_id")
     await asyncio.to_thread(media_records._assert_upload_owner, req.file_id, uid)
+    await asyncio.to_thread(media_records._protect_source_for_job, req.file_id, uid)
     job_settings = {"file_id": req.file_id, "language": req.language,
                 "min_words": req.min_words, "max_words": req.max_words}
     if req.cleanup_mode != "clean":
