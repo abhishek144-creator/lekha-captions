@@ -108,6 +108,14 @@ class DraftSaveRateTests(unittest.TestCase):
         self.assertEqual(limited.exception.status_code, 429)
         self.assertGreater(int(limited.exception.headers["Retry-After"]), 0)
 
+    def test_a_redis_outage_never_stops_saves(self):
+        class BrokenRedis:
+            def eval(self, *args):
+                raise ConnectionError("redis down")
+
+        with patch.object(app_state, "_redis_client", BrokenRedis()),                 patch.object(settings, "_IS_PRODUCTION", True):
+            request_guards._enforce_draft_save_rate("user-1")
+
 
 class AnalyticsTotalsTests(unittest.TestCase):
     def test_events_are_counted_in_redis_not_written_per_event(self):
@@ -202,6 +210,21 @@ class SourceProtectionTests(unittest.TestCase):
         accepted = self.uploaded_at + timedelta(hours=5, minutes=55)
         self.assertTrue(storage.protect_source_for_job(REMOTE, now=accepted))
         self.assertEqual(self.expiry(), accepted + timedelta(hours=2))
+
+    def test_polls_of_a_running_job_do_not_rewrite_the_schedule(self):
+        accepted = self.uploaded_at + timedelta(hours=5, minutes=55)
+        storage.protect_source_for_job(REMOTE, now=accepted)
+        storage.protect_source_for_job(REMOTE, now=accepted + timedelta(minutes=20))
+        self.assertEqual(self.expiry(), accepted + timedelta(hours=2))
+        storage.protect_source_for_job(REMOTE, now=accepted + timedelta(minutes=40))
+        self.assertEqual(self.expiry(), accepted + timedelta(minutes=40, hours=2))
+
+    def test_a_recently_confirmed_source_skips_storage_and_firestore(self):
+        metadata = {"uid": "user-1", "remote_path": REMOTE}
+        with patch.object(app_state, "_redis_client", fakeredis.FakeRedis(decode_responses=True)),                 patch.object(media_records, "_load_upload_metadata", return_value=metadata),                 patch.object(storage, "protect_source_for_job", return_value=True) as protect:
+            media_records._protect_source_for_job("f", "user-1")
+            media_records._protect_source_for_job("f", "user-1")
+        self.assertEqual(protect.call_count, 1)
 
     def test_an_early_job_leaves_the_six_hour_schedule_alone(self):
         self.assertTrue(storage.protect_source_for_job(REMOTE, now=self.uploaded_at + timedelta(minutes=5)))

@@ -121,6 +121,15 @@ def _protect_source_for_job(file_id: str, uid: str):
     remote_path = str(metadata.get("remote_path") or "")
     if str(metadata.get("uid") or "") != str(uid) or not remote_path.startswith("uploads/"):
         return
+    # Transcription polls repeat this every few seconds; a source confirmed in
+    # the last 15 minutes still has over an hour left, so skip the storage and
+    # Firestore round trip.
+    checked_key = f"source_protected:{file_id}"
+    try:
+        if app_state._redis_client is not None and app_state._redis_client.get(checked_key):
+            return
+    except Exception:
+        pass
     try:
         available = firebase_admin_setup.protect_source_for_job(remote_path)
     except Exception as error:
@@ -130,6 +139,11 @@ def _protect_source_for_job(file_id: str, uid: str):
         return
     if not available:
         raise HTTPException(status_code=410, detail=SOURCE_EXPIRED_DETAIL)
+    try:
+        if app_state._redis_client is not None:
+            app_state._redis_client.setex(checked_key, 15 * 60, "1")
+    except Exception:
+        pass
 
 
 def _remember_source_duration(file_id: str, duration_seconds: float):

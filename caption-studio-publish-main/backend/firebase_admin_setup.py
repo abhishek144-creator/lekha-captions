@@ -1061,6 +1061,9 @@ def _delete_orphaned_firebase_objects(
 
 SOURCE_JOB_GRACE_HOURS = 2
 SOURCE_MAX_RETENTION_HOURS = 24
+# The editor polls a running transcription every few seconds and each poll
+# re-checks its source: only move the schedule when that gains this much.
+SOURCE_EXTENSION_MIN_GAIN = timedelta(minutes=30)
 
 
 def _aware(value: datetime) -> datetime:
@@ -1103,7 +1106,7 @@ def protect_source_for_job(remote_path: str, now: datetime = None) -> bool:
     if isinstance(created_at, datetime):
         target = min(target, _aware(created_at) + timedelta(hours=SOURCE_MAX_RETENTION_HOURS))
     expire_at = row.get("expire_at")
-    if isinstance(expire_at, datetime) and _aware(expire_at) >= target:
+    if isinstance(expire_at, datetime) and _aware(expire_at) >= target - SOURCE_EXTENSION_MIN_GAIN:
         return True
     ref.update({"expire_at": target, "extended_for_job_at": now})
     if blob is not None:

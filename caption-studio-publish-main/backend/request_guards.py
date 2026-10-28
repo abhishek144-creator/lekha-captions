@@ -321,9 +321,16 @@ def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600
 
 
 def _enforce_draft_save_rate(uid: str):
-    allowed, retry_after, _remaining = _check_rate(
-        app_state._draft_save_rate, uid, settings.DRAFT_SAVE_USER_RATE_LIMIT, settings.DRAFT_SAVE_RATE_WINDOW,
-    )
+    try:
+        allowed, retry_after, _remaining = _check_rate(
+            app_state._draft_save_rate, uid, settings.DRAFT_SAVE_USER_RATE_LIMIT, settings.DRAFT_SAVE_RATE_WINDOW,
+        )
+    except HTTPException as error:
+        if error.status_code != 503:
+            raise
+        # This limit only saves database quota: a Redis outage must not stop
+        # people's work from saving, so it fails open.
+        return
     if not allowed:
         raise HTTPException(
             status_code=429,
