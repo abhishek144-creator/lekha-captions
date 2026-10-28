@@ -667,9 +667,8 @@ export default function Dashboard() {
       setAudioAnalysis(nextAudioAnalysis)
       if (nextAudioAnalysis?.duration > 0) {
         setDuration(nextAudioAnalysis.duration)
-        setIsTimelineCollapsed(false)
-        setTimelineHeight(EXPANDED_TIMELINE_HEIGHT)
       }
+      collapseTimeline();
       trackAnalytics('funnel.process.success', getClientContext({ stage: 'process', language: uploadSettings?.language || 'auto' }));
 
       let sourceCaptions = captionsFromTranscript(processData.captions);

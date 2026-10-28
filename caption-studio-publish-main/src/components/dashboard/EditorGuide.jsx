@@ -54,7 +54,7 @@ export default function EditorGuide({ active }) {
     <section
       data-editor-panel="true"
       aria-label="Quick guide"
-      className="fixed inset-x-4 top-20 z-40 mx-auto max-w-sm rounded-2xl border border-white/10 bg-[#161616]/95 p-5 text-white shadow-2xl backdrop-blur lg:inset-x-auto lg:right-6 lg:top-auto lg:bottom-6"
+      className="fixed inset-x-4 top-20 z-[90] mx-auto max-w-sm rounded-2xl border border-white/10 bg-[#161616]/95 p-5 text-white shadow-2xl backdrop-blur lg:inset-x-auto lg:right-6 lg:top-auto lg:bottom-6"
     >
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-[#F5A623]">
