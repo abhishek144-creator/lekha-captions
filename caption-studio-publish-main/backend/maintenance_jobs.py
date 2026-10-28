@@ -132,24 +132,33 @@ def _advanced_janitor_once():
         "cloud_exports_deleted": 0,
         "cloud_uploads_deleted": 0,
         "cloud_transcripts_deleted": 0,
+        "cloud_delete_failures": 0,
     })
 
-    try:
-        metrics["cloud_exports_deleted"] = firebase_admin_setup.delete_expired_exports()
-    except Exception as e:
-        observability._json_log("warning", "janitor_error", error=str(e), scope="cloud_exports")
-        metrics["errors"] += 1
-
-    try:
-        metrics["cloud_uploads_deleted"] = firebase_admin_setup.delete_expired_uploads()
-    except Exception as e:
-        observability._json_log("warning", "janitor_error", error=str(e), scope="cloud_uploads")
-        metrics["errors"] += 1
+    for scope, cleanup in (
+        ("cloud_exports", firebase_admin_setup.delete_expired_exports),
+        ("cloud_uploads", firebase_admin_setup.delete_expired_uploads),
+    ):
+        stats = {}
+        try:
+            metrics[f"{scope}_deleted"] = cleanup(stats=stats)
+        except Exception as e:
+            stats = {"failed": 1, "error": e}
+        if stats.get("failed"):
+            # Due objects stay scheduled and are retried next pass; report them.
+            metrics["cloud_delete_failures"] += int(stats["failed"])
+            metrics["errors"] += int(stats["failed"])
+            error = stats.get("error")
+            observability._json_log("warning", "janitor_error", scope=scope, failed=int(stats["failed"]),
+                                    error=str(error)[:300] if error else "object delete failed")
+            if error is not None:
+                observability._note_firestore_error(error, f"janitor:{scope}")
 
     try:
         metrics["cloud_transcripts_deleted"] = media_records._delete_expired_transcription_cache()
     except Exception as e:
         observability._json_log("warning", "janitor_error", error=str(e), scope="cloud_transcripts")
+        observability._note_firestore_error(e, "janitor:cloud_transcripts")
         metrics["errors"] += 1
 
     total_deleted = (
@@ -162,7 +171,7 @@ def _advanced_janitor_once():
     )
     if total_deleted > 0 or metrics["errors"] > 0:
         observability._json_log(
-            "info",
+            "warning" if metrics["errors"] else "info",
             "janitor_summary",
             uploads_deleted=metrics["uploads_deleted"],
             exports_deleted=metrics["exports_deleted"],
@@ -171,8 +180,18 @@ def _advanced_janitor_once():
             cloud_exports_deleted=metrics["cloud_exports_deleted"],
             cloud_uploads_deleted=metrics["cloud_uploads_deleted"],
             cloud_transcripts_deleted=metrics["cloud_transcripts_deleted"],
+            cloud_delete_failures=metrics["cloud_delete_failures"],
             errors=metrics["errors"],
         )
+    if metrics["cloud_delete_failures"]:
+        observability._send_alert_once(
+            "janitor_delete_failures",
+            f"[Lekha] Media cleanup could not delete {metrics['cloud_delete_failures']} expired "
+            "upload/export object(s) in its last pass. They stay scheduled and are retried every "
+            "15 minutes; if this repeats, check R2 credentials and Firestore quota.",
+            ttl_seconds=6 * 3600,
+        )
+    return metrics
 
 
 def _claim_scheduled_job(name: str, ttl_seconds: int) -> str:

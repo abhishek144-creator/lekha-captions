@@ -139,7 +139,7 @@ export default function UploadModal({
           body: JSON.stringify({ file_id: outcome.data.file_id }),
         });
       } catch {
-        // The source janitor still removes unused uploads within six hours.
+        // The source janitor still removes unused uploads six hours after upload.
       }
     });
   }, []);

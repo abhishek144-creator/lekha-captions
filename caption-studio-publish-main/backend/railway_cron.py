@@ -9,7 +9,8 @@ schedule never wakes the API or a worker unless there is work for one:
 - wake a worker for any queue that still has jobs (no-op if one is running);
 - delete expired uploads/exports and abort stale multipart uploads;
 - reconcile payments whose Razorpay webhooks never arrived;
-- alert before Redis runs out of memory.
+- copy the day's analytics totals from Redis to Firestore (hourly);
+- alert before Redis runs out of memory, and when queued work waits too long.
 
 Each step is independent: one failing does not skip the rest, and the process
 exits non-zero so Railway marks the run as failed.
@@ -18,6 +19,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 try:
@@ -40,6 +42,12 @@ try:
 except ImportError:  # pragma: no cover - production dependency is pinned
     RQScheduler = None
     StartedJobRegistry = None
+    Job = None
+
+try:
+    from .gcp_queue_metrics import queue_snapshot
+except ImportError:  # pragma: no cover - run as a script from backend/
+    from gcp_queue_metrics import queue_snapshot
 
 
 def _log(event, **fields):
@@ -110,6 +118,38 @@ def check_redis_memory(connection, *, alert=None):
     return {"used_bytes": used, "limit_bytes": limit, "ratio": round(ratio, 3)}
 
 
+# A job still queued after this long means no worker is taking work: the
+# worker failed to wake, crashed on start, or every replica is busy.
+QUEUE_AGE_ALERT_SECONDS = 10 * 60
+
+
+def check_queue_age(queues, *, snapshot=None, alert=None):
+    """Return the oldest queued job's age per queue; alert when one waits too long."""
+    snapshot = snapshot or queue_snapshot
+    ages = {}
+    for queue in {getattr(item, "name", ""): item for item in queues if item is not None}.values():
+        depth, oldest = snapshot(queue, Job)
+        ages[queue.name] = {"depth": depth, "oldest_seconds": oldest}
+    stuck = {name: row for name, row in ages.items() if row["oldest_seconds"] >= QUEUE_AGE_ALERT_SECONDS}
+    if stuck and alert is not None:
+        detail = ", ".join(
+            f"{name}: {row['depth']} waiting, oldest {row['oldest_seconds'] // 60} min"
+            for name, row in sorted(stuck.items())
+        )
+        alert("queue_age", f"[Lekha] Jobs are waiting too long ({detail}). "
+                           "Check that the Railway workers wake and stay healthy.")
+    return ages
+
+
+def persist_analytics_totals(connection, db, *, persist=None, now=None):
+    """At most once an hour: today's analytics totals so far and yesterday's final ones."""
+    if not connection.set("lekha:cron:analytics-rollup", "1", nx=True, ex=3600):
+        return {"skipped": "ran_this_hour"}
+    today = (now or datetime.now(timezone.utc)).date()
+    days = [(today - timedelta(days=1)).isoformat(), today.isoformat()]
+    return {"days_written": (persist or api.observability._persist_daily_analytics_totals)(db, days)}
+
+
 def kick_backlogged_workers(connection, queue_names):
     return sum(1 for name in queue_names if worker_launcher.kick(connection, name, log=print))
 
@@ -131,6 +171,10 @@ def _api_host():
         _dispatch_media_scans_once=api.upload_dispatch._dispatch_media_scans_once,
         _flush_telemetry=api.observability._flush_telemetry,
         _send_alert=api.observability._send_alert,
+        _send_alert_once=api.observability._send_alert_once,
+        _note_firestore_error=api.observability._note_firestore_error,
+        _job_queues=[*api.app_state._export_queues.values(), api.app_state._transcription_queue,
+                     api.app_state._media_scan_queue],
         asyncio=api.asyncio,
         scheduled_janitor_job=api.maintenance_jobs.scheduled_janitor_job,
         scheduled_payment_reconciliation_job=api.maintenance_jobs.scheduled_payment_reconciliation_job,
@@ -153,6 +197,8 @@ def run_once(*, host=None, launch_queues=None):
         ("kick_workers", lambda: kick_backlogged_workers(host._rq_redis_client, launch_queues)),
         ("redis_memory", lambda: check_redis_memory(
             host._rq_redis_client, alert=getattr(host, "_send_alert", None))),
+        ("queue_age", lambda: check_queue_age(
+            getattr(host, "_job_queues", []), alert=getattr(host, "_send_alert_once", None))),
     ]
     # Staging shares Firestore with production: never clean customer media or
     # reconcile live payments from it (same rule as the API's own scheduler).
@@ -165,6 +211,8 @@ def run_once(*, host=None, launch_queues=None):
              lambda: send_plan_expiry_reminders(host._rq_redis_client, host.get_db())),
             ("firestore_backup",
              lambda: firestore_backup.run_nightly(host._rq_redis_client, host.get_db())),
+            ("analytics_rollup",
+             lambda: persist_analytics_totals(host._rq_redis_client, host.get_db())),
         ]
     failures = []
     for name, step in steps:
@@ -176,6 +224,9 @@ def run_once(*, host=None, launch_queues=None):
         except Exception as error:
             failures.append(name)
             _log("cron_step_failed", step=name, error_type=type(error).__name__, error=str(error)[:500])
+            note_firestore_error = getattr(host, "_note_firestore_error", None)
+            if note_firestore_error is not None:
+                note_firestore_error(error, f"cron:{name}")
     host._flush_telemetry()
     return failures
 

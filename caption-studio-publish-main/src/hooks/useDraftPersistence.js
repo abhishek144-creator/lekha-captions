@@ -9,6 +9,10 @@ import { readLocalDraft, removeLocalDraft, writeLocalDraft } from '@/lib/localDr
 
 const NOTICE_DISMISS_MS = 5000
 const CLOUD_AUTOSAVE_DELAY_MS = 2500
+// Each cloud save is a database write against a fixed daily quota. Save the
+// latest document at most once per interval; the browser copy keeps every
+// change in between.
+export const CLOUD_AUTOSAVE_MIN_INTERVAL_MS = 10000
 const LOCAL_AUTOSAVE_DELAY_MS = 500
 
 const LOCAL_SAVE_MESSAGES = {
@@ -43,6 +47,8 @@ export function useDraftPersistence({
   const [showCloudSaveConflictNotice, setShowCloudSaveConflictNotice] = useState(false)
   const [localRecoveryDraft, setLocalRecoveryDraft] = useState(null)
   const cloudAutosaveRef = useRef(null)
+  const lastCloudSaveAtRef = useRef(0)
+  const [cloudSaveRetry, setCloudSaveRetry] = useState(0)
   const recoveryInitializedRef = useRef(false)
   const loadedAccountRef = useRef(null)
   const onEditorResetRef = useRef(onEditorReset)
@@ -93,13 +99,23 @@ export function useDraftPersistence({
     const signature = draftAutosaveSignature(draft)
     const context = `${currentUser?.uid || ''}:${fileId}`
     if (cloudAutosaveRef.current?.context === context && cloudAutosaveRef.current.signature === signature) return
+    const sinceLastSave = Date.now() - lastCloudSaveAtRef.current
+    const delay = Math.max(CLOUD_AUTOSAVE_DELAY_MS, CLOUD_AUTOSAVE_MIN_INTERVAL_MS - sinceLastSave)
     const timer = setTimeout(() => {
+      lastCloudSaveAtRef.current = Date.now()
       saveCloudDraft(draft).then(() => {
         cloudAutosaveRef.current = { context, signature }
-      }).catch(notifyCloudSaveError)
-    }, CLOUD_AUTOSAVE_DELAY_MS)
+      }).catch((error) => {
+        // The server throttles bursts of saves: try again quietly.
+        if (error?.status === 429) {
+          window.setTimeout(() => setCloudSaveRetry((count) => count + 1), CLOUD_AUTOSAVE_MIN_INTERVAL_MS)
+          return
+        }
+        notifyCloudSaveError(error)
+      })
+    }, delay)
     return () => clearTimeout(timer)
-  }, [isLoaded, fileId, cloudReady, cloudSaveConflict, pauseAutosave, currentUser?.uid, snapshotEditorState, saveCloudDraft, notifyCloudSaveError])
+  }, [isLoaded, fileId, cloudReady, cloudSaveConflict, pauseAutosave, currentUser?.uid, snapshotEditorState, saveCloudDraft, notifyCloudSaveError, cloudSaveRetry])
 
   const { applyDocument, resetDocument, resetPointRef } = doc
   const applyLocalDraft = useCallback((parsed) => {

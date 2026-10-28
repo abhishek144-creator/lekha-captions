@@ -1,5 +1,6 @@
 import copy
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 import threading
@@ -358,10 +359,27 @@ class DurableWorkflowTests(unittest.TestCase):
             self.assertEqual(sum(pool.map(save, [1, 2])), 1)
 
     def test_drafts_survive_browser_loss_and_keep_five_recovery_revisions(self):
-        for index in range(9): save_draft(self.db, "a", {**self.draft, "duration": index}, index)
+        start = datetime(2026, 10, 28, tzinfo=timezone.utc)
+        for index in range(9):
+            with patch("drafts._now", return_value=start + timedelta(minutes=index)):
+                save_draft(self.db, "a", {**self.draft, "duration": index}, index)
         self.assertEqual(read_draft(self.db, "a")["revision"], 9)
         self.assertEqual(len([k for k in self.db.data if k.startswith("users/a/projects/current/revisions/")]), 5)
         self.assertIsNone(read_draft(self.db, "b")["draft"])
+
+    def test_rapid_autosaves_write_one_recovery_snapshot_per_minute(self):
+        start = datetime(2026, 10, 28, tzinfo=timezone.utc)
+        snapshots = lambda: sorted(k for k in self.db.data if k.startswith("users/a/projects/current/revisions/"))
+        for index in range(6):
+            with patch("drafts._now", return_value=start + timedelta(seconds=10 * index)):
+                save_draft(self.db, "a", {**self.draft, "duration": index}, index)
+        self.assertEqual(read_draft(self.db, "a")["revision"], 6)
+        self.assertEqual(read_draft(self.db, "a")["draft"]["duration"], 5)
+        self.assertEqual(len(snapshots()), 1)
+        with patch("drafts._now", return_value=start + timedelta(seconds=61)):
+            save_draft(self.db, "a", {**self.draft, "duration": 6}, 6)
+        self.assertEqual(len(snapshots()), 2)
+        self.assertEqual(self.db.data[snapshots()[-1]]["draft"]["duration"], 6)
 
     def test_multiple_projects_are_isolated_and_listed(self):
         first = {**self.draft, "projectId": "project-one", "projectName": "First"}

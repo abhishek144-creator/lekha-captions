@@ -84,10 +84,12 @@ _detect_language_rate: Dict[str, list] = {}
 _caption_emotion_rate: Dict[str, list] = {}
 _analytics_rate: Dict[str, list] = {}
 _support_rate: Dict[str, list] = {}
+_draft_save_rate: Dict[str, list] = {}
 
 _analytics_counters: Dict[str, int] = {}
 _analytics_daily_counters: Dict[str, Dict[str, int]] = {}
 _analytics_last_alert_ts: Dict[str, float] = {}
+_ops_alert_sent_at: Dict[str, float] = {}
 _route_latency_samples: Dict[str, list] = {}
 _operational_metric_samples: Dict[str, list] = {}
 _payment_idempotency: Dict[str, Dict[str, Any]] = {}
@@ -117,6 +119,7 @@ _RATE_LIMIT_NAMESPACES = (
     (_caption_emotion_rate, "caption-emotion"),
     (_analytics_rate, "analytics"),
     (_support_rate, "support"),
+    (_draft_save_rate, "draft-save"),
 )
 
 # The caption renderer, created by main.py once the media directories exist.

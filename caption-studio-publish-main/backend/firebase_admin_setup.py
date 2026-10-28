@@ -1059,7 +1059,68 @@ def _delete_orphaned_firebase_objects(
     return deleted
 
 
-def delete_expired_uploads(batch_size: int = 400):
+SOURCE_JOB_GRACE_HOURS = 2
+SOURCE_MAX_RETENTION_HOURS = 24
+# The editor polls a running transcription every few seconds and each poll
+# re-checks its source: only move the schedule when that gains this much.
+SOURCE_EXTENSION_MIN_GAIN = timedelta(minutes=30)
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def protect_source_for_job(remote_path: str, now: datetime = None) -> bool:
+    """Keep a source until a job accepted now can finish. False if it is gone.
+
+    Sources are deleted six hours after the upload. A transcription or export
+    accepted close to that deadline still waits in a queue and may retry, so
+    its schedule moves to at least SOURCE_JOB_GRACE_HOURS from now, and never
+    past SOURCE_MAX_RETENTION_HOURS after the upload.
+    """
+    safe_remote = str(remote_path or "").strip()
+    if not safe_remote.startswith("uploads/"):
+        return False
+    blob = None
+    if s3_is_configured():
+        if not s3_object_exists(safe_remote):
+            return False
+    else:
+        bucket = get_storage_bucket()
+        if not bucket:
+            return True
+        blob = bucket.blob(safe_remote)
+        if not blob.exists():
+            return False
+    db = get_db()
+    if not db:
+        return True
+    now = _aware(now or datetime.now(timezone.utc))
+    ref = db.collection("upload_expirations").document(hashlib.sha256(safe_remote.encode("utf-8")).hexdigest())
+    snapshot = ref.get()
+    if not snapshot.exists:
+        return True
+    row = snapshot.to_dict() or {}
+    target = now + timedelta(hours=SOURCE_JOB_GRACE_HOURS)
+    created_at = row.get("created_at")
+    if isinstance(created_at, datetime):
+        target = min(target, _aware(created_at) + timedelta(hours=SOURCE_MAX_RETENTION_HOURS))
+    expire_at = row.get("expire_at")
+    if isinstance(expire_at, datetime) and _aware(expire_at) >= target - SOURCE_EXTENSION_MIN_GAIN:
+        return True
+    ref.update({"expire_at": target, "extended_for_job_at": now})
+    if blob is not None:
+        # Firebase Storage's orphan sweep reads this deadline from the object.
+        blob.reload()
+        blob.metadata = {**(blob.metadata or {}), "delete_at_epoch": str(int(target.timestamp()))}
+        blob.patch()
+    return True
+
+
+def delete_expired_uploads(batch_size: int = 400, stats=None):
+    """Delete due source uploads. `stats["failed"]` counts objects left for a retry."""
+    stats = stats if stats is not None else {}
+    stats.setdefault("failed", 0)
     db = get_db()
     if not db:
         return 0
@@ -1074,7 +1135,9 @@ def delete_expired_uploads(batch_size: int = 400):
         for intent_doc in stale_intents:
             intent = intent_doc.to_dict() or {}
             remote_path = str(intent.get("remote_path") or "")
-            if remote_path.startswith("uploads/"):
+            # A completed upload's object is owned by its `upload_expirations`
+            # schedule, which jobs may extend; only unfinished uploads go here.
+            if remote_path.startswith("uploads/") and intent.get("status") != "completed":
                 if intent.get("upload_protocol") == S3_UPLOAD_PROTOCOL and intent.get("upload_id"):
                     # Parts of an unfinished multipart upload are billed until aborted.
                     abort_s3_multipart_upload(remote_path, str(intent["upload_id"]))
@@ -1107,6 +1170,7 @@ def delete_expired_uploads(batch_size: int = 400):
                 if "not found" in str(e).lower() or "404" in str(e):
                     completed_refs.append(doc.reference)
                 else:
+                    stats["failed"] += 1
                     print(f"[Storage] Scheduled source delete failed for {remote_path}: {e}")
         if completed_refs:
             batch = db.batch()
@@ -1120,6 +1184,8 @@ def delete_expired_uploads(batch_size: int = 400):
         )
         return deleted
     except Exception as e:
+        stats["failed"] += 1
+        stats["error"] = e
         print(f"[Storage] Expired source cleanup failed: {e}")
         return deleted
 
@@ -1236,8 +1302,10 @@ def delete_user_exports(uid: str):
         print(f"[Storage] User export cleanup failed: {e}")
         return None
 
-def delete_expired_exports(batch_size: int = 400):
+def delete_expired_exports(batch_size: int = 400, stats=None):
     """Delete a bounded batch of exports whose indexed schedule is due."""
+    stats = stats if stats is not None else {}
+    stats.setdefault("failed", 0)
     db = get_db()
     if not db:
         return 0
@@ -1266,6 +1334,7 @@ def delete_expired_exports(batch_size: int = 400):
                 if "not found" in str(e).lower() or "404" in str(e):
                     completed_refs.append(doc.reference)
                 else:
+                    stats["failed"] += 1
                     print(f"[Storage] Scheduled delete failed for {remote_path}: {e}")
         if completed_refs:
             batch = db.batch()
@@ -1277,5 +1346,7 @@ def delete_expired_exports(batch_size: int = 400):
         )
         return deleted
     except Exception as e:
+        stats["failed"] += 1
+        stats["error"] = e
         print(f"[Storage] Expired export cleanup failed: {e}")
         return deleted
