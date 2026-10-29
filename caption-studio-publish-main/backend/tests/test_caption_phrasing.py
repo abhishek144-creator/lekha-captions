@@ -104,6 +104,14 @@ class PhrasePlanTests(unittest.TestCase):
         return [c['text'] for c in self.processor._post_process_captions(
             self.processor._group_words_by_speech_pace(words, phrase_plan=plan))]
 
+    def test_ai_cannot_split_a_number_from_its_unit(self):
+        words = timed('आपको मिलेंगे सिर्फ 10 लाख में फ्लैट और कुछ भी', step=0.25)
+        # A model can incorrectly suggest both a break and a solo beat at the number.
+        plan = {'words': [word['word'] for word in words], 'breaks': {3},
+                'covered': set(range(len(words) - 1)), 'solo': {3}}
+        captions = self.group(words, plan)
+        self.assertTrue(any('10 लाख' in caption for caption in captions), captions)
+
     def test_ai_reading_moves_breaks_where_the_rules_are_neutral(self):
         words = timed('my morning routine changed my whole life completely', step=0.3)
         client, chat = fake_client({'ends': [2, 6, 7], 'solo': []})
