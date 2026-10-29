@@ -62,12 +62,12 @@ const assertions = [
     ok: /if \(!isLoaded \|\| localRecoveryDraft(?: \|\| pauseAutosave)?\) return/.test(dashboard)
       && /applyLocalDraft\(localRecoveryDraft\)/.test(dashboard)
       && /Continue saved draft/.test(dashboard)
-      && /downloadDraft\(localRecoveryDraft\)/.test(dashboard)
+      && !/Download draft backup|open account draft/.test(dashboard)
       && /Continue account draft/.test(dashboard)
       && /setVideoUrl\(acceptedPlayableVideoUrl\)/.test(dashboard)
       && /if \(localRecoveryDraft\) discardLocalDraft\(\)/.test(dashboard)
       && !/discardLocalDraft\(\)\s*\n\s*handleUploadModalOpen\(\)/.test(dashboard),
-    message: 'Dashboard entry must expose same-account draft recovery and backup, protect unsynced work from autosave, and replace the recovery copy only once a new upload is accepted (cancelling the upload window keeps it).',
+    message: 'Dashboard entry must expose same-account draft recovery (without backup or account-draft switch buttons beside a browser draft), protect unsynced work from autosave, and replace the recovery copy only once a new upload is accepted (cancelling the upload window keeps it).',
   },
   {
     ok: /if too_large:[\s\S]*Count only fully received uploads[\s\S]*_check_rate\([\s\S]*_upload_rate,[\s\S]*f"network:\{client_ip\}"/s.test(backend),
