@@ -23,6 +23,8 @@ backend/exports/
 *.MOV
 !public/landing/lekha-studio-workflow-2026-07.mp4
 !public/landing/lekha-template-library-2026-07.mp4
+!public/landing/lekha-templates-2026-10.mp4
+!public/landing/lekha-word-placement-2026-10.mp4
 *.avi
 *.webm
 

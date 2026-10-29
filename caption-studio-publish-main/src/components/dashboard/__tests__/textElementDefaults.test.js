@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFontComboTextElement,
+  buildPresetTextElement,
   getNewTextElementTiming,
   NEW_TEXT_ELEMENT_FALLBACK_SECONDS,
 } from '../textElementDefaults'
@@ -48,5 +49,20 @@ describe('buildFontComboTextElement', () => {
     expect(element.customStyle).toMatchObject({ fontFamily: 'Bebas Neue', fontSize: 36, color: '#E91E63', fontWeight: 'bold' })
     // The export reads the same flag, so the video has no box either.
     expect(buildTextElementExportStyle(element.customStyle).has_background).toBe(false)
+  })
+})
+
+describe('buildPresetTextElement', () => {
+  it.each([
+    ['heading', 'Heading', 28],
+    ['subheading', 'Subheading', 20],
+    ['body', 'Body text', 15],
+  ])('adds a %s with no background box, readable by its shadow', (type, text, fontSize) => {
+    const element = buildPresetTextElement(type, { startTime: 2.8, endTime: 3.5 })
+    expect(element).toMatchObject({ text, type, isTextElement: true, start_time: 2.8, end_time: 3.5 })
+    expect(element.customStyle).toMatchObject({ fontSize, hasBackground: false, hasShadow: true })
+    const exported = buildTextElementExportStyle(element.customStyle)
+    expect(exported.has_background).toBe(false)
+    expect(exported.has_shadow).toBe(true)
   })
 })

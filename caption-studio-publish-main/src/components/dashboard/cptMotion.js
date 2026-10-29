@@ -15,10 +15,12 @@ export function getCaptionWordStartTime(caption = {}, wordIndex = 0, wordCount =
 }
 
 /**
- * Build the canonical CPT reveal schedule shared by preview and export.
+ * Build the canonical word reveal schedule shared by preview and export.
  * Every boundary is strictly ordered and, whenever the caption has enough
  * duration, separated by more than one 24fps frame so adjacent words cannot
- * land in the same rendered frame.
+ * land in the same rendered frame. CPT captions additionally get a readable
+ * beat per word (see below). Serialized into the export renderer with
+ * toString(), so it stays self-contained apart from getCaptionWordStartTime.
  */
 export function getCaptionWordRevealTimes(caption = {}, wordCount = 1, minSeparation = 0.05) {
   const count = Math.max(1, Number(wordCount) || 1);
@@ -34,6 +36,33 @@ export function getCaptionWordRevealTimes(caption = {}, wordCount = 1, minSepara
     const value = getCaptionWordStartTime(caption, index, count);
     return Math.max(captionStart, Math.min(latestReveal, Number(value) || captionStart));
   });
+
+  // A CPT (placed words, `wordStyles` in the editor / `word_styles` in export)
+  // builds one word after another, each with a readable beat. Fast speech put
+  // a short caption's words within a frame or two of each other, so they
+  // seemed to land at once, and a last word spoken at the caption's very end
+  // got a single-frame reveal that export never rendered. Each word still
+  // follows its spoken start, never earlier unless the caption is too short
+  // for every beat; the last one lands with a tail left to read it.
+  const placedStyles = Object.values(caption.wordStyles || caption.word_styles || {});
+  const isPlacedCaption = placedStyles.some((style) => (
+    ['abs_x_pct', 'abs_y_pct', 'x_pct', 'y_pct', 'x', 'y']
+      .some((key) => Math.abs(Number(style?.[key]) || 0) > 0.01)
+  ));
+  if (isPlacedCaption && count > 1 && duration > 0) {
+    const tail = Math.min(0.25, duration * 0.2);
+    const lastReveal = Math.max(captionStart, captionEnd - tail);
+    const beat = Math.min(0.3, (lastReveal - captionStart) / (count - 1));
+    const times = [];
+    rawTimes.forEach((raw, index) => {
+      times.push(index === 0 ? Math.min(raw, lastReveal) : Math.max(raw, times[index - 1] + beat));
+    });
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const limit = index === count - 1 ? lastReveal : times[index + 1] - beat;
+      times[index] = Math.max(captionStart, Math.min(times[index], limit));
+    }
+    return times;
+  }
 
   // Valid measured/provider timings are the media clock, including fast words
   // closer than one output frame. Do not move them to manufacture animation
