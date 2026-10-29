@@ -27,6 +27,7 @@ import { Check, Search, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { apiRequest } from '@/lib/apiClient';
 import { computeFloatingWordEditorRect } from './wordEditorPlacement';
+import { wordHasBackground } from '@/lib/wordStyleEdits';
 import { cssColorToHex, normalizeHexColor } from '@/lib/colorUtils';
 
 const FontRow = React.memo(({ data, index, style }) => {
@@ -674,7 +675,7 @@ export default function WordClickPopup({ word, position, onEdit, onClose, onRese
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs text-gray-500 uppercase tracking-wider">Background</label>
                   <Switch
-                    checked={!!currentStyle.backgroundColor || !!currentStyle.highlightGradient}
+                    checked={wordHasBackground(currentStyle)}
                     onCheckedChange={(checked) => {
                       if (checked) {
                         onStyleChange('backgroundColor', '#000000');

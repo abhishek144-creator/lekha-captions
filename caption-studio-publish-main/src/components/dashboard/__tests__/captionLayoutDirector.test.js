@@ -237,6 +237,29 @@ describe('AI emotion pass', () => {
     expect(plan.insight.source).toBe('rules')
   })
 
+  it('highlights a keyword\'s whole unit: an amount with its unit, a spoken amount, a name', () => {
+    const planFor = (text, keywords) => {
+      const [line] = read([caption('u', text, 0, 3)], [{ id: 'u', type: 'statistic', emotion: 'surprise', intensity: 0.8, keywords }])
+      return planCaptionLayouts([line], { duration: 3 })[0].keywordIndices
+    }
+    expect(planFor('I spent 10 lakh rupees', [2])).toEqual([2, 3, 4])
+    expect(planFor('मैंने दस लाख रुपये लगा दिए', [2])).toEqual([1, 2, 3])
+    expect(planFor('yesterday Elon Musk called me', [2])).toEqual([1, 2])
+    // The first keyword's unit always survives; a second one only within 3 words.
+    expect(planFor('Elon Musk paid 10 lakh rupees', [0, 4])).toEqual([0, 1])
+    expect(planFor('yesterday I met Ravi', [3])).toEqual([3])
+  })
+
+  it('a strong emotion picks a fitting entrance', () => {
+    const entrance = (emotion) => {
+      const [line] = read([caption('m', 'they lied to every customer', 0, 3)], [{ id: 'm', type: 'emotional_peak', emotion, intensity: 0.8, keywords: [1] }])
+      return planCaptionLayouts([line], { duration: 3 })[0].animation
+    }
+    expect(entrance('anger')).toBe('pop')
+    expect(entrance('fear')).toBe('fade')
+    expect(entrance('serious')).toBe('rise')
+  })
+
   it('drops keyword indexes outside the line', () => {
     const [stored] = read([caption('a', 'two words', 0, 2)], [{ id: 'a', type: 'hook', emotion: 'joy', intensity: 0.8, keywords: [1, 7] }])
     const [plan] = planCaptionLayouts([stored], { duration: 2 })
@@ -276,7 +299,8 @@ describe('emotionally intelligent rules', () => {
 
   it('keeps a number with its unit', () => {
     const [, line] = plan([caption('h', 'hello everyone', 0, 1), caption('a', 'we raised 10 lakh rupees', 2, 5)])
-    expect(line.keywordIndices).toEqual([2, 3])
+    // The whole amount (2026-10-28): "lakh" is itself an amount, so its currency joins.
+    expect(line.keywordIndices).toEqual([2, 3, 4])
   })
 
   it('keeps a question quiet and gives its answer the emphasis', () => {

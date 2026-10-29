@@ -3,21 +3,11 @@ import { Type } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { loadGoogleFont } from './fontUtils';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
+import { buildFontComboTextElement, getNewTextElementTiming } from './textElementDefaults.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-// A new text box lasts 3 s (or its caption's span) but never past the video.
-// A new text box starts at the playhead and stays until the end of the video
-// (trim it on the timeline). Tying it to the caption under the playhead made
-// it vanish after a second or two of playback.
-const textElementTiming = (_activeSpeechCaption, currentTime, duration) => {
-  const videoEnd = Number(duration) > 0 ? Number(duration) : Infinity;
-  const startTime = Math.max(0, Math.min(Number(currentTime) || 0, videoEnd - 0.5));
-  const endTime = Number.isFinite(videoEnd) ? videoEnd : startTime + 5;
-  return { startTime, endTime: Math.max(startTime + 0.1, endTime) };
-};
-
-const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, captionStyle, duration }) => {
+const buildCaptionMatchedTextElement = ({ captions, currentTime, captionStyle, duration }) => {
   const seedText = 'Add a short headline';
   const fontSize = clamp(Number(captionStyle?.font_size) || 18, 20, 24);
   const longestLineLength = seedText.length;
@@ -27,7 +17,7 @@ const buildCaptionMatchedTextElement = ({ activeSpeechCaption, currentTime, capt
     320,
   );
 
-  const { startTime, endTime } = textElementTiming(activeSpeechCaption, currentTime, duration);
+  const { startTime, endTime } = getNewTextElementTiming({ captions, currentTime, duration });
 
   return {
     id: `text-${Date.now()}-${Math.random()}`,
@@ -121,11 +111,9 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
 
     const defaultText = type === 'heading' ? 'Heading' : type === 'subheading' ? 'Subheading' : type === 'body' ? 'Body text' : 'Text Box';
 
-    // Alignment Logic: Match speech caption below or default to 3s
-    const activeSpeechCaption = captions.find(c => !c.isTextElement && currentTime >= c.start_time && currentTime < c.end_time);
     if (type === 'textbox') {
       const newCaption = buildCaptionMatchedTextElement({
-        activeSpeechCaption,
+        captions,
         currentTime,
         captionStyle,
         duration,
@@ -136,7 +124,7 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
       return;
     }
 
-    const { startTime, endTime } = textElementTiming(activeSpeechCaption, currentTime, duration);
+    const { startTime, endTime } = getNewTextElementTiming({ captions, currentTime, duration });
 
     const newCaption = {
       id: `text-${Date.now()}-${Math.random()}`,
@@ -182,36 +170,7 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
       return;
     }
 
-    const activeSpeechCaption = captions.find(c => !c.isTextElement && currentTime >= c.start_time && currentTime < c.end_time);
-    const { startTime, endTime } = textElementTiming(activeSpeechCaption, currentTime, duration);
-
-    const newCaption = {
-      id: `text-${Date.now()}-${Math.random()}`,
-      text: preset.text,
-      start_time: startTime,
-      end_time: endTime,
-      type: 'combo',
-      isTextElement: true,
-      customStyle: {
-        top: 50,
-        left: 50,
-        width: 180,
-        height: 48,
-        fontSize: preset.fontSize,
-        backgroundColor: preset.backgroundColor || '#000000',
-        backgroundOpacity: preset.backgroundOpacity || 0.6,
-        color: preset.color,
-        borderRadius: 12,
-        padding: 8,
-        textAlign: 'center',
-        fontFamily: preset.fontFamily,
-        fontWeight: preset.fontWeight || '500',
-        fontStyle: preset.fontStyle || 'normal',
-        textTransform: preset.textTransform || 'none',
-        hasBackground: true,
-        zIndex: 50
-      }
-    };
+    const newCaption = buildFontComboTextElement(preset, getNewTextElementTiming({ captions, currentTime, duration }));
 
     setCaptions([...captions, newCaption]);
     if (setSelectedCaptionId) setSelectedCaptionId(newCaption.id);
