@@ -334,16 +334,14 @@ function syncSourceWordEntrance(node, wordStyle, { isPlaying, currentTime, revea
   }
   node.dataset.wordAnimationStart = String(revealStart);
   if (!isPlaying) return;
-  const elapsedMs = (Number(currentTime) - Number(revealStart)) * 1000;
-  [node, ...node.querySelectorAll(SOURCE_TEMPLATE_VISUAL_SELECTOR)].forEach((target) => {
-    (target.getAnimations?.() || []).forEach((animation) => {
-      if (!String(animation.animationName || '').startsWith('source-word-')) return;
-      // play() first: on a finished entrance it rewinds, so the seek follows.
-      // Before its reveal the entrance holds its first (hidden) frame; after
-      // it, the entrance stays finished.
-      if (animation.playState !== 'running') animation.play();
-      animation.currentTime = elapsedMs;
-    });
+  // Shifted by the video clock like the LC timeline (no Animation objects):
+  // before its reveal the entrance holds its first (hidden) frame; after it,
+  // the entrance stays finished. Re-shifting never restarts it.
+  const delayMs = Math.round((Number(revealStart) - Number(currentTime)) * 1000);
+  node.querySelectorAll(SOURCE_TEMPLATE_VISUAL_SELECTOR).forEach((target) => {
+    if (!String(target.style.animationName || '').startsWith('source-word-')) return;
+    setSourceTemplateStyle(target, 'animation-delay', `${delayMs}ms`);
+    setSourceTemplateStyle(target, 'animation-play-state', 'running');
   });
 }
 
