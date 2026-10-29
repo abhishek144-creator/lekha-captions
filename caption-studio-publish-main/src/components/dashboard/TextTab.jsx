@@ -3,7 +3,7 @@ import { Type } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { loadGoogleFont } from './fontUtils';
 import { DEFAULT_CAPTION_POSITION_Y } from '../../lib/captionDefaults.js';
-import { buildFontComboTextElement, getNewTextElementTiming } from './textElementDefaults.js';
+import { buildFontComboTextElement, buildPresetTextElement, getNewTextElementTiming } from './textElementDefaults.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -109,8 +109,6 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
       return;
     }
 
-    const defaultText = type === 'heading' ? 'Heading' : type === 'subheading' ? 'Subheading' : type === 'body' ? 'Body text' : 'Text Box';
-
     if (type === 'textbox') {
       const newCaption = buildCaptionMatchedTextElement({
         captions,
@@ -124,35 +122,7 @@ export default function TextTab({ captions, setCaptions, currentTime, setSelecte
       return;
     }
 
-    const { startTime, endTime } = getNewTextElementTiming({ captions, currentTime, duration });
-
-    const newCaption = {
-      id: `text-${Date.now()}-${Math.random()}`,
-      text: defaultText,
-      start_time: startTime,
-      end_time: endTime,
-      type: type,
-      isTextElement: true,
-      // Professional default styling
-      customStyle: {
-        top: 50,
-        left: 50,
-        width: type === 'heading' ? 220 : type === 'subheading' ? 180 : type === 'body' ? 160 : 160,
-        height: type === 'heading' ? 60 : type === 'subheading' ? 48 : type === 'body' ? 40 : 44,
-        fontSize: type === 'heading' ? 28 : type === 'subheading' ? 20 : type === 'body' ? 15 : 18,
-        backgroundColor: '#000000',
-        backgroundOpacity: 0.6,
-        color: '#ffffff',
-        borderRadius: 0,
-        padding: 5,
-        textAlign: 'center',
-        fontFamily: 'Inter',
-        fontWeight: type === 'heading' ? '700' : '500',
-        fontStyle: 'normal',
-        hasBackground: true,
-        zIndex: 50
-      }
-    };
+    const newCaption = buildPresetTextElement(type, getNewTextElementTiming({ captions, currentTime, duration }));
 
     setCaptions([...captions, newCaption]);
     if (setSelectedCaptionId) setSelectedCaptionId(newCaption.id);

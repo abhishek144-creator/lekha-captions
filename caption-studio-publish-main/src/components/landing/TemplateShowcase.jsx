@@ -4,24 +4,24 @@ import { Check, CirclePlay, Clapperboard } from 'lucide-react'
 
 const demos = [
   {
-    id: 'studio-workflow',
-    src: '/landing/lekha-studio-workflow-2026-07.mp4',
-    poster: '/landing/lekha-studio-workflow-2026-07.jpg',
+    id: 'templates',
+    src: '/landing/lekha-templates-2026-10.mp4',
+    poster: '/landing/lekha-templates-2026-10.jpg',
     take: 'Take 01',
-    label: 'Studio workflow',
-    title: 'Shape the story, not just the subtitles.',
-    description: 'A real edit inside Lekha, from template choice to precise styling.',
-    duration: '16 sec',
+    label: 'One-click templates',
+    title: 'Upload, transcribe, apply a template.',
+    description: 'A real edit inside Lekha, from upload to an animated template, in any language, ready to export.',
+    duration: '20 sec',
   },
   {
-    id: 'template-library',
-    src: '/landing/lekha-template-library-2026-07.mp4',
-    poster: '/landing/lekha-template-library-2026-07.jpg',
+    id: 'word-placement',
+    src: '/landing/lekha-word-placement-2026-10.mp4',
+    poster: '/landing/lekha-word-placement-2026-10.jpg',
     take: 'Take 02',
-    label: 'Template library',
-    title: 'Find a motion language that feels like you.',
-    description: 'A fast tour through expressive caption systems built for short-form video.',
-    duration: '20 sec',
+    label: 'Word placement',
+    title: 'Place every word where it lands hardest.',
+    description: 'Drag words anywhere, grow one into the hero, give it a gradient, and it plays back word by word.',
+    duration: '26 sec',
   },
 ]
 
