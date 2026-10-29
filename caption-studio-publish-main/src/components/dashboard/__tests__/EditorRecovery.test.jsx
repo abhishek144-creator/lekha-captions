@@ -25,18 +25,18 @@ describe('EditorEmptyState', () => {
     expect(screen.queryByText('Your previous draft is available on this browser.')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Continue saved draft' }))
     expect(handlers.applyLocalDraft).toHaveBeenCalledWith(recoveryDraft)
-    expect(screen.queryByRole('button', { name: /backup/i })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Download draft backup' })).toBeTruthy()
   })
-  it('offers only the browser draft when both drafts exist, without backup or account-draft options', () => {
+  it('offers the browser draft and its backup download, but no account-draft switch, when both drafts exist', () => {
     const backup = vi.spyOn(localDraftStorage, 'downloadDraft').mockImplementation(() => {})
     const handlers = renderEmptyState({ localRecoveryDraft: recoveryDraft, accountDraft: { fileId: 'f0' } })
     expect(screen.getByText('Your previous draft is available on this browser.')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /backup|back up/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /account draft/i })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Download draft backup' }))
+    expect(backup).toHaveBeenCalledWith(recoveryDraft)
+    expect(handlers.onContinueAccountDraft).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Continue saved draft' }))
     expect(handlers.applyLocalDraft).toHaveBeenCalledWith(recoveryDraft)
-    expect(handlers.onContinueAccountDraft).not.toHaveBeenCalled()
-    expect(backup).not.toHaveBeenCalled()
     backup.mockRestore()
   })
 

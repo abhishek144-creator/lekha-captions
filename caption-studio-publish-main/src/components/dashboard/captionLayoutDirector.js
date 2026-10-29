@@ -119,6 +119,19 @@ function keywordPhrase(index, words, rawWords = words, stopWords = new Set()) {
   return Array.from({ length: last - first + 1 }, (_, offset) => first + offset)
 }
 
+// The strongest content word of a template caption that no word clearly
+// earned: score, then length, then the later word. Stop words never qualify;
+// the opening word (after the hook) and a repeat of the previous caption's
+// keyword only when nothing else does. -1 when the line has no content word.
+function templateKeywordFallback(scored, normalized, captionIndex, previousWords) {
+  const candidates = scored.filter((word) => word.score > -9)
+  const preferred = candidates.filter((word) => (captionIndex === 0 || word.index > 0) && !previousWords.has(normalized[word.index]))
+  const pool = preferred.length ? preferred : candidates
+  const letters = (word) => countLettersAndNumbers(word.word)
+  const best = [...pool].sort((a, b) => b.score - a.score || letters(b) - letters(a) || b.index - a.index)[0]
+  return best ? best.index : -1
+}
+
 // Every keyword's unit, in order, within the unit budget (the first keyword's
 // unit always survives).
 function keywordUnits(indices, words, rawWords, stopWords) {
@@ -302,6 +315,7 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
   const waveform = Array.isArray(waveformData) ? waveformData.map(Number).filter(Number.isFinite).map(Math.abs) : []
   const videoDuration = duration > 0 ? duration : Math.max(0, ...speech.map((caption) => Number(caption.end_time) || 0))
 
+  let previousKeywordWords = new Set()
   const analyses = speech.map((caption, captionIndex) => {
     const tokens = splitCaptionWordTokens(caption.text)
     const normalized = tokens.map((token) => normalizeEmphasisWord(token.word))
@@ -335,10 +349,23 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
       keywordIndices = [ctaIndex]
       heroIndex = ctaIndex
     }
+    const templated = Boolean(templateMarkupOf(caption))
+    // A template caption always shows the template's highlight (owner,
+    // 2026-10-29): when no word clearly earns it, the strongest content word
+    // does — never the opening word after the hook, nor the previous
+    // caption's keyword.
+    if (templated && !keywordIndices.length && tokens.length >= 2 && (ai?.type || intent) !== 'filler') {
+      const fallback = templateKeywordFallback(words, normalized, captionIndex, previousKeywordWords)
+      if (fallback >= 0) {
+        keywordIndices = keywordPhrase(fallback, normalized, rawWords, stopWords)
+        heroIndex = fallback
+      }
+    }
+    previousKeywordWords = new Set(keywordIndices.map((index) => normalized[index]))
     return {
       caption,
       captionIndex,
-      templated: Boolean(templateMarkupOf(caption)),
+      templated,
       intent: ai?.type || intent,
       ctaIndex,
       start,
@@ -421,6 +448,8 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
     else if (cptIds.has(item.caption.id)) mode = 'cpt'
     else if (item.intent === 'filler') mode = 'sentence'
     else if (item.intent === 'call_to_action' && item.keywordIndices.length) mode = 'keywords'
+    // Template captions keep their highlight on calm lines too.
+    else if (item.templated && item.keywordIndices.length) mode = 'keywords'
     else if (item.ai && item.ai.intensity < 0.25 && item.ai.type === 'narration') mode = 'sentence'
     else if (item.ai?.keywords.length && item.wordCount >= 2 && item.ai.intensity >= 0.35) mode = 'keywords'
     else if (item.wordCount >= 3 && item.keywordIndices.length && (item.intensity >= keywordThreshold || item.topScore >= 3.2)) mode = 'keywords'

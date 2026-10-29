@@ -3,7 +3,7 @@ import {
   getAppliedBasicCurrentWordIndex,
   isSourceBasicTemplateId,
 } from './basicTemplateInline.js';
-import { getCaptionWordRevealIndex } from './cptMotion.js';
+import { getCaptionWordRevealIndex, getCaptionWordRevealTimes } from './cptMotion.js';
 import { getWordBackgroundFill } from '../../lib/wordPaint.js';
 
 // The words of a caption, indexed exactly as word styles, the word editor and
@@ -319,6 +319,30 @@ function getSourceWordAnimationStyle(animationType, speed = 1) {
     tumble: `source-word-tumble ${duration(0.6)} ease-in-out both`,
   };
   return animations[animationType] || 'none';
+}
+
+// A template word's own entrance (floating word editor) starts when the word
+// is spoken, sampled from the video clock while playing — the export seeks it
+// from the same reveal time (data-word-animation-start). Started when the
+// caption mounted, it ran while the word was still waiting (hidden on a CPT
+// caption) or before it was said. Paused, it keeps previewing as picked.
+function syncSourceWordEntrance(node, wordStyle, { isPlaying, currentTime, revealStart }) {
+  const hasEntrance = Boolean(wordStyle?.animation && wordStyle.animation !== 'none');
+  if (!hasEntrance || !Number.isFinite(Number(revealStart))) {
+    delete node.dataset.wordAnimationStart;
+    return;
+  }
+  node.dataset.wordAnimationStart = String(revealStart);
+  if (!isPlaying) return;
+  // Shifted by the video clock like the LC timeline (no Animation objects):
+  // before its reveal the entrance holds its first (hidden) frame; after it,
+  // the entrance stays finished. Re-shifting never restarts it.
+  const delayMs = Math.round((Number(revealStart) - Number(currentTime)) * 1000);
+  node.querySelectorAll(SOURCE_TEMPLATE_VISUAL_SELECTOR).forEach((target) => {
+    if (!String(target.style.animationName || '').startsWith('source-word-')) return;
+    setSourceTemplateStyle(target, 'animation-delay', `${delayMs}ms`);
+    setSourceTemplateStyle(target, 'animation-play-state', 'running');
+  });
 }
 
 function getSourceTemplateEventElement(event) {
@@ -662,6 +686,10 @@ export function wireSourceTemplateWordEditing(
     const settleCaption = !isPlaying && (
       captionHasCreativelyPositionedWords(caption) || isCaptionCptDragActive(host, caption)
     );
+    const revealTimes = getCaptionWordRevealTimes(
+      caption,
+      Math.max(1, String(caption.text || '').trim().split(/\s+/).filter(Boolean).length),
+    );
     getEditableSourceTemplateWords(host).forEach(({ node, index }) => {
       const styleKey = `${caption.id}-${index}`;
       const hasCptWords = captionHasCreativelyPositionedWords(caption);
@@ -702,6 +730,7 @@ export function wireSourceTemplateWordEditing(
       } else {
         node.style.removeProperty('opacity');
       }
+      syncSourceWordEntrance(node, wordStyle, { isPlaying, currentTime, revealStart: revealTimes[index] });
     });
   };
 

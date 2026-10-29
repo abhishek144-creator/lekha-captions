@@ -192,7 +192,7 @@ try {
   await page.reload()
   await page.waitForFunction(() => document.body.textContent.includes('Continue saved draft'))
   assert.equal(saveRequests, 0, 'normal reload must preserve the draft without writing it')
-  assert.equal(await page.evaluate(() => document.body.textContent.includes('Download draft backup')), false)
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('Download draft backup')), true)
   await textClick('Continue saved draft')
   await page.waitForSelector('[data-caption-editor="true"]')
   await page.waitForSelector('input[aria-label="Relink source video"]')
@@ -388,8 +388,8 @@ try {
   await new Promise(resolve => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeCloudRecovery, 'reading the account draft must not write a new revision')
 
-  // With a browser copy present, only that copy is offered: no backup or
-  // account-draft switch, and nothing overwrites either cloud revision.
+  // With a browser copy present, only that copy (and its backup download) is
+  // offered: no account-draft switch, and nothing overwrites either cloud revision.
   const browserOnlyDraft = { ...draft, duration: recoveryMediaDuration,
     captions: [{ ...caption, text: 'browser-only layout', wordStyles: { 'a-1': { fontSize: 28, x: 12 } } }] }
   const recoverySeed = await page.evaluateOnNewDocument((value) => {
@@ -402,7 +402,7 @@ try {
     await page.removeScriptToEvaluateOnNewDocument(recoverySeed.identifier)
   }
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Continue saved draft'))
-  assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => /account draft|draft backup/i.test(button.textContent))), false, 'no backup or account-draft option beside a browser draft')
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => /account draft/i.test(button.textContent))), false, 'no account-draft option beside a browser draft')
   await new Promise(resolve => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeCloudRecovery, 'account recovery must not overwrite either cloud revision')
 

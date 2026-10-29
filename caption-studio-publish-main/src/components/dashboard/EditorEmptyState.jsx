@@ -2,6 +2,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { downloadDraft } from '@/lib/localDraftStorage'
 import DismissibleNotice from './DismissibleNotice'
 
 // The "Start Creating Captions" screen. A same-browser recovery copy wins over
@@ -35,7 +36,10 @@ export default function EditorEmptyState({
             <DismissibleNotice closeLabel="Close draft recovery notification" className="mb-3 rounded border border-yellow-500/30 p-3 text-sm text-gray-300">
               Your previous draft is available on this browser.
             </DismissibleNotice>
-            <Button onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue saved draft</Button>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => applyLocalDraft(localRecoveryDraft)}>Continue saved draft</Button>
+              <Button variant="outline" className="border-white/20 bg-white text-black hover:bg-gray-100 hover:text-black" onClick={() => downloadDraft(localRecoveryDraft)}>Download draft backup</Button>
+            </div>
           </div>
         )}
         {accountDraft && !localRecoveryDraft && (
