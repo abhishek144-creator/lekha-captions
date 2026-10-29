@@ -1,6 +1,7 @@
 // Per-word style edits from the floating word popup. A popup targets either a
 // caption word or a text-element word; both store styles on the owning item's
 // `wordStyles`, keyed by `${ownerId}-${wordIndex}`.
+import { withAnimationChoice } from './animationSpeed.js'
 
 export const wordPopupTargetId = (popup) => (
   popup?.type === 'element' ? popup.elementId : popup?.caption?.id
@@ -11,7 +12,10 @@ export const wordPopupStyleKey = (popup) => `${wordPopupTargetId(popup)}-${popup
 // Applies one popup control change to a word's existing style.
 /** @type {(existingStyle: Record<string, any>, key: string, value: any) => Record<string, any>} */
 export const applyWordStyleChange = (existingStyle = {}, key, value) => {
-  const updatedStyle = { ...existingStyle, [key]: value }
+  // A newly chosen entrance starts at 2x unless the word already has a speed.
+  const updatedStyle = key === 'animation'
+    ? withAnimationChoice(existingStyle, value)
+    : { ...existingStyle, [key]: value }
   if (key === 'textGradient') {
     updatedStyle.textGradient = typeof value === 'string' ? value.trim() : ''
   }

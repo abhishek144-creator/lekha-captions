@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Zap, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { withAnimationChoice } from '@/lib/animationSpeed';
 
 // Standard animations
 const wordAnimations = [
@@ -112,17 +113,15 @@ export default function AnimateTab({ selectedCaption, selectedWord, captions, se
           ...cap,
           wordStyles: {
             ...wordStyles,
-            [selectedWordKey]: {
-              ...(wordStyles[selectedWordKey] || {}),
-              animation: animValue,
-            },
+            // A newly chosen animation starts at 2x unless a speed is already set.
+            [selectedWordKey]: withAnimationChoice(wordStyles[selectedWordKey] || {}, animValue),
           },
         };
       }));
     } else if (freshSelectedCaption && setCaptions) {
       setCaptions(prev => prev.map(cap => {
         if (cap.id === freshSelectedCaption.id) {
-          return { ...cap, animation: animValue };
+          return withAnimationChoice(cap, animValue);
         }
         return cap;
       }));

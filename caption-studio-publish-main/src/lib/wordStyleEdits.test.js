@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { setWordBackground, toggleWordBackground, wordHasBackground } from './wordStyleEdits'
+import { applyWordStyleChange, setWordBackground, toggleWordBackground, wordHasBackground } from './wordStyleEdits'
 import { getWordBackgroundFill } from './wordPaint'
 
 describe('word background toggle', () => {
@@ -19,5 +19,19 @@ describe('word background toggle', () => {
 
   it('keeps the word\'s other styles', () => {
     expect(setWordBackground({ animation: 'pop', abs_x_pct: 40 }, false)).toMatchObject({ animation: 'pop', abs_x_pct: 40 })
+  })
+})
+
+describe('word animation speed default', () => {
+  it('starts a newly chosen entrance at 2x', () => {
+    expect(applyWordStyleChange({ color: '#fff' }, 'animation', 'pop')).toEqual({ color: '#fff', animation: 'pop', animationSpeed: 2 })
+  })
+
+  it('keeps a speed the user already set when the entrance changes', () => {
+    expect(applyWordStyleChange({ animation: 'pop', animationSpeed: 0.5 }, 'animation', 'rise')).toEqual({ animation: 'rise', animationSpeed: 0.5 })
+  })
+
+  it('adds no speed when the entrance is turned off', () => {
+    expect(applyWordStyleChange({}, 'animation', 'none')).toEqual({ animation: 'none' })
   })
 })
