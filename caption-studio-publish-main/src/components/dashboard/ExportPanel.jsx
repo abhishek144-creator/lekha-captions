@@ -492,7 +492,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
       description: `${getCaptionedVideoFilename(filename || originalFileName)} is ready and downloading. If it stalls, download it again with a fresh link — no new render or credit.`,
       duration: 20000,
       action: completedReceipt
-        ? <ToastAction altText="Download the video again" onClick={() => handleResumeExport()}>Download again</ToastAction>
+        ? <ToastAction aria-label="Download the video again" onClick={() => handleResumeExport()}>Download again</ToastAction>
         : undefined,
     });
     Promise.resolve().then(() => refreshUserData?.()).catch(() => {});

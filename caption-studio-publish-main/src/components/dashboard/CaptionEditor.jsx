@@ -55,9 +55,6 @@ function CaptionEditor({
   onOpenWordPopup,
   wordPopup,
   user,
-  captionTracks = [],
-  activeCaptionTrackId,
-  onSelectTrack,
   onTranslate,
   isTranslating = false,
   captionStyle,
@@ -98,13 +95,10 @@ function CaptionEditor({
   const [showReplace, setShowReplace] = useState(false);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
-  const [showBilingualPreview, setShowBilingualPreview] = useState(false);
   const [soundCue, setSoundCue] = useState('[music]');
   const [captionEditMessage, setCaptionEditMessage] = useState('');
   const [translateTarget, setTranslateTarget] = useState('');
   const searchInputRef = useRef(null);
-
-  const otherTrack = captionTracks.find((track) => track.id !== activeCaptionTrackId);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -349,7 +343,7 @@ function CaptionEditor({
       {onTranslate && transcriptCount > 0 && (
         <div
           className="relative z-10 mb-3 flex h-8 items-center gap-1.5"
-          title="Adds a translated language track. Your original captions are kept; switch back any time."
+          title="Translates from your original captions. To return to them, translate to the original language."
         >
           <label htmlFor="caption-translate-target" className="sr-only">Translate captions to</label>
           <div className="relative min-w-0 flex-1">
@@ -381,38 +375,10 @@ function CaptionEditor({
             {isTranslating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {isTranslating ? 'Translating…' : 'Translate'}
           </button>
-          <span id="caption-translate-hint" className="sr-only">Adds a translated language track. Your original captions are kept; switch back any time.</span>
+          <span id="caption-translate-hint" className="sr-only">Translates from your original captions. To return to them, translate to the original language.</span>
         </div>
       )}
 
-      {captionTracks.length > 1 && (
-        <div className="relative z-10 mb-4 rounded-xl border border-white/10 bg-black/25 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="caption-language-track" className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Language track</label>
-            <select
-              id="caption-language-track"
-              value={activeCaptionTrackId || 'source'}
-              onChange={(event) => onSelectTrack?.(event.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#111] px-2 py-1.5 text-xs text-white"
-            >
-              {captionTracks.map((track) => <option key={track.id} value={track.id}>{track.label || track.language || track.id}</option>)}
-            </select>
-            {otherTrack && (
-              <button
-                type="button"
-                aria-pressed={showBilingualPreview}
-                onClick={() => setShowBilingualPreview((value) => !value)}
-                className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${showBilingualPreview ? 'border-sky-300/50 bg-sky-300/10 text-sky-100' : 'border-white/10 text-slate-400 hover:text-white'}`}
-              >
-                {showBilingualPreview ? 'Hide comparison' : 'Compare languages'}
-              </button>
-            )}
-          </div>
-          {showBilingualPreview && otherTrack && (
-            <p className="mt-2 text-[10px] leading-4 text-slate-400">The editor shows the selected language above and the matching {otherTrack.label || otherTrack.language} line below. Video preview and export use the selected track.</p>
-          )}
-        </div>
-      )}
       <div className="relative z-10 mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
         <input
@@ -604,13 +570,6 @@ function CaptionEditor({
                         </div>
                         <p className="-mt-1 text-[10px] leading-4 text-slate-500">Labels are editable text. Existing words keep measured timing; the new label is marked for timing review.</p>
 
-                        {showBilingualPreview && otherTrack && (
-                          <div className="rounded-lg border border-sky-300/15 bg-sky-300/[0.04] p-2.5">
-                            <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-sky-200/70">{otherTrack.label || otherTrack.language}</p>
-                            <p className="text-xs leading-5 text-sky-50/85">{otherTrack.captions?.find((item) => item.id === caption.id)?.text || 'No matching caption in this track.'}</p>
-                          </div>
-                        )}
-
                         {Array.isArray(caption.words) && caption.words.some((word) => Number.isFinite(word.start) && Number.isFinite(word.end)) && <div className="flex flex-wrap gap-1" aria-label="Hear measured words">
                           {caption.words.map((word, index) => Number.isFinite(word.start) && Number.isFinite(word.end) && <button type="button" key={index} onClick={() => onPlayCaption?.({ start_time: word.start, end_time: word.end })} className="rounded border border-sky-300/20 px-2 py-1 text-xs text-sky-200" aria-label={`Hear ${word.word || word.text}`}>Hear {word.word || word.text}</button>)}
                         </div>}
@@ -781,12 +740,6 @@ function CaptionEditor({
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
-                          </div>
-                        )}
-                        {showBilingualPreview && otherTrack && (
-                          <div className="mt-2 rounded-lg border border-sky-300/15 bg-sky-300/[0.04] px-3 py-2">
-                            <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-sky-200/70">{otherTrack.label || otherTrack.language}</p>
-                            <p className="text-xs leading-5 text-sky-50/85">{otherTrack.captions?.find((item) => item.id === caption.id)?.text || 'No matching caption in this track.'}</p>
                           </div>
                         )}
                       </>
