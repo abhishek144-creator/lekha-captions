@@ -192,7 +192,7 @@ try {
   await page.reload()
   await page.waitForFunction(() => document.body.textContent.includes('Continue saved draft'))
   assert.equal(saveRequests, 0, 'normal reload must preserve the draft without writing it')
-  assert.equal(await page.evaluate(() => document.body.textContent.includes('Download draft backup')), true)
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('Download draft backup')), false)
   await textClick('Continue saved draft')
   await page.waitForSelector('[data-caption-editor="true"]')
   await page.waitForSelector('input[aria-label="Relink source video"]')
@@ -388,8 +388,8 @@ try {
   await new Promise(resolve => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeCloudRecovery, 'reading the account draft must not write a new revision')
 
-  // A stale browser copy must not hide the account draft on another device.
-  // Switching explicitly downloads the complete browser styling first.
+  // With a browser copy present, only that copy is offered: no backup or
+  // account-draft switch, and nothing overwrites either cloud revision.
   const browserOnlyDraft = { ...draft, duration: recoveryMediaDuration,
     captions: [{ ...caption, text: 'browser-only layout', wordStyles: { 'a-1': { fontSize: 28, x: 12 } } }] }
   const recoverySeed = await page.evaluateOnNewDocument((value) => {
@@ -401,21 +401,8 @@ try {
   } finally {
     await page.removeScriptToEvaluateOnNewDocument(recoverySeed.identifier)
   }
-  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Back up browser draft & open account draft'))
-  assert.ok(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Continue saved draft')), 'browser draft remains separately available')
-  await textClick('Back up browser draft & open account draft')
-  await page.waitForFunction(() => document.body.textContent.includes('cloud recovery caption'))
-  const backupPath = resolve(downloadPath, 'lekha-caption-draft.json')
-  let browserBackup
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try { browserBackup = JSON.parse(await fs.readFile(backupPath, 'utf8')); break }
-    catch (error) { if (error.code !== 'ENOENT') throw error }
-    await new Promise(resolve => setTimeout(resolve, 50))
-  }
-  assert.ok(browserBackup, 'switching must finish downloading the browser backup')
-  assert.equal(browserBackup.ownerUid, browserOnlyDraft.ownerUid)
-  assert.equal(browserBackup.captions[0].text, 'browser-only layout')
-  assert.deepEqual(browserBackup.captions[0].wordStyles, browserOnlyDraft.captions[0].wordStyles)
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Continue saved draft'))
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => /account draft|draft backup/i.test(button.textContent))), false, 'no backup or account-draft option beside a browser draft')
   await new Promise(resolve => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeCloudRecovery, 'account recovery must not overwrite either cloud revision')
 

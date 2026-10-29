@@ -100,6 +100,10 @@ def gap_glue(words, index, ai_plan=None):
     lower_left = _bare(raw_left).casefold()
     lt, rt = token(raw_left), token(raw_right)
     left_punctuated = lower_left.endswith(PHRASE_END_MARKS) or ends_sentence(left)
+    amount_unit = not left_punctuated and (
+        (_is_number(raw_left, lt) and (rt in UNIT_WORDS or raw_right.startswith('%') or _is_number(raw_right, rt)))
+        or ((lt in CURRENCY_LEADS or raw_left in CURRENCY_LEADS) and _is_number(raw_right, rt))
+    )
     keep = [0.0]
     if not left_punctuated:
         if lt in BIND_RIGHT:
@@ -119,9 +123,8 @@ def gap_glue(words, index, ai_plan=None):
             keep.append(11)
         if lt in INTENSIFIERS and rt not in FUNCTION_WORDS:
             keep.append(10)
-        if (_is_number(raw_left, lt) and (rt in UNIT_WORDS or raw_right.startswith('%') or _is_number(raw_right, rt))) \
-                or (lt in CURRENCY_LEADS or raw_left in CURRENCY_LEADS) and _is_number(raw_right, rt):
-            keep.append(12)
+        if amount_unit:
+            keep.append(22)
         sentence_start = index == 0 or ends_sentence(words[index - 1])
         if (_capitalized(raw_left) and _capitalized(raw_right) and not sentence_start
                 and lt not in FUNCTION_WORDS and rt not in FUNCTION_WORDS and rt != 'i'):
@@ -151,13 +154,13 @@ def gap_glue(words, index, ai_plan=None):
     gap = right['start'] - left['end']
     glue -= min(8.0, max(0.0, gap - 0.08) * 18)
     if ai_plan:
-        if index in ai_plan['breaks']:
+        if index in ai_plan['breaks'] and not amount_unit:
             glue -= 7
         elif index in ai_plan['covered']:
             glue += 6
         # A solo beat needs room on both sides, even after a grammatical join
         # ("the result was / zero").
-        if index + 1 in ai_plan['solo'] or index in ai_plan['solo']:
+        if not amount_unit and (index + 1 in ai_plan['solo'] or index in ai_plan['solo']):
             glue -= 6
     return glue
 

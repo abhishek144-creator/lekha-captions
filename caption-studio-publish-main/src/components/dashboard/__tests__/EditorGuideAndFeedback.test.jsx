@@ -49,6 +49,9 @@ describe('FeedbackButton', () => {
     apiRequest.mockResolvedValue({ ticket_id: 'SUP-1' })
     render(<FeedbackButton email="asha@example.com" />)
     fireEvent.click(screen.getByLabelText('Send feedback'))
+    // The support address is shown, not the signed-in user's own email.
+    expect(screen.getByText('support@lekhacaptions.com')).toBeTruthy()
+    expect(screen.queryByDisplayValue('asha@example.com')).toBeNull()
     fireEvent.change(screen.getByLabelText('Your feedback'), { target: { value: 'Please add more fonts' } })
     fireEvent.click(screen.getByText('Send feedback'))
     await waitFor(() => expect(screen.getByText('Thanks, we got it.')).toBeTruthy())
@@ -69,5 +72,11 @@ describe('FeedbackButton', () => {
     fireEvent.click(screen.getByText('Send feedback'))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Too many support requests.'))
     expect(screen.getByLabelText('Your feedback').value).toBe('Export was slow today')
+  })
+
+  it('asks for a reply email only when signed out', () => {
+    render(<FeedbackButton />)
+    fireEvent.click(screen.getByLabelText('Send feedback'))
+    expect(screen.getByLabelText('Your email')).toBeTruthy()
   })
 })
