@@ -219,6 +219,10 @@ AI_SYSTEM_DAILY_LIMIT = max(0, int(os.environ.get("AI_SYSTEM_DAILY_LIMIT", "500"
 TRANSLATION_MODEL = os.environ.get("TRANSLATION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
 # Caption emotion analysis is a short classification over the transcript.
 CAPTION_EMOTION_MODEL = os.environ.get("CAPTION_EMOTION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+# Auto caption phrasing asks the same small model where meaning units end
+# (about $0.001 per 3-minute transcript). "0" leaves phrasing to the rules.
+CAPTION_PHRASE_AI_ENABLED = os.environ.get("CAPTION_PHRASE_AI_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
+CAPTION_PHRASE_MODEL = os.environ.get("CAPTION_PHRASE_MODEL", CAPTION_EMOTION_MODEL).strip() or CAPTION_EMOTION_MODEL
 AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD = max(
     0.0, float(os.environ.get("AI_COST_ESTIMATE_PER_MEDIA_MINUTE_USD", "0"))
 )

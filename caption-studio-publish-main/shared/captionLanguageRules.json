@@ -27,5 +27,19 @@
   "nounTails": "का की के को में पर से तक ने चा ची चे ला मध्ये वर ને માં પર થી ਦਾ ਦੀ ਦੇ ਨੂੰ ਵਿੱਚ ਤੇ ਤੋਂ এর কে থেকে জন্য లో కి కు తో కోసం இல் இன் உடன் ಗೆ ನಲ್ಲಿ ಇಂದ ൽ ന് میں کا کی کے کو سے پر",
   "emotionalWords": "love hate fear afraid angry happy sad proud amazing incredible beautiful pain dream free win won lose lost best worst secret truth shocking unbelievable प्यार नफरत डर गुस्सा खुश दुख सपना सपने सच राज़ जीत हार शानदार कमाल காதல் பயம் மகிழ்ச்சி கனவு வெற்றி உண்மை ప్రేమ భయం సంతోషం కల గెలుపు నిజం",
   "actionLeads": "can could will would should must may might",
-  "actionTails": "है हैं होगा होगी होंगे रहा रही रहे था थी थे आहेत आहे ఉంది ఉన్నాయి இருக்கிறது உள்ளது"
+  "actionTails": "है हैं होगा होगी होंगे रहा रही रहे था थी थे आहेत आहे ఉంది ఉన్నాయి இருக்கிறது உள்ளது",
+  "phrasing": {
+    "_comment": "Grouping-only cues for Auto captions (backend/caption_phrasing.py): word pairs a caption should not split, and words that start a new phrase. Lower-case.",
+    "intensifiers": "very really so too super most more less extremely totally absolutely pretty quite such बहुत सबसे इतना इतनी इतने कितना कितनी कितने ज़्यादा ज्यादा काफ़ी काफी बिल्कुल बिलकुल एकदम बड़ा बड़ी बड़े",
+    "verbParticles": "up out down off back away together apart",
+    "determiners": "वो ये हर कोई सारा सारी सारे पूरा पूरी पूरे अपना अपनी अपने मेरा मेरी तेरा तेरी तेरे उसका उसकी उसके हमारा हमारी हमारे आपका आपकी आपके तुम्हारा तुम्हारी तुम्हारे पहला पहली दूसरा दूसरी ऐसा ऐसी वैसा वैसी",
+    "fixedExpressions": "सब कुछ|कुछ भी|कुछ नहीं|कभी भी|कभी नहीं|बिल्कुल नहीं|एक बार|एक दिन|हर दिन|हर रोज़|आज कल|अभी भी|धीरे धीरे|सच में|right now|of course|at least|at all|no one|every day|each other|as well|even though|even if|so much|a lot|thank you|you know|i mean|kind of|sort of|by the way|in fact|for sure|for example|so that|as soon as|at the end of the day|on the other hand|one day|step by step|over and over|more and more",
+    "infinitiveHeads": "want wants wanted need needs needed have has had going gonna trying try tried used able about ready decided plan planning love like hate started start begin began learn learned how ought",
+    "ofHeads": "lot lots one most kind sort part some all none each because instead out top end rest half full",
+    "indicVerbTails": "दिया दी दिए देना देता देती देते लिया ली लिए लो लें लेना लेता लेती लेते जाना जाता जाती जाते जाएगा जाएगी जाएंगे जाओ सकता सकती सकते सका सकी सके चुका चुकी चुके पाया पाई पाए पाता पाती पाते डाला डाली डाले हुआ हुई हुए होता होती होते होना करना करता करती करते किया वाला वाली वाले हूँ हूं पड़ा पड़ी पड़े पड़ता पड़ती पड़ेगा बैठा उठा करो करें करेंगे करेगा करेगी कर",
+    "unitWords": "percent % lakh lakhs crore crores million millions billion billions thousand thousands hundred k days day weeks week months month hours hour minutes minute mins seconds years year rupees rupee rs dollars dollar usd inr kg km times x लाख करोड़ हजार हज़ार सौ प्रतिशत दिन हफ्ते हफ़्ते महीने साल घंटे घंटा रुपये रुपए मिनट सेकंड किलो बार",
+    "numberWords": "one two three four five six seven eight nine ten eleven twelve fifteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion lakh lakhs crore crores half double दो तीन चार पांच पाँच छह सात आठ नौ दस बीस तीस चालीस पचास सौ हज़ार हजार लाख करोड़ आधा डेढ़ ढाई",
+    "currencyLeads": "$ ₹ € £ rs rs. inr usd",
+    "adjectives": "new old good bad big small great best worst first last next same real true whole entire main major huge tiny long short high low hard easy simple free full only own little young early late right wrong top favourite favorite important different special perfect amazing incredible beautiful happy sad crazy insane powerful successful social digital personal online local global strong weak rich poor deep clear quick fast slow huge private public better worse biggest smallest hardest easiest final key common certain open whole extra daily weekly monthly healthy fresh dark bright"
+  }
 }
