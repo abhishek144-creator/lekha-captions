@@ -1194,6 +1194,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
       const styles = caption.word_styles || {};
       const isCptCaption = captionHasCptWords(caption);
       const currentCptIndex = getCurrentWordIndex(caption, renderTime);
+      const revealTimes = getCaptionWordRevealTimes(caption, Math.max(1, String(caption.text || '').split(/\\s+/).filter(Boolean).length));
       const hasRealAbsolutePosition = (wordStyle = {}) => (
         Number.isFinite(Number(wordStyle.abs_x_pct))
         && Number.isFinite(Number(wordStyle.abs_y_pct))
@@ -1245,15 +1246,21 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
         } else if (isCptCaption) {
           setImportant(node, 'opacity', '1');
         }
+        // A word's own entrance (floating word editor) starts when the word is
+        // spoken: the compositor seeks it from data-word-animation-start, as
+        // the canvas does from the video clock.
+        const hasWordEntrance = Boolean(wordStyle.animation && wordStyle.animation !== 'none');
+        if (hasWordEntrance) node.dataset.wordAnimationStart = String(Number(revealTimes[index] ?? caption.start_time ?? 0));
+        else delete node.dataset.wordAnimationStart;
         if (!Object.keys(wordStyle).length && !isCptCaption) return;
         const isPlainEditorLayer = Boolean(node.closest('.plain-caption-shell, .text-element-shell'));
         const targets = isPlainEditorLayer ? [node] : prepareSourceTemplateWordNode(node);
         if (isCptCaption) {
-          // CPT words appear immediately in the exact final canvas state. Kill
-          // authored template, caption, and per-word entrance motion on both the
-          // editable anchor and its generated visual wrapper without changing
-          // the word's visibility.
-          [node, ...targets].forEach((target) => {
+          // CPT words appear in the exact final canvas state. Kill authored
+          // template and caption motion on the editable anchor and its visual
+          // wrapper without changing the word's visibility; a word's own
+          // entrance stays on its visual wrapper.
+          [node, ...(hasWordEntrance ? [] : targets)].forEach((target) => {
             setImportant(target, 'animation', 'none');
             setImportant(target, 'animation-delay', '0s');
             setImportant(target, 'animation-play-state', 'paused');
@@ -1387,9 +1394,7 @@ export function buildRuntimeScript(advancedTemplateBlockMarkup = {}) {
           Object.entries(getWordEffectInlineStyles(wordStyle)).forEach(([property, value]) => {
             setImportant(target, property, value);
           });
-          const animation = isCptCaption
-            ? ''
-            : getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1);
+          const animation = getSourceWordAnimationStyle(wordStyle.animation, wordStyle.animationSpeed || 1);
           if (animation) {
             setImportant(target, 'display', 'inline-block');
             setImportant(target, 'transform-origin', 'center center');

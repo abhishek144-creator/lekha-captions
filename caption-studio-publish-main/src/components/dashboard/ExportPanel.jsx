@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from '@/components/ui/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 import { isSourceExpiredError } from '@/lib/apiErrorPolicy';
 import { boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from './exportDelivery.js'
@@ -483,10 +484,16 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     setProgress(100);
     progressTargetRef.current = 100;
     setStatusMessage('Download started');
+    // The browser downloads straight from storage; a stalled connection there
+    // never reaches the editor. Download again fetches a fresh link for the
+    // same finished video (no new render, no credit).
     toast({
       title: 'Download started',
-      description: `${getCaptionedVideoFilename(filename || originalFileName)} is ready and downloading.`,
-      duration: 10000,
+      description: `${getCaptionedVideoFilename(filename || originalFileName)} is ready and downloading. If it stalls, download it again with a fresh link — no new render or credit.`,
+      duration: 20000,
+      action: completedReceipt
+        ? <ToastAction altText="Download the video again" onClick={() => handleResumeExport()}>Download again</ToastAction>
+        : undefined,
     });
     Promise.resolve().then(() => refreshUserData?.()).catch(() => {});
     await new Promise(resolve => setTimeout(resolve, 1000));

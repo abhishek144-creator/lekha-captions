@@ -386,8 +386,34 @@ describe('hook and CPT visibility', () => {
     expect(hook.mode).toBe('cpt')
     const { captions } = autoLayoutCaptions(templated(shortScript()), { waveformData: quietOpening, duration: 9, frame, measure })
     expect(captions[0].template_phase_index).toBe(1)
-    // Nothing earned emphasis in this line, so the styled phase highlights nothing.
-    expect(captions[0].imp_word_indices).toEqual([])
+    // No word clearly earned emphasis, but a template caption still shows its
+    // highlight on the strongest content word ("कहानी", not the stop words).
+    expect(captions[0].imp_word_indices).toEqual([2])
+  })
+
+  it('highlights a content word on every template caption, never a repeat of the previous keyword', () => {
+    const lines = [
+      caption('a', 'answer noise with quiet receipts.', 0, 1.8),
+      caption('b', 'most people quit right before it works', 2, 4.4),
+      caption('c', 'so what changed everything', 4.6, 6),
+      caption('d', 'मैंने सब कुछ खो दिया था', 6.2, 8),
+    ]
+    const plain = planCaptionLayouts(lines, { duration: 8 })
+    const plans = planCaptionLayouts(templated(lines), { duration: 8 })
+    // Plain captions keep the conservative rule: a weak pick stays plain.
+    expect(plain.filter((plan) => plan.keywordIndices.length).length).toBeLessThan(lines.length)
+    plans.forEach((plan, index) => {
+      expect(plan.mode).not.toBe('sentence')
+      expect(plan.keywordIndices.length).toBeGreaterThan(0)
+      if (index > 0) expect(plan.keywordIndices).not.toContain(0)
+    })
+    expect(plans[0].keywordIndices).toEqual([4])
+    expect(plans[3].keywordIndices).toEqual([3])
+  })
+
+  it('keeps filler template captions plain', () => {
+    const [plan] = planCaptionLayouts(templated([caption('a', 'um so', 0, 1)]), { duration: 1 })
+    expect(plan.keywordIndices).toEqual([])
   })
 
   it('does not let an AI emotion label remove the hook CPT', () => {
