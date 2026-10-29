@@ -439,7 +439,7 @@ export default function Dashboard() {
       setWordPopup(null)
       resetHistory()
       trackAnalytics('funnel.translate.success', getClientContext({ stage: 'editor_translate', targetLanguage }))
-      toast({ title: 'Captions translated', description: `Switched to ${targetLabel || targetLanguage}. The original stays in Language track.` })
+      toast({ title: 'Captions translated', description: `Switched to ${targetLabel || targetLanguage}. To return to the original, translate to its language.` })
     } catch (error) {
       if (error?.name === 'AbortError') return
       trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'editor_translate', targetLanguage }))
@@ -1169,9 +1169,6 @@ export default function Dashboard() {
             captions={captions}
             duration={duration}
             setCaptions={updateCaptions}
-            captionTracks={captionTracks}
-            activeCaptionTrackId={activeCaptionTrackId}
-            onSelectTrack={selectCaptionTrack}
             onTranslate={handleTranslateCaptions}
             isTranslating={isTranslatingCaptions}
             selectedCaptionId={selectedCaptionId}
