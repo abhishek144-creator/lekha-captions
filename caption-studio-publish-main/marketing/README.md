@@ -167,6 +167,36 @@ The edit (what part of each take, camera moves, titles, callouts) lives in `segm
 stays full frame and only leans in (≤1.42×) around a click or selection, then returns.
 `explore-geometry.mjs` re-measures control positions if the editor layout changes.
 
+## Launch films v2d / v2e / v2f — `launch-video-v2/` (27 October 2026)
+
+Built from v2b + v2c. "CPT" is an internal term and never appears on screen: the feature is
+**"Creatively place every word"**, its language heading **"Same layout."**, export cards read `EXPORT · 9:16`.
+Every languages heading carries its step number raised above "Same".
+
+- **v2d — merged film** (`launch-v2d.html`, 43.88 s): hook "You speak. / Lekha **creates.**" → v2b up to the
+  template (step 03 now clicks "strategy," and picks the panel's warm **gradient** tile — no drag) → the cursor
+  clicks the top bar's real **Undo** (template off, gradient word kept, Redo turns on) → v2c's word placement
+  (no second gradient pick — the word already has it) → languages ("07" above "Same template.", T167 cards)
+  → export → end card. Steps 01–08.
+- **v2e — template film** (`launch-v2e.html`, 31.35 s): v2b with the v2d hook and gradient beat; "05" above
+  "Same template."
+- **v2f — word-placement film** (`launch-v2f.html`, 33.32 s): v2c with the hook "Your words. / **Anywhere.**";
+  "05" above "Same layout."; the export chime now lands on "Ready to share."
+
+All three sit on the **current dashboard** (`assets/ui/`, captured by `capture-current-ui.mjs` from the dev seed
+at the user's 1360 px / 75 % size — editor px = CSS px × 0.75): the real word panel at its real size, opening on
+Font, so the cursor presses **Style** before the gradient tile (v2f inserts 0.5 s after the word click for it →
+33.32 s); Undo/Redo, Upload New, EXPORT, gallery cards and timeline bar at their current places. The films' own
+preview (clip + captions) is unchanged, scaled ×1.0465 into the dashboard's preview slot. The current gallery no
+longer lists T167, so its card is overlaid with the recorded T167 preview and the current naming ("Mountains · LC T167").
+Re-capture (dev server on :3000) whenever the dashboard changes, then re-measure from `assets/ui/geometry.json`.
+
+```bash
+python soundtrack-v2d.py            # and soundtrack-v2e.py / soundtrack-v2f.py
+node render.mjs --film v2d          # out/lekha-launch-v2d-silent.mp4
+ffmpeg -i out/lekha-launch-v2d-silent.mp4 -i out/soundtrack-v2d.wav -map 0:v -map 1:a -c:v copy   -af loudnorm=I=-14:TP=-1:LRA=11 -c:a aac -b:a 256k -shortest -movflags +faststart out/lekha-launch-v2d-1080p.mp4
+```
+
 ## Launch film v2c (CPT) — `launch-video-v2/launch-v2c.html`
 
 32.82 s. A second, separate film built on v2b (the selected film): the same upload, captions-on-upload, export and end

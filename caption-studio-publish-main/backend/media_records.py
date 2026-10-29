@@ -349,14 +349,15 @@ def _upload_security_service() -> UploadSecurityService:
 
 
 def _build_process_cache_path(media_hash: str, language: str, min_words: int, max_words: int, cleanup_mode: str = "clean", speech_focus: str = "main") -> str:
-    # v7: whisper-aligned Sarvam words and short Auto phrases; do not reuse
-    # v6 phrase estimates or paragraph-length captions.
+    # v8: phrase-aware Auto grouping (caption_phrasing.py); v7 captions could
+    # split a name, a number and its unit or a verb and its auxiliary. v7:
+    # whisper-aligned Sarvam words and short Auto phrases.
     language_key = language.lower()
     # Hinglish was transcribed as plain Hindi (verbatim) until 2026-10-27; its
     # cached captions must not stand in for codemix ones.
     if language_key == "hinglish":
         language_key = "hinglish-codemix"
-    key = f"v7:{media_hash}:{language_key}:{min_words}:{max_words}:{cleanup_mode}:{speech_focus}"
+    key = f"v8:{media_hash}:{language_key}:{min_words}:{max_words}:{cleanup_mode}:{speech_focus}"
     key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return os.path.join(settings.TRANSCRIPTION_CACHE_DIR, f"{key_hash}.json")
 

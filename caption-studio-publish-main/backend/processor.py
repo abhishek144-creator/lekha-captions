@@ -1047,7 +1047,10 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
             verbatim_captions = self._post_process_captions(
                 self._group_words_by_speech_pace(words, min_words=min_words, max_words=max_words))
             cleaned_words = self._clean_transcript_words(words, cleanup_mode, detected_language)
-            grouped_captions = self._group_words_by_speech_pace(cleaned_words, min_words=min_words, max_words=max_words)
+            # Auto only: an AI reading of where meaning units end (rules alone when unavailable).
+            phrase_plan = self._read_phrase_plan(cleaned_words, detected_language) if max_words <= 0 else None
+            grouped_captions = self._group_words_by_speech_pace(
+                cleaned_words, min_words=min_words, max_words=max_words, phrase_plan=phrase_plan)
             grouped_captions = self._post_process_captions(grouped_captions)
             # A take consisting only of hesitations is still a successful
             # transcript. Keep it editable instead of losing the recognized
@@ -1077,6 +1080,7 @@ class VideoProcessor(FontAssetsMixin, MediaProbeMixin, CaptionTextMixin, AssSubt
                 "transcription_source": transcription_source or (
                     "sarvam" if is_indian_lang and sarvam_api_key else "whisper"
                 ),
+                "phrasing_source": "ai" if phrase_plan else "rules",
             }
 
         except Exception as e:

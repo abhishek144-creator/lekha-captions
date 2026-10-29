@@ -1,4 +1,5 @@
 import { captionTextKey } from '../../lib/captionTextKey.js'
+import languageRules from '../../../shared/captionLanguageRules.json' with { type: 'json' }
 // Smart layout director (rules only, no AI): suggests a look for each caption
 // from its timing, pauses, loudness and wording, and applies it.
 //
@@ -54,6 +55,9 @@ const EMOTION_ANIMATION = {
   joy: 'pop',
   excitement: 'pop',
   surprise: 'pop',
+  anger: 'pop',
+  serious: 'rise',
+  fear: 'fade',
   sadness: 'fade',
   calm: 'fade',
   tender: 'fade',
@@ -70,13 +74,16 @@ const EMOTION_WORDS = new Set([
   'प्यार', 'नफरत', 'डर', 'गुस्सा', 'खुश', 'दुख', 'सपना', 'सपने', 'सच', 'राज़', 'राज', 'जीत', 'हार', 'कभी', 'हमेशा', 'सबसे', 'शानदार', 'कमाल',
 ])
 const CTA_WORDS = new Set(['follow', 'subscribe', 'save', 'share', 'comment', 'join', 'click', 'tap', 'download', 'फॉलो', 'सब्सक्राइब', 'शेयर', 'कमेंट', 'लाइक'])
-const UNIT_WORDS = new Set([
-  'percent', '%', 'lakh', 'lakhs', 'crore', 'crores', 'million', 'billion', 'thousand', 'k', 'days', 'day',
-  'hours', 'hour', 'minutes', 'years', 'year', 'rupees', 'dollars', 'kg', 'km',
-  'लाख', 'करोड़', 'हजार', 'हज़ार', 'प्रतिशत', 'दिन', 'साल', 'घंटे', 'रुपये', 'मिनट', 'किलो',
-])
+const phrasingWords = (key) => String(languageRules.phrasing?.[key] || '').toLowerCase().split(/\s+/).filter(Boolean)
+// Shared with the backend phrase grouper (shared/captionLanguageRules.json).
+const UNIT_WORDS = new Set(phrasingWords('unitWords'))
+const NUMBER_WORDS = new Set(phrasingWords('numberWords'))
+const CURRENCY_WORDS = new Set(phrasingWords('currencyLeads'))
+const KEYWORD_UNIT_MAX_WORDS = 3
 const QUESTION_END = /[?؟？]\s*$/u
 const hasNumber = (word) => /\p{N}/u.test(word || '')
+const isAmount = (word) => hasNumber(word) || NUMBER_WORDS.has(word)
+const isCapitalised = (raw) => /^["“‘'(]?[A-Z]/.test(raw || '')
 
 // What a line is, from its words, punctuation and position (rules only).
 function readLineIntent(text, words, captionIndex, total) {
@@ -89,11 +96,38 @@ function readLineIntent(text, words, captionIndex, total) {
   return 'statement'
 }
 
-// A number keeps its unit or currency word: "10 लाख", "50 percent" (at most 2 words).
-function keywordPhrase(index, words) {
-  if (hasNumber(words[index]) && UNIT_WORDS.has(words[index + 1])) return [index, index + 1]
-  if (UNIT_WORDS.has(words[index]) && hasNumber(words[index - 1])) return [index - 1, index]
-  return [index]
+// Whether two neighbouring words are one unit a highlight must not split: an
+// amount and its unit or currency ("10 लाख", "दस लाख रुपये", "₹ 500") or a
+// capitalised name ("Elon Musk").
+function keywordUnitJoins(left, right, stopWords) {
+  const [a, b] = [left.word, right.word]
+  if (isAmount(a) && (UNIT_WORDS.has(b) || isAmount(b))) return true
+  if (CURRENCY_WORDS.has(a) && isAmount(b)) return true
+  return isCapitalised(left.raw) && isCapitalised(right.raw) && !stopWords.has(a) && !stopWords.has(b) && b !== 'i'
+}
+
+// A keyword grows to its whole unit (at most 3 words).
+function keywordPhrase(index, words, rawWords = words, stopWords = new Set()) {
+  const item = (at) => ({ word: words[at], raw: rawWords[at] })
+  let first = index
+  let last = index
+  while (last - first + 1 < KEYWORD_UNIT_MAX_WORDS) {
+    if (first > 0 && keywordUnitJoins(item(first - 1), item(first), stopWords)) first -= 1
+    else if (last < words.length - 1 && keywordUnitJoins(item(last), item(last + 1), stopWords)) last += 1
+    else break
+  }
+  return Array.from({ length: last - first + 1 }, (_, offset) => first + offset)
+}
+
+// Every keyword's unit, in order, within the unit budget (the first keyword's
+// unit always survives).
+function keywordUnits(indices, words, rawWords, stopWords) {
+  const chosen = []
+  indices.forEach((index) => {
+    const unit = keywordPhrase(index, words, rawWords, stopWords).filter((at) => !chosen.includes(at))
+    if (!chosen.length || chosen.length + unit.length <= KEYWORD_UNIT_MAX_WORDS) chosen.push(...unit)
+  })
+  return chosen
 }
 
 // A short fingerprint of a caption's text, so a stored AI reading is only used
@@ -277,8 +311,10 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
     const words = scoreWords(tokens, timings, waveform, videoDuration, caption.language)
     const ranked = [...words].filter((word) => word.score > -9).sort((a, b) => b.score - a.score)
     // Only a word that clearly earns it is highlighted: a weak pick is worse than none.
+    const rawWords = tokens.map((token) => token.word)
+    const stopWords = getEmphasisStopWords(caption.text, caption.language)
     let keywordIndices = []
-    if (ranked[0] && ranked[0].score >= KEYWORD_MIN_SCORE) keywordIndices = keywordPhrase(ranked[0].index, normalized)
+    if (ranked[0] && ranked[0].score >= KEYWORD_MIN_SCORE) keywordIndices = keywordPhrase(ranked[0].index, normalized, rawWords, stopWords)
     if (keywordIndices.length === 1 && tokens.length >= 7 && ranked[1] && ranked[1].score >= KEYWORD_MIN_SCORE && ranked[1].score >= ranked[0].score * 0.85) {
       keywordIndices.push(ranked[1].index)
     }
@@ -287,7 +323,7 @@ export function planCaptionLayouts(captions = [], { waveformData = [], duration 
     // which words carry the meaning; it replaces the rules' keyword guess,
     // including a decision that no word earns emphasis.
     const ai = getCaptionAiEmotion(caption, tokens.length)
-    if (ai) keywordIndices = [...ai.keywords]
+    if (ai) keywordIndices = keywordUnits(ai.keywords, normalized, rawWords, stopWords)
     // The hero is always a chosen keyword; -1 when nothing earned emphasis,
     // so no layout can promote an arbitrary word.
     let heroIndex = keywordIndices.length

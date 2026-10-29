@@ -22,7 +22,7 @@
     "test:studio-templates": "node scripts/check-studio-templates.mjs",
     "test:picks-templates": "node -e \"process.env.STUDIO_SET='picks'; import('./scripts/check-studio-templates.mjs')\"",
     "build:studio-templates": "node scripts/studio-templates/generate.cjs",
-    "test:dragged-word-export": "node scripts/check-export-font-readiness.mjs && node scripts/check-dragged-word-export-parity.mjs && node scripts/check-word-paint-export.mjs && node scripts/check-word-size-slot-export.mjs && node scripts/check-word-reveal-export.mjs && npm run test:cpt-canvas-export",
+    "test:dragged-word-export": "node scripts/check-export-font-readiness.mjs && node scripts/check-dragged-word-export-parity.mjs && node scripts/check-word-paint-export.mjs && node scripts/check-word-size-slot-export.mjs && node scripts/check-word-reveal-export.mjs && node scripts/check-cpt-word-entrance-export.mjs && npm run test:cpt-canvas-export",
     "test:cpt-editing": "node scripts/check-cpt-editing-contracts.mjs && node scripts/check-caption-editing-invariants.mjs",
     "test:cpt-canvas-export": "node scripts/check-cpt-canvas-export-parity.mjs",
     "test:pricing-defaults": "node scripts/check-pricing-yearly-default.mjs",

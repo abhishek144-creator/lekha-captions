@@ -192,7 +192,7 @@ try {
   await page.reload()
   await page.waitForFunction(() => document.body.textContent.includes('Continue saved draft'))
   assert.equal(saveRequests, 0, 'normal reload must preserve the draft without writing it')
-  assert.equal(await page.evaluate(() => document.body.textContent.includes('Download draft backup')), true)
+  assert.equal(await page.evaluate(() => document.body.textContent.includes('Download draft backup')), false)
   await textClick('Continue saved draft')
   await page.waitForSelector('[data-caption-editor="true"]')
   await page.waitForSelector('input[aria-label="Relink source video"]')
@@ -321,14 +321,18 @@ try {
   await page.click('button[title="Undo"]')
   await page.waitForSelector('[data-text-element-layer="true"]')
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.isTextElement))
-  // A new text box lasts to the end of the video, and text typed into it is
-  // kept when playback starts while the box is still being edited (it used to
-  // be lost: the edit only saved on blur, and the box left the screen).
+  // A new text box spans the block under the playhead (the caption shown, or
+  // 3 s) and never the rest of the video, and text typed into it is kept when
+  // playback starts while the box is still being edited (it used to be lost:
+  // the edit only saved on blur, and the box left the screen).
   {
     const stored = JSON.parse(await page.evaluate(() => localStorage.getItem('captionEditorState')))
     const box = stored.captions.find((item) => item.isTextElement)
     const videoDuration = await page.evaluate(() => document.querySelector('.lekha-video-frame video')?.duration || 0)
-    if (videoDuration > 0) assert.ok(Math.abs(box.end_time - videoDuration) < 0.05, `a new text box should run to the end of the video (${box.end_time} vs ${videoDuration})`)
+    const block = stored.captions.find((item) => !item.isTextElement && box.start_time >= item.start_time && box.start_time < item.end_time)
+    if (block) assert.ok(Math.abs(box.end_time - block.end_time) < 0.05, `a new text box should end with the caption under the playhead (${box.end_time} vs ${block.end_time})`)
+    else assert.ok(box.end_time - box.start_time <= 3.05, `a new text box away from captions lasts about 3 s (${box.start_time}-${box.end_time})`)
+    if (videoDuration > 0) assert.ok(box.end_time <= videoDuration + 0.05, `a new text box never runs past the video (${box.end_time} vs ${videoDuration})`)
     await page.$eval('[data-text-element-layer="true"]', (element) => element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
     await page.waitForSelector('[data-text-element-layer="true"] [contenteditable="true"]')
     await page.$eval('[data-text-element-layer="true"] [contenteditable="true"]', (editable) => {
@@ -384,8 +388,8 @@ try {
   await new Promise(resolve => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeCloudRecovery, 'reading the account draft must not write a new revision')
 
-  // A stale browser copy must not hide the account draft on another device.
-  // Switching explicitly downloads the complete browser styling first.
+  // With a browser copy present, only that copy is offered: no backup or
+  // account-draft switch, and nothing overwrites either cloud revision.
   const browserOnlyDraft = { ...draft, duration: recoveryMediaDuration,
     captions: [{ ...caption, text: 'browser-only layout', wordStyles: { 'a-1': { fontSize: 28, x: 12 } } }] }
   const recoverySeed = await page.evaluateOnNewDocument((value) => {
@@ -397,21 +401,8 @@ try {
   } finally {
     await page.removeScriptToEvaluateOnNewDocument(recoverySeed.identifier)
   }
-  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Back up browser draft & open account draft'))
-  assert.ok(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Continue saved draft')), 'browser draft remains separately available')
-  await textClick('Back up browser draft & open account draft')
-  await page.waitForFunction(() => document.body.textContent.includes('cloud recovery caption'))
-  const backupPath = resolve(downloadPath, 'lekha-caption-draft.json')
-  let browserBackup
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try { browserBackup = JSON.parse(await fs.readFile(backupPath, 'utf8')); break }
-    catch (error) { if (error.code !== 'ENOENT') throw error }
-    await new Promise(resolve => setTimeout(resolve, 50))
-  }
-  assert.ok(browserBackup, 'switching must finish downloading the browser backup')
-  assert.equal(browserBackup.ownerUid, browserOnlyDraft.ownerUid)
-  assert.equal(browserBackup.captions[0].text, 'browser-only layout')
-  assert.deepEqual(browserBackup.captions[0].wordStyles, browserOnlyDraft.captions[0].wordStyles)
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Continue saved draft'))
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => /account draft|draft backup/i.test(button.textContent))), false, 'no backup or account-draft option beside a browser draft')
   await new Promise(resolve => setTimeout(resolve, 3000))
   assert.equal(saveRequests, savesBeforeCloudRecovery, 'account recovery must not overwrite either cloud revision')
 

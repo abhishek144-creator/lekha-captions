@@ -5,9 +5,9 @@ import { useWordGestures } from './useWordGestures'
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, X, Move, RotateCw, RotateCcw } from 'lucide-react';
-import { clearPopupWordStyle } from '@/lib/wordStyleEdits';
+import { clearPopupWordStyle, toggleWordBackground, wordHasBackground } from '@/lib/wordStyleEdits';
 import CanvasToolRail from './CanvasToolRail';
-import SelectedWordOutline from './SelectedWordOutline';
+import SelectedWordOutline, { WordBackgroundButton } from './SelectedWordOutline';
 import { getPreviewOverlayRoot, PREVIEW_GUIDES_Z_INDEX, PREVIEW_WORD_BOX_Z_INDEX } from './previewOverlayRoot';
 import PlaybackControls from './PlaybackControls';
 import PreviewScrubber from './PreviewScrubber';
@@ -45,6 +45,7 @@ import {
   advanceCaptionWordRevealIndex,
   getCaptionWordRevealIndex,
   getCaptionWordRevealTimes,
+  getRevealedWordAnimation,
 } from './cptMotion.js';
 import {
   captionHasCreativelyPositionedWords,
@@ -885,15 +886,22 @@ export default function VideoPlayer({
     Object.values(caption.wordStyles || {}).some(isWordDetached)
   );
 
+  // An open word popup is an editing state only while paused. During playback
+  // the caption plays exactly as it exports (cumulative reveal, entrances),
+  // and the selected word is drawn with the others, not frozen in its box.
+  const isWordPopupEditingCaption = (caption) => (
+    !isPlaying && wordPopup?.caption?.id === caption.id
+  );
+
   const isCaptionWordEditingActive = (caption) => (
     (draggingWord && draggingWord.captionId === caption.id)
-    || (wordPopup?.caption?.id === caption.id)
+    || isWordPopupEditingCaption(caption)
   );
 
   const isCaptionCptAdjustmentActive = (caption) => (
     (draggingWord && draggingWord.captionId === caption.id)
     || (resizingWord && resizingWord.captionId === caption.id)
-    || (wordPopup?.caption?.id === caption.id)
+    || isWordPopupEditingCaption(caption)
   );
 
   // Word-by-word reveal is an explicit display-mode choice (StyleControls sets
@@ -1238,15 +1246,20 @@ export default function VideoPlayer({
       const ws = caption.wordStyles?.[styleKey] || {};
       if (!isWordDetached(ws)) return null;
 
-      const isSelected = wordPopup?.caption?.id === caption.id && wordPopup?.wordIndex === wordIndex;
+      // The selected word is drawn by its editor box while paused only.
+      const isSelected = !isPlaying && wordPopup?.caption?.id === caption.id && wordPopup?.wordIndex === wordIndex;
       if (isSelected) return null;
 
       const rawWordFontSize = ws.fontSize || ws.frozenFontSize || (captionStyle?.font_size || 18);
       const wordFontSize = rawWordFontSize * previewRenderScale;
       const emphasisAccent = captionStyle?.secondary_color || '#DDAA03';
-      const wordAnimation = ws.animation && ws.animation !== 'none'
-        ? getWordAnimationStyle(ws.animation, ws.animationSpeed || 1)
-        : 'none';
+      const isWordPending = isCptWordPending(caption, wordIndex, currentIdx);
+      const wordAnimation = getRevealedWordAnimation(
+        ws.animation && ws.animation !== 'none'
+          ? getWordAnimationStyle(ws.animation, ws.animationSpeed || 1)
+          : 'none',
+        isWordPending,
+      );
       const { x: renderOffsetX, y: renderOffsetY } = getWordRenderOffset(ws);
       const emphasisStyle = ws.isEmphasis ? {
         fontWeight: emphasisFontWeight(ws.fontWeight || captionStyle?.font_weight),
@@ -1296,7 +1309,7 @@ export default function VideoPlayer({
           ].filter(Boolean).join(' ')}
           style={{
             position: 'absolute',
-            opacity: isCptWordPending(caption, wordIndex, currentIdx) ? 0 : 1,
+            opacity: isWordPending ? 0 : 1,
             left: `${ws.abs_x_pct}%`,
             top: `${ws.abs_y_pct}%`,
             transform: `translate(-50%, -50%) translate(${renderOffsetX}px, ${renderOffsetY}px)${ws.rotation ? ` rotate(${ws.rotation}deg)` : ''}`,
@@ -1358,7 +1371,9 @@ export default function VideoPlayer({
   });
 
   const selectedDetachedWord = (() => {
-    if (!wordPopup?.caption || wordPopup?.type === 'element') return null;
+    // While playing, the selected word plays with its caption (see
+    // isWordPopupEditingCaption); its box returns on pause.
+    if (isPlaying || !wordPopup?.caption || wordPopup?.type === 'element') return null;
     const liveCaption = captions?.find(c => c.id === wordPopup.caption.id) || activeCaptions.find(c => c.id === wordPopup.caption.id);
     if (!liveCaption) return null;
 
@@ -1384,8 +1399,9 @@ export default function VideoPlayer({
   })();
 
   // A selected word that is still inside its caption/template (template words
-  // move as offsets and never detach) is framed by SelectedWordOutline.
-  const selectedInlineWordKey = !selectedDetachedWord && wordPopup?.caption && wordPopup?.type !== 'element'
+  // move as offsets and never detach) is framed by SelectedWordOutline, like
+  // the detached word's box, only while paused.
+  const selectedInlineWordKey = !isPlaying && !selectedDetachedWord && wordPopup?.caption && wordPopup?.type !== 'element'
     ? `${wordPopup.caption.id}-${wordPopup.wordIndex}`
     : '';
   const selectedInlineCaption = selectedInlineWordKey
@@ -1399,6 +1415,18 @@ export default function VideoPlayer({
       wordStyles: {
         ...(c.wordStyles || {}),
         [selectedInlineWordKey]: producer(c.wordStyles?.[selectedInlineWordKey] || {}),
+      },
+    })));
+  };
+  // The selected word's background button (detached or in-line word): one undo step.
+  const toggleSelectedWordBackground = (captionId, wordIndex) => {
+    const styleKey = `${captionId}-${wordIndex}`;
+    if (addToHistory) addToHistory();
+    (setCaptionsRaw || setCaptions)(prev => prev.map((c) => (c.id !== captionId ? c : {
+      ...c,
+      wordStyles: {
+        ...(c.wordStyles || {}),
+        [styleKey]: toggleWordBackground(c.wordStyles?.[styleKey] || {}),
       },
     })));
   };
@@ -1679,6 +1707,10 @@ export default function VideoPlayer({
             className="absolute left-1/2 top-full z-[95] mt-[14px] flex -translate-x-1/2 items-center gap-2"
             data-selected-word-actions="true"
           >
+            <WordBackgroundButton
+              active={wordHasBackground(selectedWordStyle)}
+              onToggle={() => toggleSelectedWordBackground(selectedDetachedWord.caption.id, selectedDetachedWord.wordIndex)}
+            />
             <span
               className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d8d2e8] bg-white text-[#4f4f5a] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105"
               style={{ cursor: 'grab' }}
@@ -2417,7 +2449,7 @@ export default function VideoPlayer({
                                     currentIdx,
                                     { templateBlockType: 'wbw-rise' },
                                   );
-                                  const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
+                                  const resolvedWordMotionStyle = cptMotionStyle || { animation: getRevealedWordAnimation(wordAnimation, isCptWordPending(caption, wordIndex, currentIdx)) };
                                   return (
                                     <span
                                       key={`${wordIndex}-${basicTemplateCurrentIdx}`}
@@ -2511,7 +2543,7 @@ export default function VideoPlayer({
                               templateSource: caption?.template_source || captionStyle?.template_source,
                             },
                           );
-                          const resolvedWordMotionStyle = cptMotionStyle || { animation: wordAnimation };
+                          const resolvedWordMotionStyle = cptMotionStyle || { animation: getRevealedWordAnimation(wordAnimation, isCptWordPending(caption, wordIndex, currentIdx)) };
 
                           const wordSpan = (
                             <span
@@ -2729,9 +2761,12 @@ export default function VideoPlayer({
                           },
                         );
                         const resolvedWordMotionStyle = cptMotionStyle || {
-                              animation: ws.animation && ws.animation !== 'none'
-                                ? getWordAnimationStyle(ws.animation)
-                                : 'none',
+                              animation: getRevealedWordAnimation(
+                                ws.animation && ws.animation !== 'none'
+                                  ? getWordAnimationStyle(ws.animation, ws.animationSpeed || 1)
+                                  : 'none',
+                                isCptWordPending(caption, wordIndex, sidebarCurrentIdx),
+                              ),
                             };
 
 
@@ -2926,6 +2961,9 @@ export default function VideoPlayer({
         startSourceTemplateWordDrag({ event, node, caption: selectedInlineCaption, wordIndex: wordPopup.wordIndex });
       }}
       onReset={resetSelectedInlineWord}
+      onToggleBackground={selectedInlineCaption
+        ? () => toggleSelectedWordBackground(selectedInlineCaption.id, wordPopup.wordIndex)
+        : undefined}
     />
     </>
   );

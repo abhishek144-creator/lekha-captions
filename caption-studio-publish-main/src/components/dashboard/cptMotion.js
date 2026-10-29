@@ -103,3 +103,14 @@ export function advanceCaptionWordRevealIndex(previousIndex, targetIndex, follow
   if (target <= previous) return target;
   return Math.min(target, previous + 1);
 }
+
+/**
+ * The entrance a CPT word was given in the floating word editor plays when the
+ * word is revealed, not when its caption mounts. A word still waiting for its
+ * reveal carries no animation, so the animation starts fresh at the reveal and
+ * runs once. Started at mount, it ran while the word was hidden and the word
+ * then appeared with its entrance already over (or half over).
+ */
+export function getRevealedWordAnimation(animation, isPending) {
+  return !isPending && animation ? animation : 'none'
+}

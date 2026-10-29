@@ -4,8 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { apiRequest, getApiErrorMessage } from '@/lib/apiClient'
 
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@lekhacaptions.com'
+
 // Feedback goes through the support intake (issue type "feedback"), so it is
 // stored, rate limited and alerted exactly like a Help & Support ticket.
+// Signed-in users reply to their account email without it being shown; the
+// popover shows the support address instead.
 export default function FeedbackButton({ email = '' }) {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -71,15 +75,21 @@ export default function FeedbackButton({ email = '' }) {
               aria-label="Your feedback"
               className="w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm text-white placeholder:text-gray-500 focus:border-[#F5A623] focus:outline-none"
             />
-            <input
-              type="email"
-              value={contact}
-              onChange={(event) => setContact(event.target.value)}
-              required
-              placeholder="Your email, so we can reply"
-              aria-label="Your email"
-              className="w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm text-white placeholder:text-gray-500 focus:border-[#F5A623] focus:outline-none"
-            />
+            {!email && (
+              <input
+                type="email"
+                value={contact}
+                onChange={(event) => setContact(event.target.value)}
+                required
+                placeholder="Your email, so we can reply"
+                aria-label="Your email"
+                className="w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm text-white placeholder:text-gray-500 focus:border-[#F5A623] focus:outline-none"
+              />
+            )}
+            <p className="text-xs text-gray-400">
+              Or email us at{' '}
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[#F5A623] hover:underline">{SUPPORT_EMAIL}</a>
+            </p>
             {status.error && <p role="alert" className="text-xs text-red-300">{status.error}</p>}
             <Button
               type="submit"

@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Move, RotateCcw, RotateCw } from 'lucide-react'
+import { Highlighter, Move, RotateCcw, RotateCw } from 'lucide-react'
 import { useDocumentGesture } from './useDocumentGesture'
 import { getPreviewOverlayRoot, PREVIEW_WORD_BOX_Z_INDEX } from './previewOverlayRoot'
+import { wordHasBackground } from '@/lib/wordStyleEdits'
 
 // Selection box for a word that stays inside its caption or template (one not
 // dragged out to a free position; those get the editor box in VideoPlayer).
 // A template word keeps its own markup and motion, so the box follows the
 // word's on-screen visual and edits it through the word's style: corner dots
 // set its size, the rotate and move buttons turn and drag it, and reset clears
-// every edit. A plain caption word only gets the frame. The frame itself lets
-// pointer events through to the word.
+// every edit. A plain caption word gets the frame and the background button.
+// The frame itself lets pointer events through to the word.
 
 const isShown = (node) => getComputedStyle(node).visibility !== 'hidden'
 
@@ -67,6 +68,34 @@ const CORNERS = [
 ]
 
 const ACTION_BUTTON = 'flex h-6 w-6 items-center justify-center rounded-full border border-[#d8d2e8] bg-white text-[#4f4f5a] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105'
+const ACTION_BUTTON_ON = 'flex h-6 w-6 items-center justify-center rounded-full border border-[#8b5cf6] bg-[#ede9fe] text-[#6d28d9] shadow-[0_2px_5px_rgba(15,15,20,0.16)] transition-transform hover:scale-105'
+
+// Background on/off for the selected word, in the action row under it (the
+// word popup's Style tab has the same switch plus colour and opacity).
+export function WordBackgroundButton({ active, onToggle }) {
+  const stop = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  return (
+    <button
+      type="button"
+      className={active ? ACTION_BUTTON_ON : ACTION_BUTTON}
+      onPointerDown={stop}
+      onClick={(event) => {
+        stop(event)
+        onToggle()
+      }}
+      title={active ? 'Remove word background' : 'Add word background'}
+      aria-label="Word background"
+      aria-pressed={Boolean(active)}
+      data-word-background-toggle="true"
+      data-video-control
+    >
+      <Highlighter className="h-3 w-3" strokeWidth={1.9} />
+    </button>
+  )
+}
 
 export default function SelectedWordOutline({
   containerRef,
@@ -77,6 +106,7 @@ export default function SelectedWordOutline({
   onWordStyleChange,
   onMoveStart,
   onReset,
+  onToggleBackground,
 }) {
   const [box, setBox] = useState(null)
   const startGesture = useDocumentGesture()
@@ -188,35 +218,44 @@ export default function SelectedWordOutline({
               <span className="block h-2 w-2 rounded-full border border-[#a78bfa] bg-white shadow-[0_2px_6px_rgba(0,0,0,0.18)]" />
             </span>
           ))}
-          <span
-            className="pointer-events-auto absolute left-1/2 top-full mt-[14px] flex -translate-x-1/2 items-center gap-2"
-            data-selected-word-actions="true"
-          >
-            <span className={ACTION_BUTTON} style={{ cursor: 'grab' }} onPointerDown={startRotate} title="Rotate word" data-video-control>
-              <RotateCw className="h-3 w-3" strokeWidth={1.9} />
-            </span>
-            <span className={ACTION_BUTTON} style={{ cursor: 'move' }} onPointerDown={startMove} title="Move word" data-video-control>
-              <Move className="h-3 w-3" strokeWidth={1.9} />
-            </span>
-            {/* In the action row: a corner dot would sit on top of it. */}
-            {onReset && (
-              <button
-                type="button"
-                className={ACTION_BUTTON}
-                onPointerDown={stop}
-                onClick={(event) => {
-                  stop(event)
-                  onReset()
-                }}
-                title="Reset word (position, size, colour and effects)"
-                aria-label="Reset word"
-                data-video-control
-              >
-                <RotateCcw className="h-3 w-3" strokeWidth={1.9} />
-              </button>
-            )}
-          </span>
         </>
+      )}
+      {(editable || onToggleBackground) && (
+        <span
+          className="pointer-events-auto absolute left-1/2 top-full mt-[14px] flex -translate-x-1/2 items-center gap-2"
+          data-selected-word-actions="true"
+        >
+          {onToggleBackground && (
+            <WordBackgroundButton active={wordHasBackground(wordStyle)} onToggle={onToggleBackground} />
+          )}
+          {editable && (
+            <>
+              <span className={ACTION_BUTTON} style={{ cursor: 'grab' }} onPointerDown={startRotate} title="Rotate word" data-video-control>
+                <RotateCw className="h-3 w-3" strokeWidth={1.9} />
+              </span>
+              <span className={ACTION_BUTTON} style={{ cursor: 'move' }} onPointerDown={startMove} title="Move word" data-video-control>
+                <Move className="h-3 w-3" strokeWidth={1.9} />
+              </span>
+              {/* In the action row: a corner dot would sit on top of it. */}
+              {onReset && (
+                <button
+                  type="button"
+                  className={ACTION_BUTTON}
+                  onPointerDown={stop}
+                  onClick={(event) => {
+                    stop(event)
+                    onReset()
+                  }}
+                  title="Reset word (position, size, colour and effects)"
+                  aria-label="Reset word"
+                  data-video-control
+                >
+                  <RotateCcw className="h-3 w-3" strokeWidth={1.9} />
+                </button>
+              )}
+            </>
+          )}
+        </span>
       )}
     </span>,
     getPreviewOverlayRoot(),
