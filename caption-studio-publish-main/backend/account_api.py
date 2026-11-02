@@ -357,6 +357,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
         "displayName": str(decoded_token.get("name") or "")[:200],
         "photoURL": str(decoded_token.get("picture") or "")[:2_048],
     }
+    account_created = False
     try:
         request_security._create_account_if_active(db, user_ref, uid, {
             **safe_profile,
@@ -366,6 +367,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
             "export_timestamps": [],
             "created_at": time.time(),
         })
+        account_created = True
         observability._audit_action("account_bootstrap_created", uid)
         observability._track_event("account_signup", {"uid": uid})
         transactional_email.send_welcome(safe_profile["email"], safe_profile["displayName"])
@@ -458,7 +460,7 @@ def account_bootstrap(req: AccountDataRequest, request: Request):
     user_doc = user_ref.get()
     if not user_doc.exists:
         raise HTTPException(status_code=503, detail="Account initialization unavailable")
-    return {"success": True, "user": user_doc.to_dict() or {}}
+    return {"success": True, "user": user_doc.to_dict() or {}, "account_created": account_created}
 
 
 @router.post("/api/account-export")

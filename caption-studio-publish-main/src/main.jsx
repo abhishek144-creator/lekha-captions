@@ -1,3 +1,4 @@
+import { initializeGoogleAds } from '@/lib/googleAds'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
@@ -17,6 +18,7 @@ if (
   window.location.replace(redirectUrl.toString())
 }
 
+initializeGoogleAds()
 initializeFrontendMonitoring()
 initWebVitalsTracking()
 

@@ -298,6 +298,12 @@ def verify_payment(req: VerifyPaymentRequest, request: Request, response: Respon
         order_amount_validated=True,
         order_created_at=int(order_live.get("created_at") or 0),
     )
+    if payload.get("success"):
+        payload["conversion_receipt"] = {
+            "transaction_id": req.razorpay_payment_id,
+            "value": int(amount_paid_minor or 0) / 100,
+            "currency": currency_paid,
+        }
     request_guards._payment_idem_set(pay_idem_key, {"status": "completed", "ts": time.time(), "payload": payload})
     return payload
 

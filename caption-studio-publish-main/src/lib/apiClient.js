@@ -1,3 +1,4 @@
+import { trackAdsConversion } from './googleAds'
 import { loadFirebase } from '@/lib/firebaseLoader'
 
 const getFirebaseAppCheckToken = async (forceRefresh) => (await loadFirebase()).getFirebaseAppCheckToken(forceRefresh)
@@ -312,7 +313,16 @@ export async function apiFetch(url, options = {}) {
 
 export async function apiRequest(url, options = {}) {
   const response = await apiFetch(url, options)
-  return await parseResponseBody(response) ?? {}
+  const data = await parseResponseBody(response) ?? {}
+  try {
+    if (url === '/api/account-bootstrap' && data.account_created === true) {
+      trackAdsConversion('signup', { transaction_id: data.user?.uid })
+    }
+    if (url === '/api/verify-payment' && data.success === true && data.conversion_receipt) {
+      trackAdsConversion('purchase', data.conversion_receipt)
+    }
+  } catch { /* Optional measurement must never break account or payment completion. */ }
+  return data
 }
 
 export function getApiErrorMessage(error, fallback = "Something went wrong. Please try again.") {
