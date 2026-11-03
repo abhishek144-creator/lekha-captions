@@ -65,3 +65,9 @@ On a real cached Hindi transcript, the old grouper produced `शिप नही
 - The full backend suite passed (615 tests and 143 subtests); the frontend unit suite passed (293 tests).
 - Existing projects still need an explicit, non-destructive re-grouping feature. This release does not automatically rewrite edited projects.
 - A real cached transcript was not sent for an AI test: automatic approval review rejected that external-data action. Real-provider quality on that recording remains unverified.
+
+## Real Hindi check — 2026-10-29
+
+- After the owner approved the external test, the production OpenAI key returned an accepted phrase plan for the real cached Hindi transcript. The first grouping incorrectly split `10 / लाख`; the phrase scorer now gives number-unit joins greater weight and does not let AI break/solo cues weaken them. A regression test covers this failure. A second real-provider run kept `10 लाख में फ्लैट` together and preserved all word timings.
+- Other breaks on this clip still read awkwardly (for example `देख रहे हो वो शिप / नहीं है क्लब हाउस है`). The transcript's word times were previously marked as phrase-derived estimates, so preserving them does not prove phonetic synchronization. A private local preview was rendered against the original source video; it is a plain subtitle preview, not the editor's authored template or an end-to-end production test. Do not treat this as acceptance for deployment.
+- Read-only Netlify inspection found no configured production `SENTRY_SOURCEMAP_AUTH_TOKEN` for the apex site. The build script uploads hidden maps only when that token is present and removes generated `.map` files afterward; source maps can contain application source. No source maps were uploaded during this check.

@@ -8,6 +8,7 @@ export default [
   {
     ignores: [
       "dist/**",
+      "marketing/**/build/**",
       ".pytest_cache/**",
       ".codex_test_tmp/**",
       ".render_tmp/**",

@@ -81,6 +81,15 @@ export async function monitorExportStatus({ request, onStatus, onReconnect, slee
   throw monitoringPausedError()
 }
 
+export function alternateExportDownloadUrl(url, baseURI) {
+  const parsed = new URL(url, baseURI)
+  if (!['https:', 'http:'].includes(parsed.protocol) || !/^\/api\/media\/export\/[^/]+$/.test(parsed.pathname)) {
+    throw new Error('Alternate download is unavailable for this export. Try Download again.')
+  }
+  parsed.searchParams.set('delivery', 'alternate')
+  return parsed.href
+}
+
 export function startExportDownload(url, filename, { document: doc = document, signal } = {}) {
   if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
   const parsed = new URL(url, doc.baseURI)

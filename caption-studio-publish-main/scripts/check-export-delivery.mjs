@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from '../src/components/dashboard/exportDelivery.js'
+import { alternateExportDownloadUrl, boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from '../src/components/dashboard/exportDelivery.js'
 
 let elapsed = 0
 const states = []
@@ -59,4 +59,9 @@ assert.equal(link.download, 'my_clip_captioned.mp4')
 assert.equal(link.referrerPolicy, 'no-referrer')
 assert.ok(removed)
 assert.throws(() => startExportDownload('javascript:alert(1)', 'clip.mp4', { document: doc }), /Invalid/)
+const alternate = new URL(alternateExportDownloadUrl('/api/media/export/clip.mp4?token=signed', doc.baseURI))
+assert.equal(alternate.searchParams.get('token'), 'signed')
+assert.equal(alternate.searchParams.get('delivery'), 'alternate')
+assert.throws(() => alternateExportDownloadUrl('/api/export', doc.baseURI), /unavailable/)
+assert.throws(() => alternateExportDownloadUrl('javascript:alert(1)', doc.baseURI), /unavailable/)
 console.log('Export delivery passed: long render, background deadline, hung transport, cancellation and direct browser download.')

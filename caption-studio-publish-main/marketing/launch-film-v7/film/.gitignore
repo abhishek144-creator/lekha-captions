@@ -1,0 +1,15 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# Ignore the output video from Git but not videos you import into src/.
+out
+
+# Remotion bundle output.
+/build/
+
+# Controlled signed-out editor recordings required by this source project.
+!public/footage/L1.mp4
+!public/footage/L2.mp4
+!public/footage/L3.mp4

@@ -10,6 +10,7 @@ import planCatalog from '../shared/planCatalog.json' with { type: 'json' }
 // doubles. No credentials, provider requests, charges or production writes.
 const server = await createServer({
   configFile: false, envDir: false,
+  cacheDir: resolve('test-artifacts/.vite-editor-journey'),
   plugins: [react()],
   resolve: { alias: [
     { find: '@/lib/AuthContext', replacement: resolve('e2e/fixtures/editorAuth.jsx') },
@@ -53,6 +54,7 @@ let saveRequests = 0
 let exports = 0
 let exportPayload = null
 let downloads = 0
+let alternateDownloads = 0
 let orderRequests = []
 let verificationRequests = []
 let invalidOrder = false
@@ -71,6 +73,13 @@ const draft = { ownerUid: 'editor-test-a', projectId: 'test-project', fileId: '1
 await page.setRequestInterception(true)
 page.on('request', async (request) => {
   const url = new URL(request.url())
+  if (url.pathname === '/api/media/export/redirect-must-not-be-followed.mp4' && url.searchParams.get('delivery') === 'alternate') {
+    assert.equal(url.searchParams.get('token'), 'local-media-signature')
+    assert.ok(!['fetch', 'xhr'].includes(request.resourceType()), 'alternate file must go to Chrome, not a memory-buffering fetch')
+    assert.equal(request.headers()['authorization'], undefined)
+    alternateDownloads += 1
+    return request.respond({ status: 200, headers: { 'Content-Disposition': 'attachment; filename="alternate_fixture_captioned.mp4"' }, contentType: 'video/mp4', body: Buffer.from('local-alternate-download') })
+  }
   if (url.hostname === 'media.example.invalid' && url.pathname === '/exports/test-output.mp4') {
     assert.equal(request.headers()['origin'], undefined, 'browser download navigation needs no CORS Origin')
     assert.equal(request.headers()['referer'], undefined, 'signed download navigation must not disclose the editor URL')
@@ -297,6 +306,20 @@ try {
     }
   }
   assert.equal(downloads, 1, 'resume hands the existing signed output to the browser download manager')
+  await textClick('Try alternate download')
+  await page.waitForFunction(() => document.body.textContent.includes('Try alternate download'))
+  const alternateDeadline = Date.now() + 10000
+  while (true) {
+    try {
+      assert.equal(await fs.readFile(resolve(downloadPath, 'alternate_fixture_captioned.mp4'), 'utf8'), 'local-alternate-download')
+      break
+    } catch (error) {
+      if (Date.now() >= alternateDeadline) throw error
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+  }
+  assert.equal(alternateDownloads, 1)
+  assert.equal(exports, 0, 'alternate download reuses the completed job without another render')
   await textClick('Close')
   await page.waitForFunction(() => !document.querySelector('[role=dialog]'))
   conflict = false
@@ -306,6 +329,10 @@ try {
   // Styling-panel edits apply to the selected text box, not the captions.
   const storedEditor = () => page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState')))
   const captionYBefore = (await storedEditor()).captionStyle.position_y
+  // Download and conflict notifications can cover the styling controls.
+  // Close them through their normal controls before testing pointer input.
+  await page.$$eval('[aria-label="Dismiss notification"]', buttons => buttons.forEach(button => button.click()))
+  await page.waitForFunction(() => !document.querySelector('[aria-label="Dismiss notification"]'))
   await page.click('[role="slider"][aria-label="Vertical position"]')
   await page.keyboard.press('Home')
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState')).captions.some((item) => item.isTextElement && item.customStyle?.top === 5))

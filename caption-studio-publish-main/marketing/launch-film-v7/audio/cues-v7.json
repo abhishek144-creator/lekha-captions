@@ -1,0 +1,90 @@
+[
+ {
+  "t": 2.6,
+  "cue": "S1 sound cut: felt piano A2"
+ },
+ {
+  "t": 6.0,
+  "cue": "S2 pulse + closed pad"
+ },
+ {
+  "t": 6.0,
+  "cue": "S2 key ticks (typing, backspace, retype)"
+ },
+ {
+  "t": 13.5,
+  "cue": "S3 pad opens, piano progression"
+ },
+ {
+  "t": 24.984,
+  "cue": "S4 click (L1)"
+ },
+ {
+  "t": 26.343,
+  "cue": "S4 click (L1)"
+ },
+ {
+  "t": 27.873,
+  "cue": "S4 click (L1)"
+ },
+ {
+  "t": 30.079,
+  "cue": "S4 click (L1)"
+ },
+ {
+  "t": 31.0,
+  "cue": "S5 groove in"
+ },
+ {
+  "t": 31.869,
+  "cue": "S5 drag whoosh (L2)"
+ },
+ {
+  "t": 35.108,
+  "cue": "S5 drag whoosh (L2)"
+ },
+ {
+  "t": 37.911,
+  "cue": "S5 gradient bell"
+ },
+ {
+  "t": 41.932,
+  "cue": "S6 rise into template click"
+ },
+ {
+  "t": 43.132,
+  "cue": "S6 template applied"
+ },
+ {
+  "t": 50.0,
+  "cue": "S7 card 1 pluck (placeholder time)"
+ },
+ {
+  "t": 50.4,
+  "cue": "S7 card 2 pluck (placeholder time)"
+ },
+ {
+  "t": 50.8,
+  "cue": "S7 card 3 pluck (placeholder time)"
+ },
+ {
+  "t": 51.2,
+  "cue": "S7 card 4 pluck (placeholder time)"
+ },
+ {
+  "t": 56.0,
+  "cue": "S8 export chime (placeholder time)"
+ },
+ {
+  "t": 59.0,
+  "cue": "S9 resolution on D"
+ },
+ {
+  "t": 65.0,
+  "cue": "S10 signature A3"
+ },
+ {
+  "t": 66.47,
+  "cue": "S10 signature D4 (logo lands)"
+ }
+]

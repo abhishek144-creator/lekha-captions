@@ -1,0 +1,5 @@
+# Local recording exploration and generated audio previews.
+/recorder/explore/
+/recorder/takes/
+/audio/*.wav
+/audio/*.mp3

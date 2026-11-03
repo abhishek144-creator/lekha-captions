@@ -64,16 +64,16 @@ const languages = ['English', 'Español', 'Português', 'Français', 'Deutsch', 
 
 const demos = [
   {
-    id: 'styles-one',
-    src: '/landing/template-showcase-1.mp4',
-    poster: '/landing/template-showcase-1.jpg',
-    label: 'Bold word-by-word',
+    id: 'templates',
+    src: '/landing/lekha-templates-2026-10.mp4',
+    poster: '/landing/lekha-templates-2026-10.jpg',
+    label: 'One-click templates',
   },
   {
-    id: 'styles-two',
-    src: '/landing/template-showcase-2.mp4',
-    poster: '/landing/template-showcase-2.jpg',
-    label: 'Clean kinetic type',
+    id: 'word-placement',
+    src: '/landing/lekha-word-placement-2026-10.mp4',
+    poster: '/landing/lekha-word-placement-2026-10.jpg',
+    label: 'Creatively placed words',
   },
 ]
 

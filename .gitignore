@@ -59,3 +59,10 @@ caption-studio-publish-main/.build-time
 /r2-token-proposed.png
 /railway-api-dns.png
 /spaceship-advanced-dns.png
+
+# Dependency installs and private business/deployment evidence, not application sources.
+node_modules/
+/ads-planning-2026-10-27/
+/keyword-research-2026-11-02/
+/netlify-ads-draft.json
+/netlify-ads-secondary-draft.json
