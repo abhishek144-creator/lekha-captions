@@ -39,6 +39,19 @@ describe('left-gallery template font size', () => {
 })
 
 describe('buildTemplateApplication', () => {
+  it.each(['t12', 'sidebar-T166', 't-1'])('fills missing automatic keywords when selecting %s', (template_id) => {
+    const input = [
+      { id: 'a', text: 'quiet creative mornings', layoutSource: 'auto', imp_word_index: -1, imp_word_indices: [] },
+      { id: 'b', text: 'quiet creative mornings', layoutSource: 'user', imp_word_index: -1, imp_word_indices: [] },
+      { id: 'c', text: 'and the is to' },
+    ]
+    const { captions } = apply({ template_id, highlight_color: '#ffcc00' }, defaultCaptionStyle, input)
+    expect(captions[0].imp_word_indices).toEqual([1])
+    expect(captions[0].emphasis_color).toBe('#ffcc00')
+    expect(captions[1].imp_word_indices).toEqual([])
+    expect(captions[2].imp_word_indices).toEqual([])
+  })
+
   it('does not let template B inherit template A\'s owned properties', () => {
     const templateA = { template_id: 't12', template_source: 'lekha-advanced', background_color: '#ff00ff', letter_spacing: 3, font_family: 'Bebas Neue' }
     const afterA = apply(templateA).style

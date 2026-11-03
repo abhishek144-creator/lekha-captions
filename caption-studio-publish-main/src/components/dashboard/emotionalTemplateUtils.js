@@ -229,7 +229,7 @@ export function getTemplatePhaseTypes(markup = '') {
   return phases.length ? phases : ['styled'];
 }
 
-export function buildEmotionalCaptionPlan(captions = [], waveformData = [], duration = 0, templateMarkup = '') {
+export function buildEmotionalCaptionPlan(captions = [], waveformData = [], duration = 0, templateMarkup = '', { ensureTemplateKeywords = false } = {}) {
   const speechCaptions = captions.filter((caption) => caption && !caption.isTextElement);
   const waveform = Array.isArray(waveformData)
     ? waveformData.map(Number).filter(Number.isFinite).map(Math.abs)
@@ -268,7 +268,8 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
     // A look chosen by the layout director or the user (captionLayoutDirector.js)
     // fixes this caption's mode and keywords; the audio guess must not replace it.
     const manual = Object.entries(caption.wordStyles || {}).filter(([, style]) => style?.isEmphasis).map(([key]) => Number(key.slice(String(caption.id).length + 1)))
-    if (caption?.layoutSource === 'auto' || caption?.layoutSource === 'user' || manual.length || caption.imp_word_indices?.length || Number(caption.imp_word_index) >= 0) {
+    const isTemplated = ensureTemplateKeywords || !!(templateMarkup || caption.template_id || caption.template_20_id)
+    if ((!isTemplated && caption?.layoutSource === 'auto') || caption?.layoutSource === 'user' || manual.length || caption.imp_word_indices?.length || Number(caption.imp_word_index) >= 0) {
       const chosen = [...new Set([...(caption.imp_word_indices || []), ...(Number(caption.imp_word_index) >= 0 ? [caption.imp_word_index] : []), ...manual])].map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < words.length);
       return {
         captionId: caption.id,
@@ -284,9 +285,20 @@ export function buildEmotionalCaptionPlan(captions = [], waveformData = [], dura
     const ai = caption.aiEmotion?.textKey === captionTextKey(caption.text) ? caption.aiEmotion : null
     const stopWords = getEmphasisStopWords(caption.text, caption.language)
     const aiIndices = (Array.isArray(ai?.keywords) ? ai.keywords : []).filter(index => Number.isInteger(index) && index >= 0 && index < words.length && !stopWords.has(normalizeEmphasisWord(words[index]))).slice(0, 2)
-    const emphasis = ai
+    let emphasis = ai
       ? { impWordIndex: aiIndices[0] ?? -1, impWordIndices: aiIndices, emphasisColor: '' }
       : selectSemanticEmphasis(words, caption.language);
+    // Templates promise an accented keyword on content-bearing sentences.
+    // The semantic dictionary is deliberately conservative and cannot cover
+    // every language or short phrase. Fill only missing automatic choices;
+    // user selections (including none) returned above remain authoritative.
+    if (isTemplated && emphasis.impWordIndex < 0) {
+      const content = words.map((word, index) => ({ word, index, normalized: normalizeEmphasisWord(word) }))
+        .filter(({ normalized }) => /[\p{L}\p{N}]/u.test(normalized) && !stopWords.has(normalized))
+        .sort((a, b) => countLettersAndNumbers(b.normalized) - countLettersAndNumbers(a.normalized) || a.index - b.index)
+      const index = content[0]?.index ?? -1
+      emphasis = { impWordIndex: index, impWordIndices: index < 0 ? [] : [index], emphasisColor: '' }
+    }
 
     return {
       captionId: caption.id,

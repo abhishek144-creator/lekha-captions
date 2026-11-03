@@ -83,7 +83,6 @@ import {
   getRecreatedAdvancedWbwImpClass,
   shouldRecreateAdvancedWbwPhase,
   shouldSuppressStyledSemanticEmphasis,
-  templateBlockHasAuthoredKeyword,
   splitTemplateKeywordClasses,
   stripTemplateKeywordColor,
   planTemplateRowWords,
@@ -666,11 +665,10 @@ export function _astReplacePlain(block, words, captionText, impWordIndex, impWor
 }
 
 export function _astFillBlock(block, words, captionText, settled, impWordIndex, impWordIndices = [], forceContiguousPositioned = false, emphasisChosen = false) {
-  // A phase designed without a keyword shows no guessed highlight; a keyword
-  // the layout director or the user chose is still shown, and when they chose
-  // none (a plain sentence) the phase's own highlight is not guessed either.
+  // Every phase displays the caption's selected keywords, including plain
+  // sentence phases whose sample markup has no authored highlight.
   const hasChosenKeyword = (impWordIndices || []).length > 0 || Number(impWordIndex) >= 0;
-  const showEmphasis = emphasisChosen ? hasChosenKeyword : templateBlockHasAuthoredKeyword(block);
+  const showEmphasis = hasChosenKeyword;
   block.querySelectorAll('.wbw, .wbw-line').forEach((c) => _astReplaceWBW(c, words, settled, impWordIndex, impWordIndices));
   block.querySelectorAll('.sw-line').forEach((c) => _astReplaceSticky(c, words, settled, impWordIndex, impWordIndices));
   block.querySelectorAll('.cpt, .nline').forEach((c) => _astReplaceLcCpt(c, words, impWordIndex, impWordIndices));

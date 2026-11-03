@@ -40,9 +40,9 @@ function FilmCard({ demo, index }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
       transition={{ delay: index * 0.1, duration: 0.55 }}
-      className="landing-film-card overflow-hidden rounded-[1.5rem] border border-white/[0.11] bg-[#11100f]/75 shadow-[0_35px_85px_-45px_rgba(0,0,0,0.95)] backdrop-blur-xl"
+      className="landing-film-card overflow-hidden rounded-xl border border-white/[0.11] bg-[#11100f]/75 shadow-[0_35px_85px_-45px_rgba(0,0,0,0.95)] backdrop-blur-xl"
     >
-      <div className="flex h-11 items-center justify-between border-b border-white/[0.08] px-4">
+      <div className="flex h-7 items-center justify-between border-b border-white/[0.08] px-3">
         <div className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-[#f5a623]" />
           <span className="h-2 w-2 rounded-full bg-white/15" />
@@ -93,7 +93,7 @@ function FilmCard({ demo, index }) {
         )}
       </div>
 
-      <div className="p-5 sm:p-6">
+      <div className="p-3 sm:p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xl font-semibold leading-tight tracking-[-0.025em] text-white">{demo.title}</p>
@@ -121,7 +121,7 @@ export default function TemplateShowcase() {
       <div className="pointer-events-none absolute -left-48 top-36 -z-10 h-[32rem] w-[32rem] rounded-full bg-[#f5a623]/[0.08] blur-[140px]" />
       <div className="pointer-events-none absolute -right-52 bottom-24 -z-10 h-[28rem] w-[28rem] rounded-full bg-[#f5a623]/[0.05] blur-[130px]" />
 
-      <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] px-3 sm:px-5 lg:px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -136,7 +136,7 @@ export default function TemplateShowcase() {
           </p>
         </motion.div>
 
-        <div className="mt-10 grid gap-5 md:grid-cols-2 lg:gap-7">
+        <div className="mt-10 grid gap-5 xl:grid-cols-2 lg:gap-6">
           {demos.map((demo, index) => <FilmCard key={demo.id} demo={demo} index={index} />)}
         </div>
 
