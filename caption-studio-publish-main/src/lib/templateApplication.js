@@ -178,7 +178,7 @@ export function buildTemplateApplication({
   }
 
   const emotionalPlan = templateSnapshot
-    ? buildEmotionalCaptionPlan(captions, waveformData, duration, templateSnapshot.template_markup)
+    ? buildEmotionalCaptionPlan(captions, waveformData, duration, templateSnapshot.template_markup, { ensureTemplateKeywords: true })
     : []
   const emotionalByCaptionId = new Map(emotionalPlan.map((entry) => [entry.captionId, entry]))
 

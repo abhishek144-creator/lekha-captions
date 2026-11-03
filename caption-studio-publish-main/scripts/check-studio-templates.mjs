@@ -198,15 +198,11 @@ async function canvasScene(page, index) {
     return {
       time: document.querySelector('.lekha-video-frame video').currentTime,
       studio: Boolean(card?.classList.contains(setClass)),
-      // The layout director (or the user) decides per caption whether a word
-      // is highlighted; otherwise scenes written without a keyword show none.
+      // Keyword selection belongs to the caption, including plain phases.
       authoredKeyword: (() => {
         const state = JSON.parse(localStorage.getItem('captionEditorState') || '{}')
         const caption = (state.captions || []).find((item) => item?.id === captionId)
-        if (caption?.layoutSource) return (caption.imp_word_indices || []).length > 0
-        const markup = state.captionStyle?.template_markup || ''
-        const source = new DOMParser().parseFromString(markup, 'text/html').querySelector(`.sb[data-si="${block.dataset.si}"]`)
-        return Boolean(source?.querySelector('.hero, .ns3hero, .ns3box, .ns3mark, .ns3bracket, .ns3dot'))
+        return (caption?.imp_word_indices || []).length > 0 || Number(caption?.imp_word_index) >= 0
       })(),
       scene: Number(block.dataset.si ?? -1),
       words,
@@ -266,6 +262,7 @@ async function runTemplate(id, lang) {
       const keyword = scene.words.filter((word) => word.emphasis)
       check(keyword.length > 0 || !scene.authoredKeyword, `${label} caption ${index}: no keyword highlighted`)
       check(!keyword.length || scene.authoredKeyword, `${label} caption ${index}: a keyword is highlighted on a plain sentence`)
+      check(keyword.every((word) => word.color !== 'rgb(255, 255, 255)'), `${label} caption ${index}: keyword lost its accent color`)
       // Studio keywords are restrained by design; the Picks are bold by design.
       check(SET !== 'studio' || keyword.every((word) => word.weight !== '900' || id === 'T233'), `${label} caption ${index}: keyword forced to weight 900 (${keyword.map((word) => word.weight)})`)
       // Studio and Picks drop tracking in Hindi by design; LC 5 keeps the owner's spacing.

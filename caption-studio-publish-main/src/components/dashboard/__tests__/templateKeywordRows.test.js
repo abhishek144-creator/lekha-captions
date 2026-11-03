@@ -50,12 +50,12 @@ describe('template phases without an authored keyword', () => {
     expect(templateBlockHasAuthoredKeyword(block('<div class="nline plainwrap"><span class="w on">x</span></div>'))).toBe(false)
   })
 
-  it('shows no guessed highlight on a plain phase but keeps a chosen one', () => {
+  it('shows selected automatic and manual keywords even on a plain phase', () => {
     const plain = () => block('<div class="nline plainwrap"><span class="w on">a</span> <span class="w on">b</span></div>')
     const words = ['nobody', 'feels', 'ready']
     const guessed = plain()
     _astFillBlock(guessed, words, words.join(' '), true, -1, [1])
-    expect(guessed.querySelectorAll('.is-emphasis')).toHaveLength(0)
+    expect(guessed.querySelector('.is-emphasis')?.textContent).toBe('feels')
     const chosen = plain()
     _astFillBlock(chosen, words, words.join(' '), true, -1, [1], false, true)
     expect(chosen.querySelector('.is-emphasis')?.textContent).toBe('feels')
