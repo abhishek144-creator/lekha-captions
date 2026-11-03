@@ -173,15 +173,21 @@ Built from v2b + v2c. "CPT" is an internal term and never appears on screen: the
 **"Creatively place every word"**, its language heading **"Same layout."**, export cards read `EXPORT · 9:16`.
 Every languages heading carries its step number raised above "Same".
 
-- **v2d — merged film** (`launch-v2d.html`, 43.88 s): hook "You speak. / Lekha **creates.**" → v2b up to the
-  template (step 03 now clicks "strategy," and picks the panel's warm **gradient** tile — no drag) → the cursor
-  clicks the top bar's real **Undo** (template off, gradient word kept, Redo turns on) → v2c's word placement
-  (no second gradient pick — the word already has it) → languages ("07" above "Same template.", T167 cards)
-  → export → end card. Steps 01–08.
-- **v2e — template film** (`launch-v2e.html`, 31.35 s): v2b with the v2d hook and gradient beat; "05" above
-  "Same template."
-- **v2f — word-placement film** (`launch-v2f.html`, 33.32 s): v2c with the hook "Your words. / **Anywhere.**";
-  "05" above "Same layout."; the export chime now lands on "Ready to share."
+- **v2d — merged film** (`launch-v2d.html`, 43.88 s): hook "You speak. / Lekha **creates.**" → upload → transcript →
+  straight to the template gallery and T167 → the cursor clicks the top bar's real **Undo** (template off, plain line
+  back, Redo turns on) → a full-frame part-2 title "Place your words / **creatively.**" → the word placement: "strategy,"
+  dragged out and grown into the giant, then clicked — the word panel opens on Font, **Style**, and the panel's
+  **green gradient** tile (green → teal, kept for that word to the end) → the other words placed → playback →
+  languages ("06" above "Same template." on the title card's ink + amber-glow ground; the cards show the placed-word
+  layout) → export → end card. Steps 01–07. The page keeps its own clock and maps real time onto it: `CUT_AT`/`CUT`
+  (part 1's old word-editor step skipped), `TITLE_AT`/`TITLE_DT` (title card), `COLOR_AT`/`COLOR_DT` + `CS()` (the
+  colour bar) — each one 120 BPM bar, mirrored by `real()` in `soundtrack-v2d.py`.
+- **v2e — template film** (`launch-v2e.html`, 27.35 s): the merged film's part 1 on its own — hook, upload, transcript,
+  straight to the template gallery and T167 (`CUT_AT`/`CUT` skip v2b's old word-editor step), then languages ("04"
+  above "Same template.", T167 cards) on the merged film's ink + amber-glow ground → export → end card. Steps 01–05.
+- **v2f — word-placement film** (`launch-v2f.html`, 33.32 s): v2c with the hook "Your words. / **Anywhere.**"; the
+  word panel opens on Font, **Style**, then the **green gradient** tile (as in the merged film); "05" above
+  "Same layout." with green placed-word cards on the ink + amber-glow ground; the export chime lands on "Ready to share."
 
 All three sit on the **current dashboard** (`assets/ui/`, captured by `capture-current-ui.mjs` from the dev seed
 at the user's 1360 px / 75 % size — editor px = CSS px × 0.75): the real word panel at its real size, opening on

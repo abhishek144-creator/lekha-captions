@@ -1,9 +1,10 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
 import process from "node:process";
 
 const root = process.cwd();
+const workspaceRelease = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const backendPort = Number(process.env.LEKHA_BACKEND_PORT || 8000);
 const frontendPort = Number(process.env.LEKHA_FRONTEND_PORT || 3000);
 const backendUrl = process.env.VITE_BACKEND_PROXY_TARGET || `http://127.0.0.1:${backendPort}`;
@@ -15,15 +16,27 @@ const backendEnv = {
   ...process.env,
   APP_ENV: process.env.APP_ENV || "development",
   LOCAL_DEV_AUTH_BYPASS: process.env.LOCAL_DEV_AUTH_BYPASS || "1",
+  APP_RELEASE: workspaceRelease,
+  RELEASE_VERSION: `git-${workspaceRelease.slice(0, 12)}`,
 };
 const frontendEnv = {
   ...process.env,
   VITE_BACKEND_PROXY_TARGET: backendUrl,
   VITE_USE_DEV_AUTH_BYPASS: process.env.VITE_USE_DEV_AUTH_BYPASS || "1",
+  APP_RELEASE: workspaceRelease,
+  VITE_APP_RELEASE: workspaceRelease,
 };
 
 const children = new Set();
 let shuttingDown = false;
+
+async function verifyBackendRelease(url) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  const metadata = await response.json();
+  if (!response.ok || metadata.release !== workspaceRelease) {
+    throw new Error(`A backend from a different checkout is already running at ${url}. Stop that dev server, then run npm run dev from ${root}. Expected ${workspaceRelease.slice(0, 12)}, received ${String(metadata.release || 'unidentified')}.`);
+  }
+}
 
 function requestReady(url, timeoutMs = 1800) {
   return new Promise((resolve) => {
@@ -101,6 +114,7 @@ console.log("  Lekha Captions full dev server");
 console.log("===================================================");
 console.log(`[dev] Backend:  ${backendUrl}`);
 console.log(`[dev] Frontend: ${frontendUrl}`);
+console.log(`[dev] Checkout: ${root} (${workspaceRelease.slice(0, 12)})`);
 
 if (!(await requestReady(`${backendUrl}/api/version`))) {
   startProcess("backend", process.env.PYTHON || "python", [
@@ -117,6 +131,7 @@ if (!(await requestReady(`${backendUrl}/api/version`))) {
     shutdown(1);
   }
 } else {
+  await verifyBackendRelease(`${backendUrl}/api/version`);
   console.log("[dev] Backend already ready.");
 }
 
@@ -144,6 +159,17 @@ if (!(await requestReady(frontendUrl))) {
 if (!(await waitFor(frontendApiUrl, 20, "Frontend API proxy"))) {
   console.warn(`[dev] ${frontendUrl} is running, but /api is not reaching ${backendUrl}.`);
   console.error(`[dev] Check the existing service on port ${frontendPort} and its API proxy, then run npm run dev again.`);
+  shutdown(1);
+}
+try {
+  await verifyBackendRelease(frontendApiUrl);
+  const response = await fetch(frontendUrl, { signal: AbortSignal.timeout(5000) });
+  const html = await response.text();
+  if (!html.includes(`content="${workspaceRelease}"`)) {
+    throw new Error('The frontend belongs to a different checkout. Stop the other frontend server and restart this checkout.');
+  }
+} catch (error) {
+  console.error(`[dev] ${error.message}`);
   shutdown(1);
 }
 

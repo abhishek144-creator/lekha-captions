@@ -10,7 +10,7 @@ import re
 import uuid
 
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
 try:
@@ -22,6 +22,7 @@ try:
     from . import media_records
     from . import api_models
     from . import account_api
+    from . import export_stream, media_storage
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
     import app_state
@@ -31,6 +32,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
     import media_records
     import api_models
     import account_api
+    import export_stream, media_storage
 
 
 router = APIRouter()
@@ -161,7 +163,7 @@ def refresh_uploaded_media_url(req: api_models.MediaUrlRequest):
 
 
 @router.get("/api/media/export/{filename}")
-def serve_exported_media(filename: str, token: str = ""):
+def serve_exported_media(filename: str, token: str = "", delivery: str = "direct", request: Request = None):
     if not re.match(r"^export_[a-f0-9-]{36}_[a-f0-9]{12}\.mp4$", filename or ""):
         raise HTTPException(status_code=400, detail="Invalid export filename")
     payload = media_records._verify_media_token(token, "export")
@@ -169,6 +171,16 @@ def serve_exported_media(filename: str, token: str = ""):
     if payload.get("filename") != filename:
         raise HTTPException(status_code=403, detail="Media token does not match this export")
     download_filename = str(payload.get("download_filename") or filename)
+    if delivery not in ("direct", "alternate"):
+        raise HTTPException(status_code=400, detail="Invalid download delivery")
+    if delivery == "alternate" and media_storage.is_configured():
+        uid = str(payload.get("uid") or "")
+        if not uid or "/" in uid or "\\" in uid:
+            raise HTTPException(status_code=403, detail="Invalid export owner")
+        return export_stream.stream_export(
+            f"exports/{uid}/{filename}", download_filename,
+            request.headers.get("range") if request else None,
+        )
     direct_url = (firebase_admin_setup.signed_export_download_url(f"exports/{payload['uid']}/{filename}", 600, download_filename)
                   if payload.get("download_filename") else firebase_admin_setup.signed_export_download_url(f"exports/{payload['uid']}/{filename}"))
     if direct_url:

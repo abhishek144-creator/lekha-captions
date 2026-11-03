@@ -26,7 +26,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 import { isSourceExpiredError } from '@/lib/apiErrorPolicy';
-import { boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from './exportDelivery.js'
+import { alternateExportDownloadUrl, boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from './exportDelivery.js'
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
@@ -452,7 +452,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }
   };
 
-  const downloadCompletedExport = async ({ resolvedResult, signal, jobId, quality, filename }) => {
+  const downloadCompletedExport = async ({ resolvedResult, signal, jobId, quality, filename, delivery = 'direct' }) => {
     if (resolvedResult?.success === false) {
       const terminalError = new Error(resolvedResult.error || 'Export completed without a usable video. Please retry.');
       terminalError.exportStatus = 'failed';
@@ -463,11 +463,12 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     }
     raiseProgressTarget(99);
     setStatusMessage('Preparing download...');
-    const downloadUrl = resolvedResult.download_url || resolvedResult.video_url;
+    const downloadUrl = delivery === 'alternate' ? resolvedResult.video_url : (resolvedResult.download_url || resolvedResult.video_url);
     if (!downloadUrl) throw new Error('Export completed but no download link was returned. Please retry.');
     // Storage sends Content-Disposition; the browser streams to its download
     // manager without retaining a second full video in the editor's memory.
-    startExportDownload(resolveApiResourceUrl(downloadUrl, import.meta.env.VITE_API_BASE_URL),
+    const resolvedUrl = resolveApiResourceUrl(downloadUrl, import.meta.env.VITE_API_BASE_URL);
+    startExportDownload(delivery === 'alternate' ? alternateExportDownloadUrl(resolvedUrl, document.baseURI) : resolvedUrl,
       getCaptionedVideoFilename(filename || originalFileName), { signal });
     // A browser hand-off is not proof all bytes arrived. Keep the receipt so a
     // failed/expired download can be retried without another render or debit.
@@ -499,7 +500,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
     await new Promise(resolve => setTimeout(resolve, 1000));
   };
 
-  const handleResumeExport = async () => {
+  const handleResumeExport = async (delivery = 'direct') => {
     const receipt = recoverableExport || readActiveExport(currentUser?.uid, fileId);
     if (!receipt?.jobId || exportInFlightRef.current) return;
     setIsExporting(true);
@@ -527,6 +528,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
         jobId: receipt.jobId,
         quality: receipt.quality || 'recovered',
         filename: receipt.originalFileName,
+        delivery,
       });
     } catch (error) {
       if (error?.exportStatus === 'cancelled') {
@@ -1215,8 +1217,14 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
                     <p className="text-sm font-bold text-sky-100">Existing export found</p>
                     <p className="mt-1 text-xs leading-5 text-sky-100/65">Reconnect to job {recoverableExport.jobId} and download it without starting another render or spending another credit.</p>
                   </div>
-                  <Button type="button" size="sm" onClick={handleResumeExport} className="shrink-0 bg-sky-100 text-slate-950 hover:bg-white">{recoverableExport.completed ? 'Download again' : 'Resume'}</Button>
+                  <Button type="button" size="sm" onClick={() => handleResumeExport()} className="shrink-0 bg-sky-100 text-slate-950 hover:bg-white">{recoverableExport.completed ? 'Download again' : 'Resume'}</Button>
                 </div>
+                {recoverableExport.completed && (
+                  <div className="mt-3 border-t border-sky-300/15 pt-3">
+                    <p className="text-xs leading-5 text-sky-100/75">Browser download stuck or very slow? Cancel the stuck transfer in your browser, then try another connection to the same finished video.</p>
+                    <Button type="button" size="sm" variant="outline" onClick={() => handleResumeExport('alternate')} className="mt-2 border-sky-300/25 text-sky-100">Try alternate download</Button>
+                  </div>
+                )}
               </div>
             )}
             {/* Not signed in: Sign up prompt */}
