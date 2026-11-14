@@ -1,12 +1,22 @@
 import { apiRequest } from '@/lib/apiClient'
 import { getClientContext, trackAnalytics } from '@/lib/analytics'
+import { waitForVisiblePage } from '@/lib/pageVisibility'
 
 const RETRY_DELAYS_MS = [1500, 4000, 8000, 12000]
 const RETRYABLE_STATUSES = new Set([0, 408, 425, 499, 500, 502, 503, 504])
 const activeProcesses = new Map()
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+      reject(new DOMException('Transcription monitoring cancelled', 'AbortError'))
+    }
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve() }, ms)
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
+  })
 }
 
 function createProcessReference() {
@@ -29,11 +39,12 @@ export async function processVideoWithRecovery(payload, {
   dedupeKey = 'process-video',
   retryDelaysMs = RETRY_DELAYS_MS,
   pollDelayMs = 3000,
+  signal = undefined,
 } = {}) {
   const processReference = createProcessReference()
   activeProcesses.set(dedupeKey, processReference)
   const assertActive = () => {
-    if (activeProcesses.get(dedupeKey) !== processReference) {
+    if (signal?.aborted || activeProcesses.get(dedupeKey) !== processReference) {
       const error = new Error('Transcription request replaced')
       error.name = 'AbortError'
       throw error
@@ -41,52 +52,59 @@ export async function processVideoWithRecovery(payload, {
   }
   let lastError = null
 
-  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
-    try {
-      assertActive()
-      const options = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': processReference,
-        },
-        body: JSON.stringify({ ...payload, idempotency_key: processReference }),
-        dedupeKey,
-        cancelPrevious: true,
-      }
-      let data = await apiRequest('/api/process', options)
-      const deadline = Date.now() + 40 * 60 * 1000
-      while (data?.pending) {
+  try {
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+      try {
         assertActive()
-        if (Date.now() >= deadline) throw Object.assign(new Error('Transcription is still pending. Contact support with the job reference.'), { status: 409 })
-        await sleep(pollDelayMs)
+        const options = {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': processReference,
+          },
+          body: JSON.stringify({ ...payload, idempotency_key: processReference }),
+          dedupeKey,
+          cancelPrevious: true,
+          signal,
+        }
+        let data = await apiRequest('/api/process', options)
+        const deadline = Date.now() + 40 * 60 * 1000
+        while (data?.pending) {
+          assertActive()
+          if (Date.now() >= deadline) throw Object.assign(new Error('Transcription is still pending. Contact support with the job reference.'), { status: 409 })
+          await sleep(pollDelayMs, signal)
+          await waitForVisiblePage(signal)
+          assertActive()
+          if (Date.now() >= deadline) throw Object.assign(new Error('Transcription is still pending. Contact support with the job reference.'), { status: 409 })
+          data = await apiRequest('/api/process', options)
+        }
         assertActive()
-        data = await apiRequest('/api/process', options)
+        trackAnalytics('funnel.process.transport_success', getClientContext({
+          stage: 'process',
+          attempt: attempt + 1,
+          processReference,
+          idempotentReplay: Boolean(data?.idempotent_replay),
+        }))
+        return data
+      } catch (error) {
+        lastError = error
+        const retryable = isRetryableProcessError(error)
+        trackAnalytics('funnel.process.transport_failed', getClientContext({
+          stage: 'process',
+          attempt: attempt + 1,
+          status: Number(error?.status || 0),
+          retryable,
+          processReference,
+        }))
+        if (!retryable || attempt >= retryDelaysMs.length) throw error
+        await sleep(retryDelaysMs[attempt], signal)
       }
-      assertActive()
-      trackAnalytics('funnel.process.transport_success', getClientContext({
-        stage: 'process',
-        attempt: attempt + 1,
-        processReference,
-        idempotentReplay: Boolean(data?.idempotent_replay),
-      }))
-      return data
-    } catch (error) {
-      lastError = error
-      const retryable = isRetryableProcessError(error)
-      trackAnalytics('funnel.process.transport_failed', getClientContext({
-        stage: 'process',
-        attempt: attempt + 1,
-        status: Number(error?.status || 0),
-        retryable,
-        processReference,
-      }))
-      if (!retryable || attempt >= retryDelaysMs.length) throw error
-      await sleep(retryDelaysMs[attempt])
     }
-  }
 
-  throw lastError || new Error('Transcription failed')
+    throw lastError || new Error('Transcription failed')
+  } finally {
+    if (activeProcesses.get(dedupeKey) === processReference) activeProcesses.delete(dedupeKey)
+  }
 }
 
 export const processRecoveryPolicy = Object.freeze({

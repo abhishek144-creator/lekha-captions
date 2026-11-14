@@ -27,6 +27,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { apiRequest, getApiErrorMessage } from '@/lib/apiClient';
 import { isSourceExpiredError } from '@/lib/apiErrorPolicy';
 import { alternateExportDownloadUrl, boundedExportRequest, EXPORT_MONITOR_WINDOW_MS, monitorExportStatus, startExportDownload } from './exportDelivery.js'
+import { waitForVisiblePage } from '@/lib/pageVisibility'
 import { getClientContext, trackAnalytics } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { getEffectiveAuthToken } from '@/lib/devAuth';
@@ -294,6 +295,7 @@ export default function ExportPanel({ open, onClose, captions, captionStyle, wav
   // then hits the per-account concurrent-export guard (429). Keep this generous.
   const pollExportStatus = (jobId, authHeaders = {}, timeoutMs = EXPORT_MONITOR_WINDOW_MS, signal = null) => monitorExportStatus({
     signal,
+    beforeRequest: waitForVisiblePage,
     timeoutMs,
     sleep: abortableSleep,
     pollDelay: exportStatusPollDelay,

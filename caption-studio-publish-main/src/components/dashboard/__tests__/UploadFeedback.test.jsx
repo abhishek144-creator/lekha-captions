@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import GeneratingCaptionsScreen from '../GeneratingCaptionsScreen'
 import { extractWaveformData } from '../audioUtils'
 
@@ -20,17 +20,25 @@ describe('upload feedback and waveform recovery', () => {
     expect(Number(target())).toBeLessThan(100)
   })
 
-  it('glides the shown progress up to the real value without jumping or going back', async () => {
-    render(<GeneratingCaptionsScreen elapsedSeconds={0} uploadPercent={100} />)
-    expect(shown()).toBeLessThan(40)
-    const seen = []
-    await waitFor(() => {
-      seen.push(shown())
+  it('glides the shown progress up to the real value without jumping or going back', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'] })
+    try {
+      const { rerender, unmount } = render(<GeneratingCaptionsScreen elapsedSeconds={0} uploadPercent={100} />)
+      expect(shown()).toBe(0)
+      const seen = [shown()]
+      for (let frame = 0; frame < 300; frame += 1) {
+        act(() => vi.advanceTimersToNextFrame())
+        seen.push(shown())
+      }
       expect(shown()).toBe(40)
-    }, { timeout: 12000, interval: 50 })
-    expect(seen.length).toBeGreaterThan(3)
-    expect(seen.every((value, index) => index === 0 || value >= seen[index - 1])).toBe(true)
-  }, 15000)
+      expect(new Set(seen).size).toBeGreaterThan(10)
+      expect(seen.every((value, index) => index === 0 || (value >= seen[index - 1] && value - seen[index - 1] <= 2))).toBe(true)
+      rerender(<GeneratingCaptionsScreen elapsedSeconds={0} uploadPercent={50} />)
+      act(() => vi.advanceTimersToNextFrame())
+      expect(shown()).toBe(40)
+      unmount()
+    } finally { vi.useRealTimers() }
+  })
 
   it('skips a large local file without reading or decoding it', async () => {
     const file = new Blob(['fixture'])

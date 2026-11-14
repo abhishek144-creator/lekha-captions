@@ -66,3 +66,9 @@ node_modules/
 /keyword-research-2026-11-02/
 /netlify-ads-draft.json
 /netlify-ads-secondary-draft.json
+
+# Private migration receipts and the preserved standalone C: checkouts.
+/migration-from-c-2026-11-14/
+/lekha-captions-fix/
+/launch-film/
+/AUDIT.md

@@ -20,6 +20,13 @@ const isAllowedEmailDomain = (domain) => allowedEmailDomains.has(domain)
   || domain === 'developer.gserviceaccount.com'
   || domain.endsWith('.iam.gserviceaccount.com')
 
+// An old header-injection regression used this literal reserved .test address.
+// Keep this exception to that exact synthetic value and fixture path; neither
+// real addresses elsewhere nor commit-author metadata are exempted.
+const isHistoricalEmailFixture = (location, value) =>
+  /(?:^|\/)backend\/tests\/test_transactional_email\.py$/.test(location)
+  && value.toLowerCase() === ['x', 'evil.test'].join('@')
+
 const secretPatterns = [
   ['private-key', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g],
   ['aws-access-key', /AKIA[0-9A-Z]{16}/g],
@@ -49,7 +56,7 @@ function inspectText(text, location, revision, findings) {
   text = text.replace(/data:[^\s,;]+(?:;[^\s,]*)?;base64,[A-Za-z0-9+/=]+/g, '')
   for (const match of text.matchAll(emailPattern)) {
     const domain = String(match[1] || '').toLowerCase()
-    if (!isAllowedEmailDomain(domain)) {
+    if (!isAllowedEmailDomain(domain) && !isHistoricalEmailFixture(location, match[0])) {
       findings.push({ category: 'personal-email', location, revision, fingerprint: fingerprint(match[0].toLowerCase()) })
     }
   }
@@ -138,11 +145,14 @@ const findings = []
 
 for (const revision of revisions) scanRevision(revision, findings)
 
+const trackedFiles = new Set(git(['ls-files', '--cached', '-z']).split('\0').filter(Boolean))
 const worktreeFiles = git(['ls-files', '--cached', '--others', '--exclude-standard', '-z'])
   .split('\0')
   .filter(Boolean)
 for (const name of worktreeFiles) {
-  if (/^(?:node_modules|dist|coverage|test-results|playwright-report)\//.test(name)) continue
+  // Ignore generated/untracked dependencies at any nesting level. Tracked
+  // files remain in scope even inside a directory named node_modules.
+  if (!trackedFiles.has(name) && /(?:^|\/)(?:node_modules|dist|coverage|test-results|playwright-report|test-artifacts)\//.test(name)) continue
   const absolutePath = path.join(gitRoot, name)
   let text = ''
   try {
@@ -209,6 +219,11 @@ for (const [category, summary] of [...byCategory.entries()].sort()) {
   )
   if (category === 'personal-email') {
     for (const location of [...summary.locations].sort()) console.log(`    - ${location}`)
+  }
+  if (category === 'author-email-metadata') {
+    for (const finding of allFindings.filter((item) => item.category === category)) {
+      console.log(`    - commit ${finding.revision.slice(0, 12)}, fingerprint ${finding.fingerprint}`)
+    }
   }
 }
 

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import puppeteer from 'puppeteer'
+import { execFileSync } from 'node:child_process'
 
 // Real Dashboard and upload window with isolated auth and API doubles: the
 // upload starts on file pick, the storage link is never downloaded for
@@ -22,7 +23,8 @@ const server = await createServer({
     { find: '@', replacement: resolve('src') },
   ] },
   define: { 'import.meta.env.VITE_API_BASE_URL': '""', 'import.meta.env.VITE_LOCAL_API_RETRY_MS': '"0"' },
-  server: { host: '127.0.0.1', port, strictPort: true },
+  server: { host: '127.0.0.1', port, strictPort: true,
+    watch: { ignored: ['**/test-artifacts/**', '**/marketing/**', '**/landing-next/**'] } },
 })
 await server.listen()
 const browser = await puppeteer.launch({ headless: true, args: process.env.CI ? ['--no-sandbox'] : [] })
@@ -100,27 +102,11 @@ const pickFile = async (path) => {
 try {
   // A short, genuinely playable clip so the browser can read its length and play it.
   await page.goto(`${origin}/e2e/fixtures/editor.html`)
-  const clip = await page.evaluate(async () => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 64; canvas.height = 112
-    const context = canvas.getContext('2d')
-    const recorder = new MediaRecorder(canvas.captureStream(10), { mimeType: 'video/webm' })
-    const chunks = []
-    recorder.ondataavailable = (event) => chunks.push(event.data)
-    let frame = 0
-    const timer = setInterval(() => { context.fillStyle = frame++ % 2 ? '#c23660' : '#2f6fc4'; context.fillRect(0, 0, 64, 112) }, 100)
-    recorder.start()
-    await new Promise((done) => setTimeout(done, 1200))
-    recorder.stop()
-    await new Promise((done) => { recorder.onstop = done })
-    clearInterval(timer)
-    const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer())
-    let binary = ''
-    bytes.forEach((value) => { binary += String.fromCharCode(value) })
-    return btoa(binary)
-  })
-  const clipPath = join(workDir, 'fixture.webm')
-  await writeFile(clipPath, Buffer.from(clip, 'base64'))
+  // MediaRecorder's streaming WebM can report Infinity duration. A finalized
+  // MP4 gives this upload test deterministic metadata and genuine playback.
+  const clipPath = join(workDir, 'fixture.mp4')
+  execFileSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'testsrc2=s=64x112:r=10:d=1.2',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', clipPath], { stdio: 'pipe', windowsHide: true })
 
   // 1. The upload starts on file pick and finishes before Generate is pressed.
   await openUploadWindow()
@@ -156,7 +142,7 @@ try {
   const originalSettled = () => [...savedProjects.values()][0]?.duration > 0 && Date.now() - lastSaveAt > 3000
   for (let wait = 0; wait < 200 && !originalSettled(); wait += 1) await new Promise((done) => setTimeout(done, 100))
   assert.equal(savedProjects.size, 1, 'the original project has an account copy')
-  assert.ok(originalSettled(), 'the original project saves its video length before Upload New')
+  assert.ok(originalSettled(), `the original project saves its video length before Upload New: ${JSON.stringify({ drafts: [...savedProjects.values()].map(({ duration, fileId, projectId }) => ({ duration, fileId, projectId })), quietMs: Date.now() - lastSaveAt, browser: await page.evaluate(() => ({ duration: document.querySelector('video')?.duration, storedDuration: JSON.parse(localStorage.getItem('captionEditorState') || '{}').duration })) })}`)
   const [previousId, previousDraft] = [...savedProjects][0]
   const previousJson = JSON.stringify(previousDraft)
   fileId = '123e4567-e89b-12d3-a456-426614174222'

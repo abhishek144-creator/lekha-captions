@@ -51,6 +51,8 @@ export function useDraftPersistence({
   const [cloudSaveRetry, setCloudSaveRetry] = useState(0)
   const recoveryInitializedRef = useRef(false)
   const loadedAccountRef = useRef(null)
+  const sessionRef = useRef({ uid: currentUser?.uid })
+  if (sessionRef.current.uid !== currentUser?.uid) sessionRef.current = { uid: currentUser?.uid }
   const onEditorResetRef = useRef(onEditorReset)
   useEffect(() => { onEditorResetRef.current = onEditorReset })
 
@@ -101,20 +103,24 @@ export function useDraftPersistence({
     if (cloudAutosaveRef.current?.context === context && cloudAutosaveRef.current.signature === signature) return
     const sinceLastSave = Date.now() - lastCloudSaveAtRef.current
     const delay = Math.max(CLOUD_AUTOSAVE_DELAY_MS, CLOUD_AUTOSAVE_MIN_INTERVAL_MS - sinceLastSave)
+    let disposed = false
+    let retryTimer
     const timer = setTimeout(() => {
       lastCloudSaveAtRef.current = Date.now()
       saveCloudDraft(draft).then(() => {
+        if (disposed) return
         cloudAutosaveRef.current = { context, signature }
       }).catch((error) => {
+        if (disposed) return
         // The server throttles bursts of saves: try again quietly.
         if (error?.status === 429) {
-          window.setTimeout(() => setCloudSaveRetry((count) => count + 1), CLOUD_AUTOSAVE_MIN_INTERVAL_MS)
+          retryTimer = window.setTimeout(() => setCloudSaveRetry((count) => count + 1), CLOUD_AUTOSAVE_MIN_INTERVAL_MS)
           return
         }
         notifyCloudSaveError(error)
       })
     }, delay)
-    return () => clearTimeout(timer)
+    return () => { disposed = true; clearTimeout(timer); clearTimeout(retryTimer) }
   }, [isLoaded, fileId, cloudReady, cloudSaveConflict, pauseAutosave, currentUser?.uid, snapshotEditorState, saveCloudDraft, notifyCloudSaveError, cloudSaveRetry])
 
   const { applyDocument, resetDocument, resetPointRef } = doc
@@ -140,6 +146,7 @@ export function useDraftPersistence({
   }, [currentUser?.uid, localRecoveryDraft])
 
   const continueAccountDraft = useCallback(async () => {
+    const session = sessionRef.current
     const uid = currentUser?.uid
     if (!uid || !cloudDraft) return false
     const draft = { ...cloudDraft, ownerUid: uid }
@@ -158,7 +165,7 @@ export function useDraftPersistence({
         // Missing/expired media still restores editable captions and relink UI.
       }
     }
-    if (loadedAccountRef.current !== uid) return false
+    if (loadedAccountRef.current !== uid || sessionRef.current !== session) return false
     draft.videoUrl = resolveApiResourceUrl(rawUrl, import.meta.env.VITE_API_BASE_URL) || ''
     return applyLocalDraft(draft)
   }, [applyLocalDraft, cloudDraft, currentUser])
@@ -242,12 +249,14 @@ export function useDraftPersistence({
   // Explicit Save: browser copy first, then the account. Throws nothing; a
   // failure is reported through the notices. Returns true when both saved.
   const saveNow = useCallback(async () => {
+    const session = sessionRef.current
     try {
       const draft = snapshotEditorState()
       writeLocalDraft(currentUser?.uid, draft)
       await saveCloudDraft(draft)
-      return true
+      return sessionRef.current === session
     } catch (error) {
+      if (sessionRef.current !== session) return false
       console.error('Save failed:', error)
       notifyCloudSaveError(error)
       return false

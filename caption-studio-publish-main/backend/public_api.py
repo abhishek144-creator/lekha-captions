@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import secrets
 import threading
 import time
@@ -11,8 +12,15 @@ import uuid
 from collections import defaultdict, deque
 from typing import Any, Callable, Dict, Set
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+
+try:
+    from . import settings
+    from .pagination import collection_page
+except ImportError:
+    import settings
+    from pagination import collection_page
 
 try:
     import redis
@@ -22,6 +30,18 @@ except ImportError:  # Local development without Redis remains supported.
 
 ALLOWED_SCOPES = {"projects:read", "exports:read"}
 API_KEY_PREFIX = "lk_live_"
+
+
+def is_api_key_read_request(method: str, path: str) -> bool:
+    """Only these read routes authenticate server clients with scoped API keys.
+
+    Key management and future write routes still require browser App Check.
+    Matching a route never authenticates a caller: every handler below must
+    validate the key, scope, rate limit and resource owner.
+    """
+    return method.upper() == "GET" and re.fullmatch(
+        r"/api/v1/(?:projects(?:/[^/]+)?|exports/[^/]+)", path.rstrip("/")
+    ) is not None
 
 
 class CreateApiKeyRequest(BaseModel):
@@ -34,7 +54,7 @@ class ApiKeyRateLimiter:
         self.hourly_limit = max(1, hourly_limit)
         self._events: Dict[str, deque] = defaultdict(deque)
         self._lock = threading.Lock()
-        self._strict = os.environ.get("ENV", "").lower() == "production"
+        self._strict = settings._IS_PRODUCTION
         redis_url = (os.environ.get("REDIS_URL") or "").strip()
         self._redis = redis_client if redis_client is not None else (
             redis.Redis.from_url(
@@ -137,16 +157,18 @@ def create_public_api_router(
         return {"success": True, "api_key": raw, "key": {k: v for k, v in record.items() if k != "uid"}}
 
     @router.get("/api/developer/api-keys")
-    def list_api_keys(request: Request):
+    def list_api_keys(request: Request, limit: int = Query(100, ge=1, le=100), cursor: str = Query("", max_length=200)):
         uid = authenticate_request(request)["uid"]
         rows = []
-        for snapshot in database().collection("users").document(uid).collection("api_key_index").stream():
+        collection = database().collection("users").document(uid).collection("api_key_index")
+        snapshots, page = collection_page(collection, limit, cursor, "created_at")
+        for snapshot in snapshots:
             value = snapshot.to_dict() or {}
             value.pop("key_hash", None)
             value.pop("uid", None)
             rows.append(value)
         rows.sort(key=lambda item: float(item.get("created_at") or 0), reverse=True)
-        return {"success": True, "keys": rows}
+        return {"success": True, "keys": rows, **page}
 
     @router.delete("/api/developer/api-keys/{key_id}")
     def revoke_api_key(key_id: str, request: Request):

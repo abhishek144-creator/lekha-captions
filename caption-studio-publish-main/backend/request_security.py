@@ -18,11 +18,13 @@ try:
     from . import app_state
     from . import firebase_admin_setup
     from . import observability
+    from .public_api import is_api_key_read_request
 except ImportError:  # Direct execution from backend/ remains supported.
     import settings
     import app_state
     import firebase_admin_setup
     import observability
+    from public_api import is_api_key_read_request
 
 
 def _apply_security_headers(response: Response) -> Response:
@@ -41,6 +43,8 @@ def _app_check_required(request: Request) -> bool:
     if not settings.FIREBASE_APP_CHECK_ENFORCED or request.method.upper() == "OPTIONS":
         return False
     path = request.url.path
+    if is_api_key_read_request(request.method, path):
+        return False
     return path not in settings._APP_CHECK_EXEMPT_PATHS and not any(
         path.startswith(prefix) for prefix in settings._APP_CHECK_EXEMPT_PREFIXES
     )

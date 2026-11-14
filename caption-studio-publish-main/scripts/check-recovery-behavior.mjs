@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import vm from 'node:vm'
+import { waitForVisiblePage } from '../src/lib/pageVisibility.js'
 
 // Execute the actual recovery functions with only the network and analytics
 // dependencies replaced. No browser, provider calls, or real retry delays.
@@ -13,6 +14,7 @@ async function loadRecovery(file, exportedName, request, origin = 'http://localh
     apiRequest: request,
     getClientContext: (value) => value,
     trackAnalytics: () => {},
+    waitForVisiblePage,
     setTimeout,
     FormData,
     crypto: globalThis.crypto,

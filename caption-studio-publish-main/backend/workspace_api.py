@@ -9,14 +9,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from google.cloud import firestore
 from pydantic import BaseModel, Field
 
 try:
     from .drafts import normalize_draft, normalize_project_id
+    from .pagination import collection_page
 except ImportError:
     from drafts import normalize_draft, normalize_project_id
+    from pagination import collection_page
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -101,21 +103,25 @@ def create_workspace_router(
         return {"success": True, "workspace": {"workspace_id": workspace_id, "name": name, "role": "owner"}}
 
     @router.get("/api/workspaces")
-    def list_workspaces(request: Request):
+    def list_workspaces(request: Request, limit: int = Query(100, ge=1, le=100), cursor: str = Query("", max_length=200)):
         uid = authenticate_request(request)["uid"]
         rows = []
-        for snapshot in database().collection("users").document(uid).collection("workspace_memberships").stream():
+        collection = database().collection("users").document(uid).collection("workspace_memberships")
+        snapshots, page = collection_page(collection, limit, cursor, "joined_at")
+        for snapshot in snapshots:
             rows.append(snapshot.to_dict() or {})
         rows.sort(key=lambda item: float(item.get("joined_at") or 0), reverse=True)
-        return {"success": True, "workspaces": rows}
+        return {"success": True, "workspaces": rows, **page}
 
     @router.get("/api/workspaces/{workspace_id}/members")
-    def list_members(workspace_id: str, request: Request):
+    def list_members(workspace_id: str, request: Request, limit: int = Query(100, ge=1, le=100), cursor: str = Query("", max_length=200)):
         uid = authenticate_request(request)["uid"]
         db = database()
         membership(db, workspace_id, uid)
-        members = [snapshot.to_dict() or {} for snapshot in db.collection("workspaces").document(workspace_id).collection("members").stream()]
-        return {"success": True, "members": members}
+        collection = db.collection("workspaces").document(workspace_id).collection("members")
+        snapshots, page = collection_page(collection, limit, cursor, "joined_at")
+        members = [snapshot.to_dict() or {} for snapshot in snapshots]
+        return {"success": True, "members": members, **page}
 
     @router.post("/api/workspaces/{workspace_id}/invites", status_code=201)
     def invite_member(workspace_id: str, req: WorkspaceInviteRequest, request: Request):
@@ -239,12 +245,14 @@ def create_workspace_router(
         return {"success": True, "workspace_id": workspace_id}
 
     @router.get("/api/workspaces/{workspace_id}/projects")
-    def list_workspace_projects(workspace_id: str, request: Request):
+    def list_workspace_projects(workspace_id: str, request: Request, limit: int = Query(100, ge=1, le=100), cursor: str = Query("", max_length=200)):
         uid = authenticate_request(request)["uid"]
         db = database()
         membership(db, workspace_id, uid)
         rows = []
-        for snapshot in db.collection("workspaces").document(workspace_id).collection("projects").limit(100).stream():
+        collection = db.collection("workspaces").document(workspace_id).collection("projects")
+        snapshots, page = collection_page(collection, limit, cursor, "saved_at")
+        for snapshot in snapshots:
             value = snapshot.to_dict() or {}
             draft = value.get("draft") or {}
             rows.append({
@@ -255,7 +263,7 @@ def create_workspace_router(
                 "saved_by": value.get("saved_by"),
             })
         rows.sort(key=lambda item: str(item.get("saved_at") or ""), reverse=True)
-        return {"success": True, "projects": rows}
+        return {"success": True, "projects": rows, **page}
 
     @router.get("/api/workspaces/{workspace_id}/projects/{project_id}")
     def load_workspace_project(workspace_id: str, project_id: str, request: Request):

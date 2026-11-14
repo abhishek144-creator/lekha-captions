@@ -85,6 +85,7 @@ _caption_emotion_rate: Dict[str, list] = {}
 _analytics_rate: Dict[str, list] = {}
 _support_rate: Dict[str, list] = {}
 _draft_save_rate: Dict[str, list] = {}
+_resource_creation_rate: Dict[str, list] = {}
 
 _analytics_counters: Dict[str, int] = {}
 _analytics_daily_counters: Dict[str, Dict[str, int]] = {}
@@ -120,6 +121,7 @@ _RATE_LIMIT_NAMESPACES = (
     (_analytics_rate, "analytics"),
     (_support_rate, "support"),
     (_draft_save_rate, "draft-save"),
+    (_resource_creation_rate, "resource-creation"),
 )
 
 # The caption renderer, created by main.py once the media directories exist.

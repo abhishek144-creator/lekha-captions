@@ -111,6 +111,25 @@ function canRetryRequestBody(body) {
   return false
 }
 
+function requestToken(options) {
+  const bearer = new Headers(options.headers || {}).get('authorization') || ''
+  if (bearer.startsWith('Bearer ')) return bearer.slice(7)
+  if (typeof options.body === 'string') {
+    try { return JSON.parse(options.body)?.id_token || '' } catch { return '' }
+  }
+  return ''
+}
+
+function tokenSubject(token) {
+  // This is only a refresh/session guard. The server still verifies the JWT.
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const bytes = Uint8Array.from(atob(payload), (character) => character.charCodeAt(0))
+    const claims = JSON.parse(new TextDecoder().decode(bytes))
+    return claims.sub || claims.user_id || ''
+  } catch { return '' }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -148,14 +167,28 @@ export async function apiFetch(url, options = {}) {
   let controller = null
   let authRefreshAttempted = false
   let appCheckRefreshAttempted = false
+  let assertSession = () => {}
   const requestId = localApiRequest ? createRequestReference() : ''
   if (requestId) {
     const requestHeaders = new Headers(fetchOptions.headers || {})
     if (!requestHeaders.has("X-Request-Id")) requestHeaders.set("X-Request-Id", requestId)
     try {
+      const firebase = await loadFirebase()
+      const token = requestToken(fetchOptions)
+      const user = firebase.auth?.currentUser
+      const subject = tokenSubject(token)
+      if (token) assertSession = () => {
+        if (fetchOptions.signal?.aborted || firebase.auth?.currentUser !== user
+          || (subject && subject !== user?.uid)) {
+          throw new DOMException('The account changed; request cancelled.', 'AbortError')
+        }
+      }
+      assertSession()
       const appCheckToken = await getFirebaseAppCheckToken(false)
+      assertSession()
       if (appCheckToken) requestHeaders.set("X-Firebase-AppCheck", appCheckToken)
     } catch (error) {
+      if (error?.name === 'AbortError') throw error
       throw new ApiError(
         "This browser could not pass the app security check. Refresh and try again.",
         { status: 403, data: { original_message: error?.message || String(error) }, requestId },
@@ -175,6 +208,7 @@ export async function apiFetch(url, options = {}) {
 
   try {
     while (true) {
+      assertSession()
       let response
       let requestUrl = resolvedUrl
       try {
@@ -207,12 +241,15 @@ export async function apiFetch(url, options = {}) {
         throw error
       }
 
+      assertSession()
       if (!response.ok) {
         let data = await parseResponseBody(response.clone())
+        assertSession()
         if (localApiRequest && isAppCheckRejection(response.status, data) && !appCheckRefreshAttempted) {
           appCheckRefreshAttempted = true
           try {
             const refreshedAppCheckToken = await getFirebaseAppCheckToken(true)
+            assertSession()
             if (refreshedAppCheckToken) {
               const headers = new Headers(fetchOptions.headers || {})
               headers.set("X-Firebase-AppCheck", refreshedAppCheckToken)
@@ -220,6 +257,7 @@ export async function apiFetch(url, options = {}) {
               continue
             }
           } catch (error) {
+            if (error?.name === 'AbortError') throw error
             throw new ApiError(
               "This browser could not refresh the app security check. Check the connection, refresh the page, and try again.",
               { status: 403, data: { original_message: error?.message || String(error) }, requestId },
@@ -229,10 +267,12 @@ export async function apiFetch(url, options = {}) {
         const { auth } = localApiRequest && response.status === 401 && !authRefreshAttempted
           ? await loadFirebase().catch(() => ({}))
           : {}
+        assertSession()
         if (auth?.currentUser?.getIdToken) {
           authRefreshAttempted = true
           try {
             const refreshedToken = await auth.currentUser.getIdToken(true)
+            assertSession()
             if (refreshedToken) {
               const headers = new Headers(fetchOptions.headers || {})
               headers.set("Authorization", `Bearer ${refreshedToken}`)
@@ -250,7 +290,8 @@ export async function apiFetch(url, options = {}) {
               }
               continue
             }
-          } catch {
+          } catch (error) {
+            if (error?.name === 'AbortError') throw error
             // Clear the rejected session below.
           }
         }

@@ -272,7 +272,8 @@ function CaptionEditor({
         const data = await onAnalyzeCaptionEmotions(pending);
         if (data?.success && Array.isArray(data.lines)) readings = data.lines;
         else if (data) aiFailed = true;
-      } catch {
+      } catch (error) {
+        if (error?.name === 'AbortError') { setIsAutoLayoutRunning(false); return }
         aiFailed = true;
       }
     }
