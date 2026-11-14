@@ -20,13 +20,16 @@ Restore (dry run lists what would be written; --apply writes with set()):
 import argparse
 import base64
 import gzip
+import hashlib
 import json
 import os
 import sys
 import tempfile
+import uuid
 from datetime import datetime, timezone
 
 from google.cloud import firestore
+from redis.exceptions import WatchError
 
 try:
     from . import firebase_admin_setup
@@ -55,6 +58,9 @@ EXCLUDED_COLLECTIONS = frozenset({
     "_readiness_probe",
 })
 RESTORE_BATCH = 400
+MAX_NIGHTLY_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 15 * 60
+LEASE_SECONDS = 30 * 60
 
 
 class BackupTooLarge(RuntimeError):
@@ -77,7 +83,8 @@ def encode_value(value):
     if isinstance(value, bytes):
         return {"__fs": "bytes", "value": base64.b64encode(value).decode("ascii")}
     if isinstance(value, dict):
-        return {str(key): encode_value(item) for key, item in value.items()}
+        encoded = {str(key): encode_value(item) for key, item in value.items()}
+        return {"__fs": "map", "value": encoded} if "__fs" in value else encoded
     if isinstance(value, (list, tuple)):
         return [encode_value(item) for item in value]
     return value
@@ -86,6 +93,8 @@ def encode_value(value):
 def decode_value(value, db):
     if isinstance(value, dict):
         kind = value.get("__fs")
+        if kind == "map":
+            return {key: decode_value(item, db) for key, item in value["value"].items()}
         if kind == "timestamp":
             return datetime.fromisoformat(value["value"])
         if kind == "ref":
@@ -100,18 +109,21 @@ def decode_value(value, db):
     return value
 
 
-def _walk(collection, write, budget):
+def _walk(collection, write, budget, on_document=None):
     """Streams a collection and every subcollection below it, depth first."""
     for snapshot in collection.stream():
         budget["documents"] += 1
         if budget["documents"] > budget["limit"]:
             raise BackupTooLarge(f"more than {budget['limit']} documents")
+        if on_document:
+            on_document()
         write({"path": snapshot.reference.path, "data": encode_value(snapshot.to_dict() or {})})
         for child in snapshot.reference.collections():
-            _walk(child, write, budget)
+            _walk(child, write, budget, on_document)
 
 
-def export_backup(db, *, now=None, upload=None, list_objects=None, delete=None) -> dict:
+def export_backup(db, *, now=None, upload=None, list_objects=None, delete=None,
+                  on_document=None, run_id="", assert_publish=None) -> dict:
     """Writes one backup to R2 and prunes old ones. Raises on any failure."""
     if db is None:
         raise RuntimeError("Firestore is unavailable")
@@ -131,8 +143,15 @@ def export_backup(db, *, now=None, upload=None, list_objects=None, delete=None) 
                 handle.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
 
             for name in included:
-                _walk(db.collection(name), write, budget)
+                _walk(db.collection(name), write, budget, on_document)
+        data_key = f"{BACKUP_PREFIX}{day}/{run_id + '/' if run_id else ''}firestore.jsonl.gz"
+        with open(data_path, "rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
         manifest = {
+            "version": 2,
+            "data_key": data_key,
+            "sha256": digest,
+            "compressed_bytes": os.path.getsize(data_path),
             "created_at": now.isoformat(),
             "documents": budget["documents"],
             "collections": included,
@@ -142,10 +161,13 @@ def export_backup(db, *, now=None, upload=None, list_objects=None, delete=None) 
         manifest_path = os.path.join(folder, "manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as handle:
             json.dump(manifest, handle, indent=2)
-        if not upload(data_path, f"{BACKUP_PREFIX}{day}/firestore.jsonl.gz", "application/gzip"):
+        if not upload(data_path, data_key, "application/gzip"):
             raise RuntimeError("R2 storage is not configured")
         # The manifest goes last: a backup folder without one is incomplete.
-        upload(manifest_path, f"{BACKUP_PREFIX}{day}/manifest.json", "application/json")
+        if assert_publish:
+            assert_publish()
+        if not upload(manifest_path, f"{BACKUP_PREFIX}{day}/manifest.json", "application/json"):
+            raise RuntimeError("Backup manifest upload failed")
 
     pruned = prune_backups(now, list_objects=list_objects, delete=delete)
     return {"day": day, "documents": budget["documents"], "collections": len(included), "pruned": pruned}
@@ -166,16 +188,102 @@ def prune_backups(now, *, list_objects, delete) -> int:
     return removed
 
 
+def _nightly_update(connection, key, change):
+    """CAS the daily state and lease together; never fall back to local state."""
+    lease = key + ":lease"
+    for _ in range(20):
+        with connection.pipeline() as pipe:
+            try:
+                pipe.watch(key, lease)
+                raw = pipe.get(key)
+                state = json.loads(raw) if raw and raw not in (b"1", "1") else {}
+                previous_state = state.copy()
+                owner = pipe.get(lease)
+                if isinstance(owner, bytes):
+                    owner = owner.decode()
+                result, next_owner = change(state, owner, raw)
+                if result is not None and state == previous_state:
+                    return result
+                pipe.multi()
+                pipe.set(key, json.dumps(state), ex=2 * 86400)
+                if next_owner:
+                    pipe.set(lease, next_owner, ex=LEASE_SECONDS)
+                else:
+                    pipe.delete(lease)
+                pipe.execute()
+                return result
+            except WatchError:
+                continue
+    raise RuntimeError("Backup coordination is busy")
+
+
 def run_nightly(connection, db, *, now=None, export=None, alert=None) -> dict:
-    """Cron step: one attempt per UTC night, from 20:00 UTC (01:30 IST)."""
+    """At most three attempts/night, sharing one document budget and lease."""
     now = now or datetime.now(timezone.utc)
     if now.hour < 20:
         return {"skipped": "before_window"}
-    if not connection.set(f"lekha:cron:firestore-backup:{now:%Y-%m-%d}", "1", nx=True, ex=2 * 86400):
-        return {"skipped": "already_attempted"}
+    key = f"lekha:cron:firestore-backup:{now:%Y-%m-%d}"
+    run_id = uuid.uuid4().hex
+
+    def claim(state, owner, raw):
+        if raw in (b"1", "1") or state.get("status") in ("complete", "terminal"):
+            return "already_attempted", owner
+        if owner:
+            return "in_progress", owner
+        if state.get("status") == "running":
+            state["documents"] = state.get("documents", 0) + state.get("reserved", 0)
+            state["reserved"] = 0
+        if state.get("attempts", 0) >= MAX_NIGHTLY_ATTEMPTS or state.get("documents", 0) >= _max_documents():
+            state["status"] = "terminal"
+            return "budget_exhausted", None
+        if now.timestamp() < state.get("retry_after", 0):
+            return "retry_backoff", None
+        # Reserve the remaining budget before starting. A process killed before
+        # it reports usage cannot turn its unknown reads into a free retry.
+        state.update(attempts=state.get("attempts", 0) + 1, status="running",
+                     reserved=_max_documents() - state.get("documents", 0))
+        return None, run_id
+
+    skipped = _nightly_update(connection, key, claim)
+    if skipped:
+        return {"skipped": skipped}
+    used = 0
+
+    def assert_owner():
+        value = connection.get(key + ":lease")
+        if value not in (run_id, run_id.encode()):
+            raise RuntimeError("Backup lease was lost")
+        connection.expire(key + ":lease", LEASE_SECONDS)
+
+    state = json.loads(connection.get(key))
+    remaining = state["reserved"]
+
+    def charge_document():
+        nonlocal used
+        assert_owner()
+        if used >= remaining:
+            raise BackupTooLarge("Nightly document budget exhausted across retries")
+        used += 1
+
+    def finish(status):
+        def update(state, owner, raw):
+            if owner != run_id:
+                raise RuntimeError("Backup lease was lost")
+            state.update(status=status, documents=state.get("documents", 0) + used,
+                         reserved=0, retry_after=now.timestamp() + RETRY_DELAY_SECONDS)
+            return None, None
+        _nightly_update(connection, key, update)
     try:
-        result = (export or export_backup)(db, now=now)
+        result = (export or export_backup)(db, now=now, on_document=charge_document,
+                                          run_id=run_id, assert_publish=assert_owner)
+        finish("complete")
     except Exception as error:
+        try:
+            finish("terminal" if isinstance(error, BackupTooLarge) else "retry")
+        except Exception:
+            # Keep the reservation charged after an uncertain/crashed attempt.
+            # Losing Redis must never permit a second unbudgeted export.
+            observability._json_log("error", "firestore_backup_coordination_failed")
         # Error level reaches Sentry, whose project alert emails the owner.
         observability._json_log("error", "firestore_backup_failed", error_type=type(error).__name__,
                                 error=str(error)[:300])
@@ -198,10 +306,42 @@ def _list_backups():
 
 def restore_backup(db, day, *, only="", apply=False, download=None):
     download = download or media_storage.download_file
+    datetime.strptime(day, "%Y-%m-%d")
     with tempfile.TemporaryDirectory(prefix="firestore-restore-") as folder:
         data_path = os.path.join(folder, "firestore.jsonl.gz")
-        if not download(f"{BACKUP_PREFIX}{day}/firestore.jsonl.gz", data_path):
+        manifest_path = os.path.join(folder, "manifest.json")
+        if not download(f"{BACKUP_PREFIX}{day}/manifest.json", manifest_path):
+            raise RuntimeError("Backup is incomplete: no manifest")
+        with open(manifest_path, encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        prefix = f"{BACKUP_PREFIX}{day}/"
+        data_key = manifest.get("data_key", prefix + "firestore.jsonl.gz")
+        if not isinstance(data_key, str) or not data_key.startswith(prefix) or ".." in data_key.split("/"):
+            raise ValueError("Invalid backup data key")
+        if not download(data_key, data_path):
             raise RuntimeError(f"No backup found for {day}")
+        if manifest.get("version", 1) >= 2:
+            with open(data_path, "rb") as handle:
+                digest = hashlib.file_digest(handle, "sha256").hexdigest()
+            if digest != manifest.get("sha256") or os.path.getsize(data_path) != manifest.get("compressed_bytes"):
+                raise ValueError("Backup checksum or size mismatch")
+        # Validate the entire snapshot, including decoding tagged values, before
+        # any batch is committed. A broken late row must not partially restore.
+        total = 0
+        paths = set()
+        with gzip.open(data_path, "rt", encoding="utf-8") as handle:
+            for line in handle:
+                row = json.loads(line)
+                parts = row["path"].split("/")
+                if len(parts) % 2 or any(not part for part in parts) or row["path"] in paths:
+                    raise ValueError("Invalid or duplicate document path")
+                if not isinstance(row["data"], dict):
+                    raise ValueError("Invalid document data")
+                decode_value(row["data"], db)
+                paths.add(row["path"])
+                total += 1
+        if total != manifest.get("documents"):
+            raise ValueError("Backup document count mismatch")
         counts, batch, written = {}, db.batch(), 0
         with gzip.open(data_path, "rt", encoding="utf-8") as handle:
             for line in handle:

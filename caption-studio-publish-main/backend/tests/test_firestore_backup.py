@@ -4,7 +4,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
 import fakeredis
@@ -107,6 +107,12 @@ class ExportTests(unittest.TestCase):
             backup.export_backup(sample_db(), now=NOW, upload=lambda *args: False,
                                  list_objects=lambda prefix: [], delete=lambda key: True)
 
+    def test_manifest_upload_failure_is_not_reported_as_success(self):
+        with self.assertRaisesRegex(RuntimeError, "manifest"):
+            backup.export_backup(sample_db(), now=NOW,
+                                 upload=lambda path, key, kind: not key.endswith("manifest.json"),
+                                 list_objects=lambda prefix: [], delete=lambda key: True)
+
     def test_prunes_backups_older_than_retention(self):
         deleted = []
         objects = [{"Key": "backups/firestore/2026-10-01/firestore.jsonl.gz"},
@@ -118,6 +124,10 @@ class ExportTests(unittest.TestCase):
 
 
 class EncodingTests(unittest.TestCase):
+    def test_customer_maps_cannot_collide_with_backup_type_tags(self):
+        value = {"__fs": "timestamp", "value": "customer text", "nested": {"__fs": "ref", "value": "not/a/reference"}}
+        self.assertEqual(backup.decode_value(backup.encode_value(value), MagicMock()), value)
+
     def test_round_trip_keeps_firestore_types(self):
         client = MagicMock()
         client.document.side_effect = lambda path: firestore.DocumentReference(*path.split("/"), client=client)
@@ -144,7 +154,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_one_attempt_per_night(self):
         calls = []
-        export = lambda db, now: calls.append(db) or {"documents": 3}
+        export = lambda db, **kwargs: calls.append(db) or {"documents": 3}
         first = backup.run_nightly(self.redis, "db", now=NOW, export=export)
         second = backup.run_nightly(self.redis, "db", now=NOW, export=export)
         self.assertEqual((first, second, calls), ({"documents": 3}, {"skipped": "already_attempted"}, ["db"]))
@@ -152,7 +162,7 @@ class NightlyTests(unittest.TestCase):
     def test_failure_alerts_and_is_not_retried_the_same_night(self):
         alerts = []
 
-        def broken(db, now):
+        def broken(db, **kwargs):
             raise backup.BackupTooLarge("too many")
 
         with self.assertRaises(backup.BackupTooLarge):
@@ -161,14 +171,86 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(backup.run_nightly(self.redis, "db", now=NOW, export=broken, alert=alerts.append),
                          {"skipped": "already_attempted"})
 
+    def test_transient_failure_retries_after_backoff_and_shares_budget(self):
+        attempts = []
+        def export(db, on_document, **kwargs):
+            attempts.append(1)
+            on_document()
+            on_document()
+            if len(attempts) == 1:
+                raise ConnectionError("temporary storage outage")
+            return {"documents": 2}
+        with patch.dict(os.environ, {"FIRESTORE_BACKUP_MAX_DOCUMENTS": "4"}):
+            with self.assertRaises(ConnectionError):
+                backup.run_nightly(self.redis, "db", now=NOW, export=export, alert=lambda _: None)
+            self.assertEqual(backup.run_nightly(self.redis, "db", now=NOW, export=export), {"skipped": "retry_backoff"})
+            result = backup.run_nightly(self.redis, "db", now=NOW + timedelta(minutes=16), export=export)
+        self.assertEqual(result["documents"], 2)
+        state = json.loads(self.redis.get("lekha:cron:firestore-backup:2026-10-27"))
+        self.assertEqual((state["attempts"], state["documents"], state["status"]), (2, 4, "complete"))
+
+    def test_retries_cannot_multiply_daily_document_budget(self):
+        def broken(db, on_document, **kwargs):
+            for _ in range(3):
+                on_document()
+            raise ConnectionError("storage outage")
+        with patch.dict(os.environ, {"FIRESTORE_BACKUP_MAX_DOCUMENTS": "4"}):
+            with self.assertRaises(ConnectionError):
+                backup.run_nightly(self.redis, "db", now=NOW, export=broken, alert=lambda _: None)
+            with self.assertRaises(backup.BackupTooLarge):
+                backup.run_nightly(self.redis, "db", now=NOW + timedelta(minutes=16), export=broken, alert=lambda _: None)
+            self.assertEqual(backup.run_nightly(self.redis, "db", now=NOW + timedelta(minutes=32), export=broken),
+                             {"skipped": "already_attempted"})
+
+    def test_concurrent_process_skips_and_crashed_process_keeps_its_reservation(self):
+        key = "lekha:cron:firestore-backup:2026-10-27"
+        self.redis.set(key, json.dumps({"status": "running", "attempts": 1, "reserved": 10000}))
+        self.redis.set(key + ":lease", "other-process", ex=100)
+        exporter = MagicMock()
+        self.assertEqual(backup.run_nightly(self.redis, "db", now=NOW, export=exporter), {"skipped": "in_progress"})
+        self.redis.delete(key + ":lease")
+        self.assertEqual(backup.run_nightly(self.redis, "db", now=NOW, export=exporter), {"skipped": "budget_exhausted"})
+        exporter.assert_not_called()
+        state = json.loads(self.redis.get(key))
+        self.assertEqual((state["status"], state["documents"], state["reserved"]), ("terminal", 10000, 0))
+
+    def test_transient_attempt_limit_and_legacy_lock_are_respected(self):
+        exporter = MagicMock(side_effect=ConnectionError("outage"))
+        for minutes in (0, 16, 32):
+            with self.assertRaises(ConnectionError):
+                backup.run_nightly(self.redis, "db", now=NOW + timedelta(minutes=minutes), export=exporter, alert=lambda _: None)
+        self.assertEqual(backup.run_nightly(self.redis, "db", now=NOW + timedelta(minutes=48), export=exporter), {"skipped": "budget_exhausted"})
+        self.redis.set("lekha:cron:firestore-backup:2026-10-27", "1")
+        self.assertEqual(backup.run_nightly(self.redis, "db", now=NOW, export=exporter), {"skipped": "already_attempted"})
+
 
 class RestoreTests(unittest.TestCase):
     def setUp(self):
         self.uploads = Uploads()
         backup.export_backup(sample_db(), now=NOW, upload=self.uploads,
                              list_objects=lambda prefix: [], delete=lambda key: True)
+        self.download = lambda key, local: shutil.copy(os.path.join(self.uploads.folder, key.replace("/", "_")), local) and True
+
+    def test_corrupt_snapshot_is_rejected_before_any_write(self):
         source = os.path.join(self.uploads.folder, "backups_firestore_2026-10-27_firestore.jsonl.gz")
-        self.download = lambda key, local: shutil.copy(source, local) and True
+        with open(source, "ab") as handle:
+            handle.write(b"corrupt")
+        db = MagicMock()
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            backup.restore_backup(db, "2026-10-27", apply=True, download=self.download)
+        db.batch.assert_not_called()
+
+    def test_document_count_mismatch_prevents_partial_restore(self):
+        manifest = os.path.join(self.uploads.folder, "backups_firestore_2026-10-27_manifest.json")
+        with open(manifest, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["documents"] = 999
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        db = MagicMock()
+        with self.assertRaisesRegex(ValueError, "count mismatch"):
+            backup.restore_backup(db, "2026-10-27", apply=True, download=self.download)
+        db.batch.assert_not_called()
 
     def test_dry_run_writes_nothing(self):
         db = MagicMock()

@@ -264,6 +264,7 @@ async function uploadMultipartParts(initialized, file, headers, retryDelaysMs, o
   let signing = null
   const signParts = async (numbers) => {
     const signed = await apiRequest('/api/uploads/parts', {
+      signal,
       method: 'POST',
       headers,
       body: JSON.stringify({ file_id: initialized.file_id, part_numbers: numbers }),
@@ -383,6 +384,7 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
   if (receipt) {
     try {
       initialized = await apiRequest('/api/uploads/resume', {
+        signal,
         method: 'POST',
         headers,
         body: JSON.stringify({ ...fingerprint, file_id: receipt.file_id }),
@@ -398,6 +400,7 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
     ? { duration_seconds: Math.round(Number(durationSeconds) * 100) / 100 }
     : {}
   if (!initialized) initialized = await apiRequest('/api/uploads/init', {
+    signal,
     method: 'POST',
     headers,
     body: JSON.stringify({ ...fingerprint, ...declaredDuration }),
@@ -461,6 +464,7 @@ async function uploadDirectToStorage(file, authorization, retryDelaysMs, onProgr
     throwIfAborted(signal)
     try {
       const result = await apiRequest('/api/uploads/complete', {
+        signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -567,6 +571,7 @@ export async function uploadFileWithRecovery(file, {
 
     try {
       const data = await apiRequest('/api/upload', {
+        signal,
         method: 'POST',
         headers: {
           ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),

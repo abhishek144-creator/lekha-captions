@@ -70,6 +70,47 @@ const cssGzipKb = bytesToKb(cssGzipBytes)
 const totalGzipKb = bytesToKb(totalGzipBytes)
 
 const failures = []
+// Public HTML does not include the lazy editor. Check its static dependency
+// graph separately and bound every lazy JS chunk, including the video player.
+const manifestPath = path.join(distDir, '.vite', 'manifest.json')
+if (!fs.existsSync(manifestPath)) {
+  failures.push('Vite manifest is missing; editor budgets cannot be verified')
+} else {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  const editorKey = Object.keys(manifest).find((key) => key.endsWith('/Dashboard.jsx'))
+  if (!editorKey) failures.push('Editor entry is missing from the Vite manifest')
+  const visited = new Set()
+  const visit = (key) => {
+    if (visited.has(key)) return
+    visited.add(key)
+    if (!manifest[key]) { failures.push(`Missing manifest dependency: ${key}`); return }
+    for (const dependency of manifest[key].imports || []) visit(dependency)
+  }
+  if (editorKey) visit(editorKey)
+  const editorFiles = new Set([...visited].flatMap((key) => [manifest[key]?.file, ...(manifest[key]?.css || [])]).filter(Boolean))
+  let editorBytes = 0
+  let editorGzipBytes = 0
+  for (const file of editorFiles) {
+    const bytes = fs.readFileSync(path.join(distDir, file))
+    editorBytes += bytes.length
+    editorGzipBytes += gzipSync(bytes).length
+  }
+  const editorKb = bytesToKb(editorBytes)
+  const editorGzipKb = bytesToKb(editorGzipBytes)
+  const maxEditorKb = finiteBudget(process.env.PERF_BUDGET_MAX_EDITOR_KB, 1100)
+  const maxEditorGzipKb = finiteBudget(process.env.PERF_BUDGET_MAX_EDITOR_GZIP_KB, 330)
+  if (editorKb > maxEditorKb) failures.push(`Editor static assets exceeded: ${editorKb}KB > ${maxEditorKb}KB`)
+  if (editorGzipKb > maxEditorGzipKb) failures.push(`Editor static gzip exceeded: ${editorGzipKb}KB > ${maxEditorGzipKb}KB`)
+  const maxChunkKb = finiteBudget(process.env.PERF_BUDGET_MAX_CHUNK_KB, 750)
+  const maxChunkGzipKb = finiteBudget(process.env.PERF_BUDGET_MAX_CHUNK_GZIP_KB, 150)
+  for (const file of new Set(Object.values(manifest).map((entry) => entry.file).filter((file) => file.endsWith('.js')))) {
+    const bytes = fs.readFileSync(path.join(distDir, file))
+    if (bytes.length > maxChunkKb * 1024 || gzipSync(bytes).length > maxChunkGzipKb * 1024) {
+      failures.push(`Lazy JS chunk exceeds ${maxChunkKb}KB raw / ${maxChunkGzipKb}KB gzip: ${file}`)
+    }
+  }
+  console.log(`Editor static budgets: ${editorKb}KB/${maxEditorKb}KB raw, ${editorGzipKb}KB/${maxEditorGzipKb}KB gzip; every JS chunk <= ${maxChunkKb}KB raw / ${maxChunkGzipKb}KB gzip`)
+}
 if (jsKb > maxJsKb) failures.push(`JS budget exceeded: ${jsKb}KB > ${maxJsKb}KB`)
 if (cssKb > maxCssKb) failures.push(`CSS budget exceeded: ${cssKb}KB > ${maxCssKb}KB`)
 if (totalKb > maxTotalKb) failures.push(`Total asset budget exceeded: ${totalKb}KB > ${maxTotalKb}KB`)

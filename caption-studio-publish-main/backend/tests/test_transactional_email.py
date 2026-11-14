@@ -105,7 +105,7 @@ class SendEmailTests(unittest.TestCase):
 
     def test_recipient_cannot_inject_headers(self):
         with patch.dict(os.environ, SMTP_ENV):
-            self.assertFalse(email.send_email("a@example.com\r\nBcc: x@evil.test", "Hi", "t", "<p>t</p>"))
+            self.assertFalse(email.send_email("a@example.com\r\nBcc: x@example.invalid", "Hi", "t", "<p>t</p>"))
         self.assertEqual(FakeSmtp.sent, [])
 
     def test_smtp_failure_is_reported_not_raised(self):

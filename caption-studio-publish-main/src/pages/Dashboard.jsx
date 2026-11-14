@@ -30,6 +30,7 @@ import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { useEditorDocument } from '@/hooks/useEditorDocument'
 import { useEditorHistory } from '@/hooks/useEditorHistory'
 import { useDraftPersistence } from '@/hooks/useDraftPersistence'
+import { useDocumentOperations } from '@/hooks/useDocumentOperations'
 import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
 import {
   defaultCaptionStyle,
@@ -144,6 +145,7 @@ export default function Dashboard() {
   const [generationTicker, setGenerationTicker] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isTranslatingCaptions, setIsTranslatingCaptions] = useState(false)
 
   const editorDocument = useEditorDocument();
   const {
@@ -162,6 +164,19 @@ export default function Dashboard() {
     snapshotEditorState,
     applyDocument,
   } = editorDocument;
+
+  const documentOperations = useDocumentOperations(
+    { ownerUid: currentUser?.uid || '', fileId, projectId },
+    { captions, captionTracks, activeCaptionTrackId },
+  )
+  useEffect(() => {
+    setIsTranslatingCaptions(false)
+    setIsRelinking(false)
+    setIsSaving(false)
+    setSaveSuccess(false)
+    mediaRefreshInFlightRef.current = false
+    lastMediaRefreshRef.current = { fileId: null, at: 0 }
+  }, [currentUser?.uid, fileId, projectId])
 
   const activeCaptionLanguage = captionTracks.find((track) => track.id === activeCaptionTrackId)?.language || '';
   useEffect(() => {
@@ -286,16 +301,23 @@ export default function Dashboard() {
   // Smart layout: one AI reading of the lines that have none yet (type,
   // emotion, intensity, keywords). Signed-out sessions use the rules only.
   const analyzeCaptionEmotions = useCallback(async (lines) => {
-    const token = await getEffectiveAuthToken(currentUser);
-    if (!token || !lines?.length) return null;
-    return apiRequest('/api/caption-emotions', {
+    const operation = documentOperations.start('caption-emotions')
+    try {
+      const token = await getEffectiveAuthToken(currentUser);
+      operation.assertCurrent()
+      if (!token || !lines?.length) return null;
+      const data = await apiRequest('/api/caption-emotions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lines, id_token: token }),
       dedupeKey: 'caption-emotions',
       cancelPrevious: true,
+      signal: operation.signal,
     });
-  }, [currentUser]);
+      operation.assertCurrent()
+      return data
+    } finally { operation.finish() }
+  }, [currentUser, documentOperations]);
   const [showCaptionRetryNotice, setShowCaptionRetryNotice] = useState(false)
   const [showLowCreditNotice, setShowLowCreditNotice] = useState(false)
   const [translationNotice, setTranslationNotice] = useState('')
@@ -321,12 +343,22 @@ export default function Dashboard() {
   // Editor UI owned here is cleared whenever the document is emptied for a new
   // session or account, so no selection, playback or undo history leaks across.
   const resetEditorUi = useCallback(() => {
+    documentOperations.cancelAll()
+    setIsTranslatingCaptions(false)
+    setIsUploading(false)
+    setIsGenerating(false)
+    setGenerationStartedAt(null)
+    setUploadProgress(null)
+    setIsRelinking(false)
+    setIsSaving(false)
+    setSaveSuccess(false)
+    replaceLocalPlayback(null, null)
     setWordPopup(null)
     setSelectedCaptionId(null)
     setCurrentTime(0)
     setIsUploadModalOpen(false)
     resetHistory()
-  }, [resetHistory])
+  }, [documentOperations, replaceLocalPlayback, resetHistory])
 
   const {
     cloudReady,
@@ -379,7 +411,6 @@ export default function Dashboard() {
 
   // Translate after upload: always from the original transcript (never a
   // translation of a translation) into its own language track.
-  const [isTranslatingCaptions, setIsTranslatingCaptions] = useState(false)
   const handleTranslateCaptions = async (targetLanguage, targetLabel) => {
     if (!targetLanguage || isTranslatingCaptions) return
     if (!currentUser) {
@@ -403,10 +434,12 @@ export default function Dashboard() {
       toast({ title: 'Too many captions', description: 'Translation supports up to 1000 captions at a time.', variant: 'destructive' })
       return
     }
+    const operation = documentOperations.start('translation', { watchContent: true })
     setIsTranslatingCaptions(true)
     setTranslationNotice('')
     try {
       const translateToken = await getEffectiveAuthToken(currentUser)
+      operation.assertCurrent()
       const translateData = await apiRequest('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -417,7 +450,9 @@ export default function Dashboard() {
         }),
         dedupeKey: 'translate-captions',
         cancelPrevious: true,
+        signal: operation.signal,
       })
+      operation.assertCurrent()
       if (!translateData.success || !translateData.captions) {
         throw new Error(translateData.error || `Translation to ${targetLabel || targetLanguage} failed`)
       }
@@ -441,11 +476,12 @@ export default function Dashboard() {
       trackAnalytics('funnel.translate.success', getClientContext({ stage: 'editor_translate', targetLanguage }))
       toast({ title: 'Captions translated', description: `Switched to ${targetLabel || targetLanguage}. To return to the original, translate to its language.` })
     } catch (error) {
-      if (error?.name === 'AbortError') return
+      if (error?.name === 'AbortError' || !operation.isCurrent()) return
       trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'editor_translate', targetLanguage }))
       notifyApiError(error, 'Translation failed')
     } finally {
-      setIsTranslatingCaptions(false)
+      if (operation.isActive()) setIsTranslatingCaptions(false)
+      operation.finish()
     }
   }
 
@@ -550,6 +586,9 @@ export default function Dashboard() {
       navigate(`/login?mode=signup&returnTo=${encodeURIComponent('/Dashboard?entry=editor')}`);
       return;
     }
+    documentOperations.cancelAll()
+    setIsTranslatingCaptions(false)
+    const operation = documentOperations.start('upload', { scope: 'account' })
     // The upload window may hand over an upload it already started; it is a
     // live object, so it never goes into saved settings.
     const { uploadTask = null, ...uploadSettings } = uploadSettingsWithTask || {};
@@ -571,6 +610,7 @@ export default function Dashboard() {
 
     try {
       const mediaAuthToken = await getEffectiveAuthToken(currentUser);
+      operation.assertCurrent()
       let uploadData = null;
       if (uploadSettings?.preUploadedFileId && uploadSettings?.preUploadedRawUrl) {
         uploadData = {
@@ -581,12 +621,18 @@ export default function Dashboard() {
       } else {
         let backgroundOutcome = null;
         if (uploadTask) {
-          const unsubscribe = uploadTask.subscribe(setUploadProgress);
+          const unsubscribe = uploadTask.subscribe((progress) => {
+            if (operation.isCurrent()) setUploadProgress(progress)
+          });
+          const abortUpload = () => uploadTask.controller?.abort()
+          operation.signal.addEventListener('abort', abortUpload, { once: true })
           try {
             backgroundOutcome = await uploadTask.promise;
           } finally {
             unsubscribe();
+            operation.signal.removeEventListener('abort', abortUpload)
           }
+          operation.assertCurrent()
         }
         if (backgroundOutcome?.ok) {
           uploadData = backgroundOutcome.data;
@@ -601,13 +647,16 @@ export default function Dashboard() {
           uploadData = await uploadFileWithRecovery(file, {
             authorization: mediaAuthToken,
             dedupeKey: 'upload-video',
-            onProgress: setUploadProgress,
+            signal: operation.signal,
+            onProgress: (progress) => { if (operation.isCurrent()) setUploadProgress(progress) },
           });
+          operation.assertCurrent()
         }
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
         trackAnalytics('funnel.upload.success', getClientContext({ stage: 'upload', fileId: uploadData.file_id || '' }));
       }
 
+      operation.assertCurrent()
       acceptedUpload = uploadData;
       setIsUploading(false);
       // The waiting screen's caption steps count from here, after the upload.
@@ -660,7 +709,8 @@ export default function Dashboard() {
         cleanup_mode: uploadSettings?.cleanupMode || 'clean',
         speech_focus: uploadSettings?.speechFocus || 'main',
         id_token: mediaAuthToken,
-      });
+      }, { signal: operation.signal });
+      operation.assertCurrent()
       if (!processData.success) throw new Error(processData.error || 'Processing failed');
       const nextAudioAnalysis = processData.audio_analysis?.samples?.length
         ? { ...processData.audio_analysis, fileId: uploadData.file_id } : null
@@ -684,6 +734,7 @@ export default function Dashboard() {
       if (targetLang && targetLang !== 'auto' && !sameLanguage) {
         try {
           const translateToken = await getEffectiveAuthToken(currentUser);
+          operation.assertCurrent()
           const translateData = await apiRequest('/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -694,13 +745,16 @@ export default function Dashboard() {
             }),
             dedupeKey: 'translate-captions',
             cancelPrevious: true,
+            signal: operation.signal,
           });
+          operation.assertCurrent()
           if (!translateData.success || !translateData.captions) {
             throw new Error(translateData.error || `Translation to ${targetLang} failed`);
           }
           trackAnalytics('funnel.translate.success', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
           translatedCaptions = applyTranslation(sourceCaptions, translateData.captions, targetLang);
         } catch (translateErr) {
+          if (translateErr?.name === 'AbortError' || !operation.isCurrent()) throw translateErr
           trackAnalytics('funnel.translate.failed', getClientContext({ stage: 'translate', targetLanguage: targetLang }));
           console.warn(`Translation to ${targetLang} failed; keeping the original language track.`, translateErr);
           setTranslationNotice(`Original captions are ready. Translation to ${targetLang} failed; retry with Translate in the Captions tab.`);
@@ -734,6 +788,7 @@ export default function Dashboard() {
       const sampleText = trackState.captions.map(c => c.text).join(' ');
       const activeLanguage = trackState.tracks.find(track => track.id === trackState.activeTrackId)?.language;
       const { fontFamily, fontWeight, script, fontOptions } = await autoLoadFontForText(sampleText, activeLanguage);
+      operation.assertCurrent()
       nextCaptionStyle = {
         ...nextCaptionStyle,
         font_family: fontFamily,
@@ -773,6 +828,7 @@ export default function Dashboard() {
       // transcription request.
 
     } catch (error) {
+      if (error?.name === 'AbortError' || !operation.isCurrent()) return
       console.error('Upload failed:', error);
       const uploadWasAccepted = Boolean(acceptedUpload?.file_id && acceptedPlayableVideoUrl);
       if (uploadWasAccepted) {
@@ -810,6 +866,7 @@ export default function Dashboard() {
       if (captionsReady && remainingMinDurationMs > 0) {
         await sleep(remainingMinDurationMs);
       }
+      if (!operation.isActive()) { operation.finish(); return }
       setIsUploading(false);
       setUploadProgress(null);
       setIsGenerating(false);
@@ -824,6 +881,7 @@ export default function Dashboard() {
           fromGenerateMs: shownAt - generationStart,
         }));
       }
+      operation.finish()
     }
   };
 
@@ -840,12 +898,17 @@ export default function Dashboard() {
   };
 
   const handleSave = async () => {
+    const operation = documentOperations.start('save', { watchContent: true })
     setIsSaving(true);
     const saved = await saveNow();
+    if (!operation.isActive()) { operation.finish(); return }
     setIsSaving(false);
-    if (!saved) return;
+    if (!saved || !operation.isCurrent()) { operation.finish(); return }
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    setTimeout(() => {
+      if (operation.isActive()) setSaveSuccess(false)
+      operation.finish()
+    }, 2000);
   };
 
   // Each seek is a new object so seeking to the same time twice (clicking the
@@ -863,10 +926,13 @@ export default function Dashboard() {
 
   const relinkSource = async (file) => {
     if (!file || isRelinking) return
+    const operation = documentOperations.start('relink')
     setIsRelinking(true)
     try {
       const token = await getEffectiveAuthToken(currentUser)
-      const uploaded = await uploadFileWithRecovery(file, { authorization: token, dedupeKey: 'relink-source' })
+      operation.assertCurrent()
+      const uploaded = await uploadFileWithRecovery(file, { authorization: token, dedupeKey: 'relink-source', signal: operation.signal })
+      operation.assertCurrent()
       if (!uploaded.success || !uploaded.raw_url) throw new Error(uploaded.error || 'Source upload failed')
       setFileId(uploaded.file_id)
       setVideoUrl(resolveApiResourceUrl(uploaded.raw_url, import.meta.env.VITE_API_BASE_URL))
@@ -876,8 +942,9 @@ export default function Dashboard() {
       setSourceUnavailable(false)
       setCloudSaveMessage('Source relinked. Captions and styles preserved; review synchronization before rendering.')
     } catch (error) {
+      if (error?.name === 'AbortError' || !operation.isCurrent()) return
       setCloudSaveMessage(error.message || 'Could not relink video. Your captions are unchanged.')
-    } finally { setIsRelinking(false) }
+    } finally { if (operation.isActive()) setIsRelinking(false); operation.finish() }
   }
 
   useEffect(() => {
@@ -930,9 +997,11 @@ export default function Dashboard() {
     const resumeAt = Number(videoEl?.currentTime || currentTime || 0);
     const shouldResume = Boolean(isPlaying);
     mediaRefreshInFlightRef.current = true;
+    const operation = documentOperations.start('refresh-media')
 
     try {
       const mediaAuthToken = await getEffectiveAuthToken(currentUser);
+      operation.assertCurrent()
       const data = await apiRequest('/api/media/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -942,7 +1011,9 @@ export default function Dashboard() {
         }),
         dedupeKey: 'refresh-upload-media-url',
         cancelPrevious: true,
+        signal: operation.signal,
       });
+      operation.assertCurrent()
 
       const refreshedVideoUrl = resolveApiResourceUrl(
         data?.raw_url,
@@ -955,12 +1026,14 @@ export default function Dashboard() {
         if (shouldResume) setIsPlaying(true);
       }
     } catch (error) {
+      if (error?.name === 'AbortError' || !operation.isCurrent()) return
       console.warn('Failed to refresh video playback URL:', error);
       setSourceUnavailable(true)
     } finally {
-      mediaRefreshInFlightRef.current = false;
+      if (operation.isActive()) mediaRefreshInFlightRef.current = false;
+      operation.finish()
     }
-  }, [currentTime, currentUser, fileId, isPlaying, setCloudSaveMessage, setVideoUrl, videoUrl]);
+  }, [currentTime, currentUser, documentOperations, fileId, isPlaying, setCloudSaveMessage, setVideoUrl, videoUrl]);
 
   const handleVideoError = (event) => {
     // If the device copy cannot play, fall back to the storage link.
@@ -1036,6 +1109,7 @@ export default function Dashboard() {
   };
 
   const handleApplyTemplate = useCallback(async (templateStyle) => {
+    const operation = documentOperations.start('apply-template')
     const application = buildTemplateApplication({
       templateStyle,
       captionStyle,
@@ -1063,6 +1137,7 @@ export default function Dashboard() {
     setWordPopup(null);
     if (!application.templateSnapshot) {
       pushHistory(application.captions, application.style);
+      operation.finish()
       return;
     }
     // Smart mode (docs/caption-template-design-brief.md, section 7): the
@@ -1081,11 +1156,12 @@ export default function Dashboard() {
     const directed = autoLayoutCaptions(application.captions, directorOptions).captions;
     pushHistory(directed, application.style);
     const pending = captionsNeedingEmotion(directed);
-    if (!pending.length) return;
+    if (!pending.length) { operation.finish(); return }
     const templateKey = (caption) => `${caption?.template_20_id || ''}::${caption?.template_id || ''}`;
     const appliedKey = templateKey(directed.find((caption) => caption && !caption.isTextElement));
     try {
       const data = await analyzeCaptionEmotions(pending);
+      if (!operation.isCurrent()) return
       if (!data?.success || !Array.isArray(data.lines)) return;
       // Only while the same template is still applied; the reading is kept on
       // the captions either way so Auto layout never pays for it twice.
@@ -1096,8 +1172,8 @@ export default function Dashboard() {
       });
     } catch {
       // The rules-only layout already applied stays.
-    }
-  }, [activeCaptionLanguage, analyzeCaptionEmotions, captionStyle, captions, duration, pushHistory, setCaptions, waveformData]);
+    } finally { operation.finish() }
+  }, [activeCaptionLanguage, analyzeCaptionEmotions, captionStyle, captions, documentOperations, duration, pushHistory, setCaptions, waveformData]);
 
   // Reset returns to the project as it was opened or generated.
   const handleRefresh = () => {
@@ -1107,6 +1183,9 @@ export default function Dashboard() {
       return;
     }
     const resetPoint = resetPointRef.current || snapshotEditorState();
+    documentOperations.cancelAll()
+    setIsTranslatingCaptions(false)
+    setIsRelinking(false)
     setWordPopup(null);
     setIsPlaying(false);
     setCurrentTime(0);

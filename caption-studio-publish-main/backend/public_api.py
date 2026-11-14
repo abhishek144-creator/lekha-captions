@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import secrets
 import threading
 import time
@@ -15,6 +16,11 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 try:
+    from . import settings
+except ImportError:
+    import settings
+
+try:
     import redis
 except ImportError:  # Local development without Redis remains supported.
     redis = None
@@ -22,6 +28,18 @@ except ImportError:  # Local development without Redis remains supported.
 
 ALLOWED_SCOPES = {"projects:read", "exports:read"}
 API_KEY_PREFIX = "lk_live_"
+
+
+def is_api_key_read_request(method: str, path: str) -> bool:
+    """Only these read routes authenticate server clients with scoped API keys.
+
+    Key management and future write routes still require browser App Check.
+    Matching a route never authenticates a caller: every handler below must
+    validate the key, scope, rate limit and resource owner.
+    """
+    return method.upper() == "GET" and re.fullmatch(
+        r"/api/v1/(?:projects(?:/[^/]+)?|exports/[^/]+)", path.rstrip("/")
+    ) is not None
 
 
 class CreateApiKeyRequest(BaseModel):
@@ -34,7 +52,7 @@ class ApiKeyRateLimiter:
         self.hourly_limit = max(1, hourly_limit)
         self._events: Dict[str, deque] = defaultdict(deque)
         self._lock = threading.Lock()
-        self._strict = os.environ.get("ENV", "").lower() == "production"
+        self._strict = settings._IS_PRODUCTION
         redis_url = (os.environ.get("REDIS_URL") or "").strip()
         self._redis = redis_client if redis_client is not None else (
             redis.Redis.from_url(
