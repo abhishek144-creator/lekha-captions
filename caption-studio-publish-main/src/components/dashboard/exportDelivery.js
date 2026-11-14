@@ -41,11 +41,14 @@ export async function boundedExportRequest(operation, { signal, timeoutMs = 1500
 }
 
 export async function monitorExportStatus({ request, onStatus, onReconnect, sleep, signal,
-  timeoutMs = EXPORT_MONITOR_WINDOW_MS, now = Date.now, pollDelay = () => 1500 }) {
+  timeoutMs = EXPORT_MONITOR_WINDOW_MS, now = Date.now, pollDelay = () => 1500,
+  beforeRequest = async () => {} }) {
   const startedAt = now()
   let consecutiveNotFound = 0
   while (now() - startedAt < timeoutMs) {
+    await beforeRequest(signal)
     if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
+    if (now() - startedAt >= timeoutMs) break
     let payload
     try {
       payload = await boundedExportRequest(request, {

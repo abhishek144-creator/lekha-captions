@@ -158,4 +158,4 @@ has_background: true            // default for custom; templates use false if no
 - Backend: `http://localhost:8000`
 - Backend health check: `GET http://localhost:8000/api/fonts`
 - Worktree: `.claude/worktrees/stoic-moore/`
-- Main repo: `C:\Users\ADMIN\Downloads\caption-studio-publish-main`
+- Main repo: `E:\caption-studio-publish-main`

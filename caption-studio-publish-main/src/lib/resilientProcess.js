@@ -1,5 +1,6 @@
 import { apiRequest } from '@/lib/apiClient'
 import { getClientContext, trackAnalytics } from '@/lib/analytics'
+import { waitForVisiblePage } from '@/lib/pageVisibility'
 
 const RETRY_DELAYS_MS = [1500, 4000, 8000, 12000]
 const RETRYABLE_STATUSES = new Set([0, 408, 425, 499, 500, 502, 503, 504])
@@ -72,7 +73,9 @@ export async function processVideoWithRecovery(payload, {
           assertActive()
           if (Date.now() >= deadline) throw Object.assign(new Error('Transcription is still pending. Contact support with the job reference.'), { status: 409 })
           await sleep(pollDelayMs, signal)
+          await waitForVisiblePage(signal)
           assertActive()
+          if (Date.now() >= deadline) throw Object.assign(new Error('Transcription is still pending. Contact support with the job reference.'), { status: 409 })
           data = await apiRequest('/api/process', options)
         }
         assertActive()

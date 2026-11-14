@@ -142,7 +142,7 @@ try {
   const originalSettled = () => [...savedProjects.values()][0]?.duration > 0 && Date.now() - lastSaveAt > 3000
   for (let wait = 0; wait < 200 && !originalSettled(); wait += 1) await new Promise((done) => setTimeout(done, 100))
   assert.equal(savedProjects.size, 1, 'the original project has an account copy')
-  assert.ok(originalSettled(), 'the original project saves its video length before Upload New')
+  assert.ok(originalSettled(), `the original project saves its video length before Upload New: ${JSON.stringify({ drafts: [...savedProjects.values()].map(({ duration, fileId, projectId }) => ({ duration, fileId, projectId })), quietMs: Date.now() - lastSaveAt, browser: await page.evaluate(() => ({ duration: document.querySelector('video')?.duration, storedDuration: JSON.parse(localStorage.getItem('captionEditorState') || '{}').duration })) })}`)
   const [previousId, previousDraft] = [...savedProjects][0]
   const previousJson = JSON.stringify(previousDraft)
   fileId = '123e4567-e89b-12d3-a456-426614174222'

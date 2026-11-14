@@ -11,7 +11,7 @@
     {
       "name": "landing-v2",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "cd C:\\Users\\ADMIN\\Downloads\\caption-studio-publish-main\\.claude\\worktrees\\landing-v2\\caption-studio-publish-main && npx vite --port 3210 --host 0.0.0.0"],
+      "runtimeArgs": ["/c", "cd E:\\caption-studio-publish-main\\caption-studio-publish-main && npm run dev:frontend -- --port 3210 --host 127.0.0.1"],
       "port": 3210,
       "autoPort": false
     },
@@ -30,7 +30,7 @@
     {
       "name": "dist-preview",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "python -m http.server 4173 --directory C:\\Users\\ADMIN\\Downloads\\caption-studio-publish-main\\caption-studio-publish-main\\dist"],
+      "runtimeArgs": ["/c", "python -m http.server 4173 --bind 127.0.0.1 --directory E:\\caption-studio-publish-main\\caption-studio-publish-main\\dist"],
       "port": 4173,
       "autoPort": false
     },

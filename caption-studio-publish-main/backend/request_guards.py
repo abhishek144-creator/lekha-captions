@@ -308,6 +308,9 @@ def _check_rate(store: Dict[str, list], key: str, limit: int, window: int = 3600
             # Local and test environments may use the per-process fallback.
             pass
 
+    if settings._IS_PRODUCTION:
+        raise HTTPException(status_code=503, detail="Rate-limit service is temporarily unavailable")
+
     now_ts = time.time()
     timestamps = [t for t in store.get(key, []) if t > now_ts - window]
     if len(timestamps) >= limit:

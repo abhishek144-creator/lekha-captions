@@ -1,0 +1,4 @@
+Contact: mailto:support@lekhacaptions.com
+Expires: 2027-02-14T00:00:00Z
+Preferred-Languages: en, hi
+Canonical: https://lekhacaptions.com/.well-known/security.txt

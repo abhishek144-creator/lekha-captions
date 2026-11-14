@@ -11,6 +11,7 @@ except ImportError:  # Direct execution from backend/ remains supported.
 import asyncio
 import json
 import logging
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -169,7 +170,18 @@ async def app_lifespan(_app: FastAPI):
         await shutdown_event()
 
 
-app = FastAPI(lifespan=app_lifespan)
+def _create_app():
+    # Browser attestation is not an administrator role. Keep the schema and
+    # interactive documentation unavailable in production, even to app users.
+    return FastAPI(
+        lifespan=app_lifespan,
+        openapi_url=None if settings._IS_PRODUCTION else "/openapi.json",
+        docs_url=None if settings._IS_PRODUCTION else "/docs",
+        redoc_url=None if settings._IS_PRODUCTION else "/redoc",
+    )
+
+
+app = _create_app()
 app.add_middleware(
     RailwayIdleConnectionsMiddleware,
     clients=lambda: (app_state._redis_client, app_state._rq_redis_client),
@@ -758,15 +770,37 @@ app.include_router(billing.router)
 
 app.include_router(create_cost_reconciliation_router(request_security._is_admin_token, firebase_admin_setup.get_db))
 app.include_router(create_notification_router(request_security._authenticate_bearer_request, firebase_admin_setup.get_db))
+
+
+def _authenticate_resource_management_request(request: Request):
+    principal = request_security._authenticate_bearer_request(request)
+    path = request.url.path.rstrip("/")
+    creates_resource = request.method.upper() == "POST" and (
+        path in {"/api/workspaces", "/api/developer/api-keys"}
+        or re.fullmatch(r"/api/workspaces/[^/]+/invites", path) is not None
+    )
+    if creates_resource:
+        # Share one budget across resource-creation endpoints and API replicas.
+        # Project autosaves use their existing draft policy, not this hourly cap.
+        for key, limit in (
+            (f"user:{principal['uid']}", 60),
+            (f"network:{request_guards._client_rate_key(request)}", 600),
+        ):
+            allowed, retry_after, _remaining = request_guards._check_rate(app_state._resource_creation_rate, key, limit)
+            if not allowed:
+                raise HTTPException(429, "Too many resource creation requests. Please retry later.", headers={"Retry-After": str(retry_after)})
+    return principal
+
+
 app.include_router(create_public_api_router(
-    authenticate_request=request_security._authenticate_bearer_request,
+    authenticate_request=_authenticate_resource_management_request,
     get_database=firebase_admin_setup.get_db,
     list_account_projects=list_projects,
     read_account_project=read_draft,
     load_export_job=export_jobs._load_export_job,
 ))
 app.include_router(create_workspace_router(
-    authenticate_request=request_security._authenticate_bearer_request,
+    authenticate_request=_authenticate_resource_management_request,
     get_database=firebase_admin_setup.get_db,
     assert_upload_owner=media_records._assert_upload_owner,
     validate_file_id=media_records._validate_file_id,

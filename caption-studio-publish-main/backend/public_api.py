@@ -12,13 +12,15 @@ import uuid
 from collections import defaultdict, deque
 from typing import Any, Callable, Dict, Set
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 try:
     from . import settings
+    from .pagination import collection_page
 except ImportError:
     import settings
+    from pagination import collection_page
 
 try:
     import redis
@@ -155,16 +157,18 @@ def create_public_api_router(
         return {"success": True, "api_key": raw, "key": {k: v for k, v in record.items() if k != "uid"}}
 
     @router.get("/api/developer/api-keys")
-    def list_api_keys(request: Request):
+    def list_api_keys(request: Request, limit: int = Query(100, ge=1, le=100), cursor: str = Query("", max_length=200)):
         uid = authenticate_request(request)["uid"]
         rows = []
-        for snapshot in database().collection("users").document(uid).collection("api_key_index").stream():
+        collection = database().collection("users").document(uid).collection("api_key_index")
+        snapshots, page = collection_page(collection, limit, cursor, "created_at")
+        for snapshot in snapshots:
             value = snapshot.to_dict() or {}
             value.pop("key_hash", None)
             value.pop("uid", None)
             rows.append(value)
         rows.sort(key=lambda item: float(item.get("created_at") or 0), reverse=True)
-        return {"success": True, "keys": rows}
+        return {"success": True, "keys": rows, **page}
 
     @router.delete("/api/developer/api-keys/{key_id}")
     def revoke_api_key(key_id: str, request: Request):

@@ -37,11 +37,28 @@ describe('useCloudProjects', () => {
     await waitFor(() => expect(result.current.cloudReady).toBe(true))
     await act(async () => { await result.current.saveCloudDraft({ captions: [], fileId: 'f1' }) })
     const save = requests.find((request) => request.path === '/api/draft/save')
-    expect(save.body.project_id).toMatch(/^local_\d+$/)
+    expect(save.body.project_id).toMatch(/^local_(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/)
     expect(save.body.draft.projectId).toBe(save.body.project_id)
     // A new project starts at revision 0, never the latest project's revision.
     expect(save.body.expected_revision).toBe(0)
     expect(result.current.projectId).toBe(save.body.project_id)
+  })
+
+  it('creates distinct projects even when two drafts are saved at the same timestamp', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(12345)
+    try {
+      const first = renderHook(useProjects)
+      const second = renderHook(useProjects)
+      await waitFor(() => expect(first.result.current.cloudReady && second.result.current.cloudReady).toBe(true))
+      await act(async () => {
+        await Promise.all([
+          first.result.current.saveCloudDraft({ captions: [], fileId: 'first' }),
+          second.result.current.saveCloudDraft({ captions: [], fileId: 'second' }),
+        ])
+      })
+      const ids = requests.filter(request => request.path === '/api/draft/save').map(request => request.body.project_id)
+      expect(new Set(ids).size).toBe(2)
+    } finally { clock.mockRestore() }
   })
 
   it('keeps the new project when an older project save finishes after Upload New', async () => {

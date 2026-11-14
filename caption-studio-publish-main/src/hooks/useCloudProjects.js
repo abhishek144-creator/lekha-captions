@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { apiRequest } from '@/lib/apiClient'
 import { compactDraftForStorage } from '@/lib/editorDocument'
+import { createLocalProjectId } from '@/lib/projectId'
 
 
 export function useCloudProjects({ currentUser, getAuthToken, projectId, setProjectId, onMessage }) {
@@ -70,7 +71,7 @@ export function useCloudProjects({ currentUser, getAuthToken, projectId, setProj
       const idToken = await getAuthToken(currentUser)
       if (sessionRef.current !== session) throw new DOMException('Account changed; save cancelled.', 'AbortError')
       if (!draft.projectId && !projectId && !assignedProjectIdRef.current) {
-        assignedProjectIdRef.current = `local_${Date.now()}`
+        assignedProjectIdRef.current = createLocalProjectId()
       }
       const targetProjectId = draft.projectId || projectId || assignedProjectIdRef.current
       const storedDraft = compactDraftForStorage({ ...draft, projectId: targetProjectId })

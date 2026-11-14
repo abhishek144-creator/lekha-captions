@@ -200,6 +200,7 @@ async function openSeededDraft(value) {
   }, {}, value.captions.map((item) => item.id))
 }
 try {
+  if (process.env.EDITOR_JOURNEY_CASE !== 'account-isolation') {
   await page.goto('http://127.0.0.1:4187/e2e/fixtures/editor.html')
   await page.evaluate((value) => localStorage.setItem('captionEditorState', JSON.stringify(value)), draft)
   await page.reload()
@@ -615,6 +616,7 @@ try {
   await textClick('Get Starter')
   await page.waitForFunction(() => document.body.textContent.includes('invalid amount or currency'))
   assert.equal(await page.evaluate(() => window.checkoutOpens), 2, 'invalid orders cannot open checkout')
+  }
 
   // A real Dashboard translation response must never be applied under the
   // next account, including a switch back to the original account.
@@ -631,23 +633,30 @@ try {
     assert.ok(pendingTranslation, 'account A translation is in flight')
     await page.evaluate(() => window.switchTestAccount('editor-test-b'))
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').ownerUid === 'editor-test-b')
+    const accountB = await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}'))
+    assert.equal(accountB.captions?.length || 0, 0, 'account B cannot inherit account A captions')
+    assert.equal(JSON.stringify(accountB).includes('Private fixture caption for account A'), false)
     if (switchBack) {
       await page.evaluate(() => window.switchTestAccount('editor-test-a'))
       await page.waitForFunction(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}').ownerUid === 'editor-test-a')
     }
+    const beforeResponse = await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}'))
     // Chromium may have already cancelled the intercepted request. Either way,
     // force its response when possible and then cross the autosave debounce.
     await pendingTranslation.respond({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ success: true, captions: [{ id: caption.id, text: 'STALE PRIVATE TRANSLATION' }] }) }).catch(() => {})
     await new Promise(resolve => setTimeout(resolve, 750))
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('captionEditorState') || '{}'))
-    assert.equal(saved.captions?.length || 0, 0, 'late translation cannot populate the next session')
+    // Returning to A may legitimately restore A's own browser draft. The
+    // delayed operation must leave that current draft exactly as it found it.
+    assert.deepEqual(saved.captions, beforeResponse.captions, 'late translation cannot change the current session captions')
+    assert.deepEqual(saved.captionTracks, beforeResponse.captionTracks, 'late translation cannot change the current session tracks')
     assert.equal(JSON.stringify(saved).includes('STALE PRIVATE TRANSLATION'), false, 'no stale content in captions or tracks')
     assert.equal(await page.evaluate(() => document.body.textContent.includes('STALE PRIVATE TRANSLATION')), false)
     holdTranslation = false
   }
   assert.deepEqual(errors, [])
-  console.log('Local editor journey passed: caption correction, account-only source recovery without a save, expired-source relink, delayed-response account isolation, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, named controls, upload resume, 1000-line translation/1001-line refusal and checkout.')
+  console.log(process.env.EDITOR_JOURNEY_CASE === 'account-isolation' ? 'Account isolation browser checks passed.' : 'Local editor journey passed: caption correction, account-only source recovery without a save, expired-source relink, delayed-response account isolation, keyboard search, portrait preview, revision conflict, text-box removal/undo, reload, named controls, upload resume, 1000-line translation/1001-line refusal and checkout.')
 } catch (error) {
   console.error('Editor test diagnostics:', error.message, errors, await page.evaluate(() => document.body.innerText.slice(0, 3500)).catch(() => 'Page navigated during diagnostics'))
   throw error

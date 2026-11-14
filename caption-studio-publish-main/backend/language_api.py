@@ -42,6 +42,11 @@ except ImportError:  # Direct execution from backend/ remains supported.
 
 router = APIRouter()
 
+# Text analysis already has application-level, bounded retries for malformed
+# results. Do not stack the SDK's automatic retries or its long default timeout.
+AI_TEXT_PROVIDER_TIMEOUT_SECONDS = 45
+TRANSLATION_MAX_OUTPUT_TOKENS = 16_000
+
 @router.post("/api/translate")
 def translate_captions(req: api_models.TranslateRequest, request: Request, response: Response):
     decoded_token = firebase_admin_setup.verify_token(req.id_token)
@@ -82,6 +87,8 @@ def translate_captions(req: api_models.TranslateRequest, request: Request, respo
         from openai import OpenAI
         client = OpenAI(
             api_key=os.environ.get("OPENAI_API_KEY"),
+            timeout=AI_TEXT_PROVIDER_TIMEOUT_SECONDS,
+            max_retries=0,
         )
 
         texts = [cap.get("text", "") for cap in req.captions]
@@ -242,6 +249,7 @@ def _translate_lines(client, texts, target_language, model, strict=False):
             {"role": "user", "content": json.dumps({"lines": texts}, ensure_ascii=False)},
         ],
         temperature=0.1 if strict else 0.3,
+        max_completion_tokens=TRANSLATION_MAX_OUTPUT_TOKENS,
     )
     try:
         lines = json.loads(completion.choices[0].message.content or "{}").get("lines")
@@ -310,7 +318,11 @@ def caption_emotions(req: api_models.CaptionEmotionRequest, request: Request, re
     entitlements._reserve_ai_quota(uid, "caption_emotion")
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        client = OpenAI(
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            timeout=AI_TEXT_PROVIDER_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
         results = []
         for start in range(0, len(texts), CAPTION_EMOTION_BATCH_SIZE):
             batch = texts[start:start + CAPTION_EMOTION_BATCH_SIZE]

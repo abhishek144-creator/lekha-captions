@@ -31,6 +31,7 @@ import { useEditorDocument } from '@/hooks/useEditorDocument'
 import { useEditorHistory } from '@/hooks/useEditorHistory'
 import { useDraftPersistence } from '@/hooks/useDraftPersistence'
 import { useDocumentOperations } from '@/hooks/useDocumentOperations'
+import { createLocalProjectId } from '@/lib/projectId'
 import { DESKTOP_EDITOR_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
 import {
   defaultCaptionStyle,
@@ -671,7 +672,7 @@ export default function Dashboard() {
       // If the connection changes or transcription is temporarily unavailable,
       // the editor still opens with the user's video instead of discarding it
       // and returning to Start Creating Captions.
-      newProjectId = isRetry ? null : `local_${Date.now()}`;
+      newProjectId = isRetry ? null : createLocalProjectId();
       // The upload starts a new project here, in one step: keeping the old
       // project ID (or captions) while the new video was attached let autosave
       // overwrite the previous project with the new video.
@@ -807,7 +808,7 @@ export default function Dashboard() {
         toast({ title: 'Captions ready', description: 'Transcribed with Whisper.' });
       }
 
-      const nextProjectId = newProjectId || projectId || `local_${Date.now()}`;
+      const nextProjectId = newProjectId || projectId || createLocalProjectId();
       setProjectId(nextProjectId);
       resetPointRef.current = restoreEditorDocument({
         videoUrl: acceptedPlayableVideoUrl,

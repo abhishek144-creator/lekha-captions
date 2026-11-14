@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { safeReturnPath } from '@/lib/safeReturnPath'
 
 // Netlify preview URLs are not Firebase-authorized. Send preview sign-in to
 // the published domain shared by the homepage and editor.
@@ -45,9 +46,7 @@ export default function Login() {
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [formError, setFormError] = React.useState('');
     const requestedReturnTo = searchParams.get('returnTo');
-    const returnTo = requestedReturnTo?.startsWith('/') && !requestedReturnTo.startsWith('//')
-        ? requestedReturnTo
-        : '/Dashboard';
+    const returnTo = safeReturnPath(requestedReturnTo);
 
     React.useEffect(() => {
         // While a popup sign-in is in flight, handleGoogleAuth navigates once
